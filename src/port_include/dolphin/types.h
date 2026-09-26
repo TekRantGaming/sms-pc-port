@@ -17,11 +17,26 @@ typedef unsigned int u32;
 typedef signed long s32;
 typedef unsigned long u32;
 #endif
+#if defined(__i386__)
+/* The GameCube aligns 8-byte members to 8 inside structs; the i386 psABI
+ * aligns them to 4, which would lay out every class holding an OSTime or an
+ * f64 after a 4-byte boundary (TMarDirector, JUTGamePad, OSThread...)
+ * differently from retail. Code mods address those classes with retail
+ * offsets, so the 32-bit port keeps retail's alignment for these types.
+ * Argument passing is unaffected. */
+typedef signed long long int s64 __attribute__((aligned(8)));
+typedef unsigned long long int u64 __attribute__((aligned(8)));
+#else
 typedef signed long long int s64;
 typedef unsigned long long int u64;
+#endif
 
 typedef float f32;
+#if defined(__i386__)
+typedef double f64 __attribute__((aligned(8)));
+#else
 typedef double f64;
+#endif
 
 typedef char* Ptr;
 

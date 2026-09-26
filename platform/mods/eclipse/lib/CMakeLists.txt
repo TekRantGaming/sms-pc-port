@@ -32,7 +32,10 @@ set(_defs NTSCU KURIBO_NO_TYPES "BETTER_SMS_VERSION=\"v2.0\"" BETTER_SMS_CUSTOM_
   BETTER_SMS_SLOT_B_SUPPORT=1 BETTER_SMS_SHADOW_MARIO_HEALTHBAR=1 "SUPER_MARIO_ECLIPSE_VERSION=\"v1.1\"")
 # -fno-use-init-array: static constructors go to .ctors, which the port
 # renames (cmake/eclipse.cmake) and runs when the modules load, as Kuribo does.
-set(_opts -m32 -O2 -g -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
+# -malign-double: 8-byte members aligned to 8 inside structs, as on the
+# GameCube, so SunshineHeaderInterface's classes match retail (and the port's
+# types.h, which does the same for s64/u64/f64).
+set(_opts -m32 -malign-double -O2 -g -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
   -fno-use-init-array
   -include ${PORT_MODS}/eclipse/shim/sms_mod_prelude.h
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20> $<$<COMPILE_LANGUAGE:C>:-std=gnu11>)

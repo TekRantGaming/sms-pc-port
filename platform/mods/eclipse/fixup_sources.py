@@ -2,7 +2,12 @@
 """Mechanical fixes applied to the fetched Eclipse, BetterSunshineEngine and
 SunshineHeaderInterface sources before the port compiles them (nothing of
 theirs is kept in this repository). Each entry: a glob under the source root,
-a regular expression and its replacement, and why. Idempotent.
+a regular expression and its replacement, and why. Entries with the same why
+form a group, which must match at least once (unless marked OPTIONAL), so an
+upstream change that makes a rule miss stops the build instead of passing
+silently. The sources are reset to their checkouts first, then fixed up and
+patched (shi-layout.patch, mods-port.patch); a marker records the state, so
+an unchanged checkout is not redone.
 
     fixup_sources.py ECLIPSE_ROOT BSE_ROOT SHI_ROOT [MOVESET_ROOT]
 """
@@ -13,6 +18,14 @@ import sys
 
 # A call through a literal retail address: the port's function for it
 # (platform/mods/eclipse/rawfn_trampolines.cpp, tools/mods/gen_rawfn.py).
+OPTIONAL = "optional"
+
+
+def optional(fixes):
+    """Rules shared by several modules, which need not all use what they fix."""
+    return [f[:4] + (OPTIONAL,) for f in fixes]
+
+
 RAWADDR_FIX = ("src/**/*.cpp", r"(\(\s*\([^;{}()]*\(\s*\*\s*\)\s*\([^;{}()]*\)\s*\)\s*)(0x8[0-3][0-9A-Fa-f]{6})(\s*\)\s*\()",
                r"\1sms_mod_rawaddr(\2)\3", "retail addresses called go to the port's functions")
 
@@ -46,7 +59,7 @@ DEBS_FIXES = [
      "news list setters without assembly"),
 ]
 
-ECLIPSE_FIXES = TEXTURE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -63,8 +76,7 @@ ECLIPSE_FIXES = TEXTURE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + [
-    RAWADDR_FIX,
+BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),
@@ -92,9 +104,7 @@ BSE_FIXES = TEXTURE_FIXES + [
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
 ]
-MOVESET_FIXES = TEXTURE_FIXES + [
-    RAWADDR_FIX,
-]
+MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX])
 SHI_FIXES = [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
@@ -146,9 +156,12 @@ SHI_FIXES = [
 ]
 
 
-def apply(root, fixes):
+def apply(root, fixes, strict=False):
     changed = 0
-    for pattern, rx, repl, why in fixes:
+    groups = {}
+    for fix in fixes:
+        pattern, rx, repl, why = fix[:4]
+        groups.setdefault(why, [0, len(fix) > 4])
         for path in glob.glob(os.path.join(root, pattern), recursive=True):
             with open(path, encoding="utf-8", errors="surrogateescape") as f:
                 text = f.read()
@@ -157,19 +170,38 @@ def apply(root, fixes):
                 with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
                     f.write(new)
                 changed += n
+                groups[why][0] += n
+    missed = [why for why, (n, opt) in groups.items() if n == 0 and not opt]
+    if strict and missed:
+        sys.exit("fixup_sources.py: in %s, nothing matched for: %s\n(the upstream source changed: update the rule)"
+                 % (root, "; ".join(missed)))
     return changed
 
 
+def pristine(root):
+    """Back to the fetched revision: every rule then applies to what it was written for."""
+    import subprocess
+    if os.path.isdir(os.path.join(root, ".git")):
+        subprocess.check_call(["git", "-C", root, "checkout", "-q", "-f", "--", "."])
+        subprocess.check_call(["git", "-C", root, "clean", "-q", "-f", "-d", "-x"])
+
+
+def state(roots, files):
+    """What the fixed-up sources are made from: the revisions, this script and the patches."""
+    import hashlib, subprocess
+    h = hashlib.sha1()
+    for r in roots:
+        if os.path.isdir(os.path.join(r, ".git")):
+            h.update(subprocess.check_output(["git", "-C", r, "rev-parse", "HEAD"]))
+    for f in files:
+        if os.path.exists(f):
+            h.update(open(f, "rb").read())
+    return h.hexdigest()
+
+
 def apply_patch(root, patch):
-    """Apply a unified diff (paths a/..., b/...) to root once, normalising line ends to LF.
-    A marker file holding the patch's hash records that it was applied."""
-    import hashlib
+    """Apply a unified diff (paths a/..., b/...) to root, normalising line ends to LF."""
     text = open(patch, encoding="utf-8", errors="surrogateescape").read()
-    marker = os.path.join(root, ".sms_port_" + os.path.basename(patch))
-    digest = hashlib.sha1(text.encode("utf-8", "surrogateescape")).hexdigest()
-    if os.path.exists(marker):
-        if open(marker).read().strip() == digest: return 0
-        raise SystemExit("%s: an older %s is applied; fetch the sources again" % (root, os.path.basename(patch)))
     applied = 0
     for part in re.split(r"(?m)^--- a/", text)[1:]:
         name = part.split("\n", 1)[0].strip()
@@ -188,23 +220,32 @@ def apply_patch(root, patch):
             pos = k + len(new_l); applied += 1
         with open(path, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
             f.write("\n".join(cur))
-    with open(marker, "w") as f:
-        f.write(digest + "\n")
     return applied
 
 
 if __name__ == "__main__":
     if len(sys.argv) not in (4, 5):
         sys.exit(__doc__)
-    n = apply(sys.argv[1], ECLIPSE_FIXES) + apply(sys.argv[2], BSE_FIXES) + apply(sys.argv[3], SHI_FIXES)
-    if len(sys.argv) == 5:
-        n += apply(sys.argv[4], MOVESET_FIXES)
+    roots = [os.path.abspath(a) for a in sys.argv[1:]]
+    here = os.path.dirname(os.path.abspath(__file__))
+    patches = [os.path.join(here, "shi-layout.patch"), os.path.join(here, "mods-port.patch")]
+    marker = os.path.join(os.path.dirname(roots[1]), ".sms_port_fixups")
+    digest = state(roots, [os.path.abspath(__file__)] + patches)
+    if os.path.exists(marker) and open(marker).read().strip() == digest:
+        print("fixup_sources: sources already fixed up")
+        sys.exit(0)
+    for r in roots:
+        pristine(r)
+    n = apply(roots[0], ECLIPSE_FIXES, True) + apply(roots[1], BSE_FIXES, True) + apply(roots[2], SHI_FIXES, True)
+    if len(roots) == 4:
+        n += apply(roots[3], MOVESET_FIXES, True)
     # SunshineHeaderInterface's classes laid out as the port lays out the game's
     # (tools/mods/shi_layout, which also explains how to regenerate the patch).
-    here = os.path.dirname(os.path.abspath(__file__))
-    n += apply_patch(sys.argv[3], os.path.join(here, "shi-layout.patch"))
+    n += apply_patch(roots[2], patches[0])
     # The mods' own sources where they need more than a pattern: members they
     # address by retail offset (SMS_OFFSET, tools/mods/shi_layout/offsets.py).
-    if len(sys.argv) == 5 and os.path.exists(os.path.join(here, "mods-port.patch")):
-        n += apply_patch(os.path.dirname(os.path.abspath(sys.argv[1])), os.path.join(here, "mods-port.patch"))
+    if len(roots) == 4 and os.path.exists(patches[1]):
+        n += apply_patch(os.path.dirname(roots[0]), patches[1])
+    with open(marker, "w") as f:
+        f.write(digest + "\n")
     print("fixup_sources: %d replacements" % n)

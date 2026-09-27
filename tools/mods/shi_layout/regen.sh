@@ -69,7 +69,7 @@ for f in sorted(glob.glob(B+'/**/*',recursive=True)):
     a=open(os.path.join(A,rel),'rb').read().replace(b'\r\n',b'\n').decode('utf-8','surrogateescape')
     b=open(f,'rb').read().replace(b'\r\n',b'\n').decode('utf-8','surrogateescape')
     if a!=b:
-        parts+=difflib.unified_diff(a.splitlines(True),b.splitlines(True),'a/include/'+rel,'b/include/'+rel,n=3)
+        parts+=[l if l.endswith('\n') else l+'\n\\ No newline at end of file\n' for l in difflib.unified_diff(a.splitlines(True),b.splitlines(True),'a/include/'+rel,'b/include/'+rel,n=3)]
 open(out,'w',encoding='utf-8',errors='surrogateescape').write(''.join(parts))
 print('shi-layout.patch:',sum(1 for p in parts if p.startswith('+++')),'files')
 PY

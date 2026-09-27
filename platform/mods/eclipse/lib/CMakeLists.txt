@@ -40,7 +40,8 @@ if(NOT SMS_ARCH)
 endif()
 set(_arch -m${SMS_ARCH})
 if(SMS_ARCH STREQUAL "32")
-  list(APPEND _arch -malign-double)
+  # SSE float math, as the game is built (x87 would round differently)
+  list(APPEND _arch -malign-double -msse2 -mfpmath=sse)
 endif()
 # -fnew-alignment=4: the game's operator new (JKRHeap) guarantees 4-byte
 # alignment, not the 16 clang would otherwise assume for aligned SSE stores;

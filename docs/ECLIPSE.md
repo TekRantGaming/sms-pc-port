@@ -61,11 +61,14 @@ Without it, the build is the plain port: every hook below is in the source but f
 
 For bisecting, `SMS_MOD_LIST=1` prints every registered patch and `SMS_MOD_DISABLE=addr,addr` switches patches off by retail address; `SMS_MOD_REPORT=1` lists, at exit, patches the game never reached.
 
-## Status (2026-09-26)
+## Status (2026-09-27)
 
-- The 32-bit port runs all three modules on the Eclipse disc: BSE's first-boot settings screen (saved to the memory card), Eclipse's title screen and file select, its Tutorial stage and its first stage, with Eclipse's dialogue and HUD.
-- **Hooks left.** 206 of 274 redirected calls are hooked; the rest need hand-written hooks, and about 150 patches replace an instruction inside a function rather than a call (the scenario-select screen's table rewrite, Mario's extended animation tables and many physics tweaks), each ported by hand.
-- **64-bit.** Not yet: SunshineHeaderInterface describes 32-bit layouts.
+- The 32- and 64-bit ports both run all three modules on the Eclipse disc: BSE's first-boot settings screen (saved to the memory card), Eclipse's title screen and file select, its Tutorial stage with its dialogue, HUD and the moveset, and its first stage.
+  With the same input the two play the same run.
+- **Patches.** Every patch of the three modules is either hooked or waived: `tools/mods/port_status.py` lists none left to do (widescreen and frame-rate patches are waived, the port has its own; six more sit in code the mods compile out, which `--registered` shows as inactive).
+- **Retail addresses and offsets in the mods' code.** Game data the mods reach by retail address goes to the port's objects ([rawdata.cpp](../platform/mods/eclipse/rawdata.cpp)); members they reach by retail offset go through `SMS_OFFSET`.
+  A retail data address not listed there stops the game with a message naming it.
+- **Updating Eclipse.** Bump the revisions in [cmake/eclipse.cmake](../cmake/eclipse.cmake); `fixup_sources.py` fails on any rule or patch hunk that no longer applies, `tools/mods/shi_layout/regen.sh` regenerates the layout patch, `gen_hooks.py`/`gen_rawfn.py` the generated hooks and trampolines, and `port_status.py` lists new patches to hook.
 
 ## Licensing
 

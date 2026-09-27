@@ -1,0 +1,72 @@
+Reason: port: code mods (Super Mario Eclipse) use these by their retail data addresses (platform/mods/eclipse/rawdata.cpp): the dummy graph rail and the streamed-movie table are exported, and the enemy Mario water gauge's colour, a retail constant they overwrite, becomes a variable
+--- a/src/Enemy/enemyMario.cpp
++++ b/src/Enemy/enemyMario.cpp
+@@ -1800,6 +1800,13 @@
+ // TODO: frame 0xb8 vs 0xc8 (0xc more between the colour temporaries and
+ // `identity`, 4 below them), retail puts `right` in borderLeft's f28 and adds
+ // variable-first in bottom and left + 96. Needs a structural probe.
++#ifdef TARGET_PC
++// The water gauge's colour, a constant in retail's .sdata2 (0x8040FA90) that
++// code mods overwrite (platform/mods/eclipse/rawdata.cpp): a variable here.
++extern "C" GXColor sms_port_emarioWaterColor;
++GXColor sms_port_emarioWaterColor = { 0x40, 0x40, 0xFF, 0xFF };
++#endif
++
+ void TEnemyMario::drawHPMeter(MtxPtr viewMtx)
+ {
+ 	JGeometry::TVec3<f32> worldPosition = mPosition;
+@@ -1843,7 +1850,11 @@
+ 	GXEnd();
+ 
+ 	f32 right = left + mWaterCounter * 1.5f;
++#ifdef TARGET_PC
++	GXSetChanMatColor(GX_COLOR0A0, sms_port_emarioWaterColor);
++#else
+ 	GXSetChanMatColor(GX_COLOR0A0, (GXColor) { 0x40, 0x40, 0xFF, 0xFF });
++#endif
+ 	GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+ 	GXPosition3f32(left, top, screenPosition.z);
+ 	GXPosition3f32(right, top, screenPosition.z);
+--- a/src/Enemy/graph.cpp
++++ b/src/Enemy/graph.cpp
+@@ -132,6 +132,10 @@
+ 	{ { 0, 0, 0 }, 1, 0, 0, 0, 0, 0, { 0 }, { 1.0f } },
+ 	{},
+ };
++#ifdef TARGET_PC
++// Code mods use it by its retail address (platform/mods/eclipse/rawdata.cpp).
++extern TRailNode sms_port_grDummyRail[3] __asm__("sms_port_grDummyRail") __attribute__((alias("_ZL11grDummyRail")));
++#endif
+ 
+ TGraphWeb::TGraphWeb(TRailNode* param_1, const char* param_2, int param_3)
+     : unk0(nullptr)
+--- a/src/System/MovieDirector.cpp
++++ b/src/System/MovieDirector.cpp
+@@ -137,11 +137,27 @@
+ 	}
+ }
+ 
++#ifdef TARGET_PC
++// Code mods copy this table by its retail address (platform/mods/eclipse/rawdata.cpp),
++// so it is a named object here rather than a function-local one.
++extern const char* sms_port_streamMovies[20];
++const char* sms_port_streamMovies[20] = {
++	"stolenpeach.thp", "openingA.thp",     "NozuruA.thp",  "openingBA.thp",
++	"kagemario.thp",   "stolennozuru.thp", "pakkun.thp",   "MechaKuppa.thp",
++	"KuppaJr.thp",     "Entrance.thp",     "demogeso.thp", "bath.thp",
++	"autodemoA.thp",   "openingBC.thp",    "epilogue.thp", "staffroll.thp",
++	"omakeA.thp",      "omakeB.thp",       "NozuruB.thp",  "openingBB.thp",
++};
++#endif
++
+ const char* TMovieDirector::getStreamMovieName(u32 idx)
+ {
+ 	if (idx >= 20)
+ 		return nullptr;
+ 
++#ifdef TARGET_PC
++	return sms_port_streamMovies[idx];
++#endif
+ 	static const char* movies[] = {
+ 		"stolenpeach.thp", "openingA.thp",     "NozuruA.thp",  "openingBA.thp",
+ 		"kagemario.thp",   "stolennozuru.thp", "pakkun.thp",   "MechaKuppa.thp",

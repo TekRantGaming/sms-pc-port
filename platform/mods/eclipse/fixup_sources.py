@@ -29,6 +29,12 @@ def optional(fixes):
 RAWADDR_FIX = ("src/**/*.cpp", r"(\(\s*\([^;{}()]*\(\s*\*\s*\)\s*\([^;{}()]*\)\s*\)\s*)(0x8[0-3][0-9A-Fa-f]{6})(\s*\)\s*\()",
                r"\1sms_mod_rawaddr(\2)\3", "retail addresses called go to the port's functions")
 
+# Game data by retail address, *(u32 **)0x8040E0BC: the port's object at that
+# address instead (platform/mods/eclipse/rawdata.cpp lists them).
+RAWDATA = "0x803ACA68|0x803ACAB0|0x803AFB48|0x803DFA00|0x8040DAB4|0x8040DABC|0x8040DFD4|0x8040DFE4|0x8040DFF4|0x8040E03C|0x8040E0BC|0x8040FA90"
+RAWDATA_FIX = ("src/**/*.cpp", r"(\(\s*(?:const\s+)?[A-Za-z_][\w:<> ]*?\s*\*+\s*\))\s*(?i:(" + RAWDATA + r"))\b",
+               lambda m: "%ssms_mod_rawdata(%s)" % (m.group(1), m.group(2)), "retail data addresses go to the port's objects")
+
 # Textures built into the code as byte arrays are converted to host byte
 # order in place when the game first stores them (JUTTexture::storeTIMG), so
 # they cannot be read-only; static keeps the internal linkage const gave them.
@@ -59,7 +65,7 @@ DEBS_FIXES = [
      "news list setters without assembly"),
 ]
 
-ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -76,7 +82,7 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [
+BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),
@@ -234,6 +240,8 @@ if __name__ == "__main__":
     if os.path.exists(marker) and open(marker).read().strip() == digest:
         print("fixup_sources: sources already fixed up")
         sys.exit(0)
+    if os.path.exists(marker):
+        os.remove(marker)  # a run that fails part-way leaves no marker behind
     for r in roots:
         pristine(r)
     n = apply(roots[0], ECLIPSE_FIXES, True) + apply(roots[1], BSE_FIXES, True) + apply(roots[2], SHI_FIXES, True)

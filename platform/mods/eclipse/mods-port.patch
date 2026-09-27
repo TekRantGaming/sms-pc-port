@@ -1,0 +1,1083 @@
+--- a/bse/src/area.cpp
++++ b/bse/src/area.cpp
+@@ -312,7 +312,7 @@
+     // --- 0xDC
+ 
+     // Preallocate
+-    *(u32 **)((u8 *)menu + 0xDC) = new u32[sScenarioCountForSelectArea];
++    *(J2DPicture ***)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xDC)) = new J2DPicture *[sScenarioCountForSelectArea];
+     PowerPC::writeU32((u32 *)0x80175020, 0x60000000);  // nop the initializer ^^
+ 
+     PowerPC::writeU32((u32 *)0x80175094, 0x835F00DC);  // lwz r26, 0xDC (r31)
+@@ -423,11 +423,11 @@
+     PowerPC::writeU32((u32 *)0x8017447C, 0x80630010);  // lwz r3, 0x10 (r3)
+     PowerPC::writeU32((u32 *)0x80174480, 0x7C63002E);  // lwzx r3, r3, r0
+ 
+-    *(u8 **)((u8 *)menu + 0x150) = new u8[sScenarioCountForSelectArea];
++    *(u8 **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x150)) = new u8[sScenarioCountForSelectArea];
+ 
+     // Emulate functionality at 0x80174DFC
+     for (u32 i = 0; i < sScenarioCountForSelectArea; ++i) {
+-        (*(u8 **)((u8 *)menu + 0x150))[i] = 2;
++        (*(u8 **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x150)))[i] = 2;
+     }
+ 
+     // Emulate functionality at 0x80174E84
+@@ -443,7 +443,7 @@
+             continue;
+         }
+ 
+-        (*(u8 **)((u8 *)menu + 0x150))[i] = 3;
++        (*(u8 **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x150)))[i] = 3;
+         unlocked_scenarios += 1;
+     }
+ 
+@@ -451,13 +451,13 @@
+ 
+     // Emulate functionality at 0x80174EE8
+     for (u32 i = unlocked_scenarios; i < sScenarioCountForSelectArea; ++i) {
+-        (*(u8 **)((u8 *)menu + 0x150))[i] = 0;
++        (*(u8 **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x150)))[i] = 0;
+     }
+ 
+     if (gForceOpenShineSelect) {
+         for (u32 i = 0; i < sScenarioCountForSelectArea; ++i) {
+-            if ((*(u8 **)((u8 *)menu + 0x150))[i] != 3) {
+-                (*(u8 **)((u8 *)menu + 0x150))[i] = 2;
++            if ((*(u8 **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x150)))[i] != 3) {
++                (*(u8 **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x150)))[i] = 2;
+             }
+         }
+         menu->mEpisodeCount   = sScenarioCountForSelectArea;
+@@ -483,23 +483,23 @@
+ 
+     data->entryMatColorAnimator(color);
+ 
+-    *(u32 **)((u8 *)manager + 0x10) = new u32[sScenarioCountForSelectArea];
++    *(void ***)((u8 *)manager + SMS_OFFSET(TSelectShineManager, 0x10)) = new void *[sScenarioCountForSelectArea];
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x80178B50, 0, 0, 0), allocBufferForSelectShineManager);
+ 
+ static void SelectShineManager_startCloseOverride(TSelectShineManager *manager) {
+-    int current = *(u32 *)((u8 *)manager + 0x8C);
+-    *(((u8 *)((*(u32 ***)((u8 *)manager + 0x10))[current])) + 0x24) = 0;
++    int current = *(u32 *)((u8 *)manager + SMS_OFFSET(TSelectShineManager, 0x8C));
++    *(((u8 *)((*(u32 ***)((u8 *)manager + SMS_OFFSET(TSelectShineManager, 0x10)))[current])) + SMS_OFFSET(TSelectShine, 0x24)) = 0;
+ 
+     for (int i = 0; i < sScenarioCountForSelectArea; i++) {
+-        u8 *shine = (u8 *)((*(u32 ***)((u8 *)manager + 0x10))[i]);
+-        if (shine != nullptr && i != current && *(shine + 0x49) == 0) {
+-            *(shine + 0x49) = 1;
+-            *(shine + 0x48) = 0;
+-        }
+-    }
+-
+-    *((u8 *)manager + 0xA7) = 1;
++        u8 *shine = (u8 *)((*(u32 ***)((u8 *)manager + SMS_OFFSET(TSelectShineManager, 0x10)))[i]);
++        if (shine != nullptr && i != current && *(shine + SMS_OFFSET(TSelectShine, 0x49)) == 0) {
++            *(shine + SMS_OFFSET(TSelectShine, 0x49)) = 1;
++            *(shine + SMS_OFFSET(TSelectShine, 0x48)) = 0;
++        }
++    }
++
++    *((u8 *)manager + SMS_OFFSET(TSelectShineManager, 0xA7)) = 1;
+ }
+ SMS_PATCH_B(SMS_PORT_REGION(0x80178830, 0, 0, 0), SelectShineManager_startCloseOverride);
+ 
+@@ -509,7 +509,7 @@
+ 
+     JUTTexture *texture      = new JUTTexture();
+     texture->mTexObj2.val[2] = 0;
+-    texture->storeTIMG(*(const ResTIMG **)((u8 *)defaultTex + 0x20));
++    texture->storeTIMG(*(const ResTIMG **)((u8 *)defaultTex + SMS_OFFSET(JUTTexture, 0x20)));
+     texture->_50 = false;
+ 
+     digitPicture->insert(texture, 0, 1.0f);
+@@ -536,10 +536,10 @@
+     TSelectMenu *menu;
+     SMS_FROM_GPR(31, menu);
+ 
+-    J2DPicture *picPrevFront = *(J2DPicture **)((u8 *)menu + 0x48);
+-    J2DPicture *picPrevBack  = *(J2DPicture **)((u8 *)menu + 0x4C);
+-    J2DPicture *picCurFront = *(J2DPicture **)((u8 *)menu + 0x70);
+-    J2DPicture *picCurBack   = *(J2DPicture **)((u8 *)menu + 0x74);
++    J2DPicture *picPrevFront = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x48));
++    J2DPicture *picPrevBack  = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x4C));
++    J2DPicture *picCurFront = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x70));
++    J2DPicture *picCurBack   = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x74));
+ 
+     picPrevBack->mIsVisible = false;
+     picCurBack->mIsVisible = false;
+@@ -562,28 +562,28 @@
+     // Because of other modifications, these pointers are free use
+     J2DPicture *picPrevFront2 = picPrevFront2 =
+         createExtraDigitAsChildOf('xnf2', defaultTex, picPrevFront, false);
+-    *(J2DPicture **)((u8 *)menu + 0xE0) = picPrevFront2;
++    *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xE0)) = picPrevFront2;
+ 
+     J2DPicture *picPrevBack2 = picPrevBack2 =
+         createExtraDigitAsChildOf('xnb2', defaultTex, picPrevBack, true);
+-    *(J2DPicture **)((u8 *)menu + 0xE4) = picPrevBack2;
++    *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xE4)) = picPrevBack2;
+ 
+     J2DPicture *picCurFront2 = createExtraDigitAsChildOf('xcf2', defaultTex, picCurFront, false);
+-    *(J2DPicture **)((u8 *)menu + 0xE8) = picCurFront2;
++    *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xE8)) = picCurFront2;
+ 
+     J2DPicture *picCurBack2 = createExtraDigitAsChildOf('xcb2', defaultTex, picCurBack, true);
+-    *(J2DPicture **)((u8 *)menu + 0xEC) = picCurBack2;
++    *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xEC)) = picCurBack2;
+ 
+     const u8 uiCurIndex = menu->mEpisodeID + 1;
+     if (uiCurIndex >= 10) {
+         picPrevFront->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevBack->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevFront2->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevBack2->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevFront2->mIsVisible = true;
+         picPrevBack2->mIsVisible  = true;
+ 
+@@ -591,9 +591,9 @@
+         picPrevBack->resize(25, 40);
+     } else {
+         picPrevFront->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevBack->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevFront2->mIsVisible = false;
+         picPrevBack2->mIsVisible  = false;
+     }
+@@ -608,29 +608,29 @@
+     u32 toIndex;
+     SMS_FROM_GPR(23, toIndex);
+ 
+-    J2DPicture *picPrevFront = *(J2DPicture **)((u8 *)menu + 0x48);
+-    J2DPicture *picPrevBack  = *(J2DPicture **)((u8 *)menu + 0x4C);
+-    J2DPicture *picCurFront = *(J2DPicture **)((u8 *)menu + 0x70);
+-    J2DPicture *picCurBack  = *(J2DPicture **)((u8 *)menu + 0x74);
++    J2DPicture *picPrevFront = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x48));
++    J2DPicture *picPrevBack  = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x4C));
++    J2DPicture *picCurFront = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x70));
++    J2DPicture *picCurBack  = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0x74));
+ 
+     // Because of other modifications, these pointers are free use
+-    J2DPicture *picPrevFront2 = *(J2DPicture **)((u8 *)menu + 0xE0);
+-    J2DPicture *picPrevBack2  = *(J2DPicture **)((u8 *)menu + 0xE4);
+-    J2DPicture *picCurFront2  = *(J2DPicture **)((u8 *)menu + 0xE8);
+-    J2DPicture *picCurBack2   = *(J2DPicture **)((u8 *)menu + 0xEC);
++    J2DPicture *picPrevFront2 = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xE0));
++    J2DPicture *picPrevBack2  = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xE4));
++    J2DPicture *picCurFront2  = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xE8));
++    J2DPicture *picCurBack2   = *(J2DPicture **)((u8 *)menu + SMS_OFFSET(TSelectMenu, 0xEC));
+ 
+     const u8 uiToIndex  = toIndex + 1;
+     const u8 uiCurIndex = menu->mEpisodeID + 1;
+ 
+     if (uiCurIndex >= 10) {
+         picPrevFront->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevBack->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex / 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevFront2->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevBack2->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex % 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevFront2->mIsVisible = true;
+         picPrevBack2->mIsVisible  = true;
+ 
+@@ -638,9 +638,9 @@
+         picPrevBack->resize(25, 40);
+     } else {
+         picPrevFront->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevBack->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiCurIndex] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picPrevFront2->mIsVisible = false;
+         picPrevBack2->mIsVisible  = false;
+ 
+@@ -650,13 +650,13 @@
+ 
+     if (uiToIndex >= 10) {
+         picCurFront->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex / 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex / 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picCurBack->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex / 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex / 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picCurFront2->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex % 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex % 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picCurBack2->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex % 10] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex % 10] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picCurFront2->mIsVisible = true;
+         picCurBack2->mIsVisible  = true;
+ 
+@@ -664,9 +664,9 @@
+         picCurBack->resize(25, 40);
+     } else {
+         picCurFront->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picCurBack->changeTexture(
+-            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex] + 0x20), 0);
++            *(const ResTIMG **)((u8 *)menu->mCoinCountNumberTex[uiToIndex] + SMS_OFFSET(JUTTexture, 0x20)), 0);
+         picCurFront2->mIsVisible = false;
+         picCurBack2->mIsVisible  = false;
+ 
+@@ -780,8 +780,8 @@
+                                                                   void *global_bmg) {
+     const char *name = loadScenarioNameFromBMGAfter(global_bmg);
+     if (!name || strcmp(name, "") == 0) {
+-        (*(J2DPane **)(pause_menu + 0x1C))->add(0, 30);
+-        (*(J2DPane **)(pause_menu + 0xD4))->add(0, 15);
++        (*(J2DPane **)(pause_menu + SMS_OFFSET(TPauseMenu2, 0x1C)))->add(0, 30);
++        (*(J2DPane **)(pause_menu + SMS_OFFSET(TPauseMenu2, 0xD4)))->add(0, 15);
+     }
+ 
+     return name;
+@@ -831,7 +831,7 @@
+         TFlagManager::smInstance->setFlag(0x40002, 0);
+     }
+ 
+-    *(u32 *)((u8 *)director + 0xE4) = 8;
++    *(u32 *)((u8 *)director + SMS_OFFSET(TMarDirector, 0xE4)) = 8;
+     director->mNextState            = 8;
+ }
+ 
+--- a/bse/src/graphics.cpp
++++ b/bse/src/graphics.cpp
+@@ -43,16 +43,16 @@
+     if (sGammaTHPFlag) {
+         return ret;
+     }
+-    *((u8 *)gpApplication.mDisplay + 0x42) = 0;
+-    *((u8 *)gpApplication.mDisplay + 0x43) = 0;
++    *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x42)) = 0;
++    *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x43)) = 0;
+     return ret;
+ }
+ SMS_PATCH_B(0x8001F050, flagGammaTHPStart);
+ 
+ static u32 flagGammaTHPEnd() {
+     const f32 gamma             = gGammaSetting.getFloat();
+-    *((u8 *)gpApplication.mDisplay + 0x42) = static_cast<u8>(8.0001f * gamma);
+-    *((u8 *)gpApplication.mDisplay + 0x43) = static_cast<u8>(8.0001f * gamma);
++    *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x42)) = static_cast<u8>(8.0001f * gamma);
++    *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x43)) = static_cast<u8>(8.0001f * gamma);
+     return 0x803F0000;
+ }
+ SMS_WRITE_32(0x8001EF2C, 0x90010004);
+@@ -61,15 +61,15 @@
+ BETTER_SMS_FOR_CALLBACK void resetGammaSetting(TApplication *director) {
+     sGammaTHPFlag                          = false;
+     const f32 gamma                        = gGammaSetting.getFloat();
+-    *((u8 *)gpApplication.mDisplay + 0x42) = static_cast<u8>(8.0001f * gamma);
+-    *((u8 *)gpApplication.mDisplay + 0x43) = static_cast<u8>(8.0001f * gamma);
++    *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x42)) = static_cast<u8>(8.0001f * gamma);
++    *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x43)) = static_cast<u8>(8.0001f * gamma);
+ }
+ 
+ BETTER_SMS_FOR_CALLBACK void updateGammaSetting(TMarDirector *director) {
+     const f32 gamma = gGammaSetting.getFloat();
+     if (director->mCurState != TMarDirector::STATE_INTRO_INIT) {
+         sGammaTHPFlag                          = true;
+-        *((u8 *)gpApplication.mDisplay + 0x42) = static_cast<u8>(8.0001f * gamma);
+-        *((u8 *)gpApplication.mDisplay + 0x43) = static_cast<u8>(8.0001f * gamma);
++        *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x42)) = static_cast<u8>(8.0001f * gamma);
++        *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x43)) = static_cast<u8>(8.0001f * gamma);
+     }
+ }
+--- a/bse/src/music.cpp
++++ b/bse/src/music.cpp
+@@ -487,12 +487,12 @@
+ 
+ static JAISound *GetJAISoundForMusic(u32 id) {
+     JAISound **unk = (JAISound **)search__19JALListS_5(id & 0x3FF); 
+-    return unk ? unk[0x14 / 4] : nullptr;
++    return unk ? *(JAISound **)((u8 *)unk + SMS_OFFSET(MSBgm, 0x14)) : nullptr;
+ }
+ 
+ static JAISound *GetJAISoundForBGMHandle(u32 handle) {
+     u32 *bgm = (u32 *)MSBgm::getHandle(handle);
+-    return bgm ? GetJAISoundForMusic(bgm[2]) : nullptr;
++    return bgm ? GetJAISoundForMusic(*(u32 *)((u8 *)bgm + SMS_OFFSET(JAISound, 0x8))) : nullptr;
+ }
+ 
+ static f32 GetJAISoundSeInterVolume(JAISound *sound, u8 channel) {
+--- a/bse/src/p_settings.hxx
++++ b/bse/src/p_settings.hxx
+@@ -1245,8 +1245,8 @@
+ 
+     static void valueChangedCB(void *old, void *cur, ValueKind kind) {
+         OSReport("GammaSetting::valueChangedCB\n");
+-        *((u8 *)gpApplication.mDisplay + 0x42) = static_cast<u8>(8.0001f * *(float *)cur);
+-        *((u8 *)gpApplication.mDisplay + 0x43) = static_cast<u8>(8.0001f * *(float *)cur);
++        *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x42)) = static_cast<u8>(8.0001f * *(float *)cur);
++        *((u8 *)gpApplication.mDisplay + SMS_OFFSET(JDrama::TDisplay, 0x43)) = static_cast<u8>(8.0001f * *(float *)cur);
+     }
+ 
+     void getValueName(char *dst) const override { snprintf(dst, 100, "%.1f", mGammaValue); }
+--- a/bse/src/patches/emario.cpp
++++ b/bse/src/patches/emario.cpp
+@@ -20,7 +20,7 @@
+ 
+ static JUtility::TColor getEMarioHealthBarRGBA(TEnemyMario *eMario) {
+     JUtility::TColor color;
+-    const s16 maxHealth = ((s16 *)eMario->mEnemyManager)[0x40 / 2];
++    const s16 maxHealth = *(s16 *)((u8 *)eMario->mEnemyManager + SMS_OFFSET(TEnemyMario::TSettingParams, 0x40));
+ 
+     color.set(0xFF, 0x00, 0x00, 0xFF);
+     color.g =
+--- a/bse/src/patches/fludd.cpp
++++ b/bse/src/patches/fludd.cpp
+@@ -209,7 +209,7 @@
+     TGCConsole2 *console;
+     SMS_FROM_GPR(28, console);
+ 
+-    u16 unk = *(u16 *)((u8 *)console + 0x3F4);
++    u16 unk = *(u16 *)((u8 *)console + SMS_OFFSET(TGCConsole2, 0x3F4));
+     u16 unk2 = messageEntry[2];
+     if (unk2 <= unk) {
+         return false;
+--- a/bse/src/patches/ui.cpp
++++ b/bse/src/patches/ui.cpp
+@@ -47,7 +47,8 @@
+     size_t shines = TFlagManager::smInstance->getFlag(0x40000);
+ 
+     ResTIMG *timg =
+-        (ResTIMG *)((((u32 **)((u8 *)card_save + 0x1C))[(shines % 100) / 10])[0x20 / 4]);
++        *(ResTIMG **)(((u8 **)((u8 *)card_save + SMS_OFFSET(TCardSave, 0x1C)))[(shines % 100) / 10] +
++                      SMS_OFFSET(JUTTexture, 0x20));
+ 
+     picture->changeTexture(timg, 0);
+ }
+--- a/bse/src/patches/yoshi.cpp
++++ b/bse/src/patches/yoshi.cpp
+@@ -87,8 +87,9 @@
+         if (!actor->checkCurBckFromIndex(25))
+             actor->setBckFromIndex(25);
+         thinkBtp__6TYoshiFi(yoshi, 25);
+-        initAnmSound__9MAnmSoundFPvUlf(((u32 *)yoshi)[0x118 / 4],
+-                                       ((u32 **)yoshi)[0x11C / 4][0x64 / 4], 1, 0.0f);
++        initAnmSound__9MAnmSoundFPvUlf(
++            *(MAnmSound **)((u8 *)yoshi + SMS_OFFSET(TYoshi, 0x118)),
++            (*(void ***)((u8 *)yoshi + SMS_OFFSET(TYoshi, 0x11C)))[0x64 / 4], 1, 0.0f);
+     }
+ 
+     yoshi->mType     = 0;
+@@ -194,9 +195,11 @@
+     SMS_FROM_GPR(30, yoshi);
+ 
+     if (BetterSMS::areExploitsPatched())
+-        ((u16 **)(yoshi))[0x38 / 4][0x7C / 2] = 3;
++        *(u16 *)(*(u8 **)((u8 *)yoshi + SMS_OFFSET(TYoshi, 0x38)) +
++                 SMS_OFFSET(TYoshiTongue, 0x7C)) = 3;
+     else
+-        ((u16 **)(yoshi))[0x38 / 4][0x7C / 2] = 0;
++        *(u16 *)(*(u8 **)((u8 *)yoshi + SMS_OFFSET(TYoshi, 0x38)) +
++                 SMS_OFFSET(TYoshiTongue, 0x7C)) = 0;
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x802703CC, 0, 0, 0), checkYoshiFruitFix);  // Fix fruit storage
+ 
+--- a/bse/src/shine/bootout.cpp
++++ b/bse/src/shine/bootout.cpp
+@@ -107,7 +107,7 @@
+     if (streamer->isPaused())
+         streamer->play();
+ 
+-    ((u16 *)director->mGCConsole)[0x8A / 2] = 0;
++    *(u16 *)((u8 *)director->mGCConsole + SMS_OFFSET(TGCConsole2, 0x8A)) = 0;
+ }
+ 
+ extern SavePromptsSetting gSavePromptSetting;
+@@ -127,14 +127,14 @@
+         if (!director->mpNextState)
+             return;
+ 
+-        u8 *curSaveCard = reinterpret_cast<u8 *>(director->mpNextState[0x118 / 4]);
++        u8 *curSaveCard = *(u8 **)((u8 *)director->mpNextState + SMS_OFFSET(TPauseMenu2, 0x118));
+ 
+         if (nextState != TMarDirector::Status::STATE_NORMAL ||
+             director->mCurState != TMarDirector::Status::STATE_SAVE_CARD ||
+             gpMarioAddress->mState != static_cast<u32>(TMario::STATE_SHINE_C))
+             return;
+ 
+-        if (curSaveCard[0x2E9] != 1) {
++        if (curSaveCard[SMS_OFFSET(TCardSave, 0x2E9)] != 1) {
+             exitShineDemo(director, gpMarioAddress, gpCamera);
+         } else
+             director->mGameState |= TMarDirector::State::WARP_OUT;
+--- a/bse/src/shine/extendcount.cpp
++++ b/bse/src/shine/extendcount.cpp
+@@ -36,7 +36,7 @@
+             flag -= 0x40;
+ 
+             const u32 mask = (flag & 7);
+-            u8 *flagField  = &((u8 *)(&flagManager->Type6Flag) + 0x100)[flag >> 3];
++            u8 *flagField  = &((u8 *)flagManager + SMS_OFFSET(TFlagManager, 0x1F4))[flag >> 3];
+ 
+             *flagField &= ~(1 << mask);
+             *flagField |= (val & 1) << mask;
+@@ -54,7 +54,7 @@
+             flag -= 0x40;
+ 
+             const u32 mask = (flag & 7);
+-            u8 *flagField  = &((u8 *)(&flagManager->Type6Flag) + 0x100)[flag >> 3];
++            u8 *flagField  = &((u8 *)flagManager + SMS_OFFSET(TFlagManager, 0x1F4))[flag >> 3];
+ 
+             return (*flagField >> mask) & 1;
+         }
+@@ -91,14 +91,14 @@
+ 
+ // 0x80294334
+ static void extendFlagManagerLoad(JSUMemoryInputStream &stream) {
+-    stream.read(((u8 *)TFlagManager::smInstance + 0x1F4), 0x90);
++    stream.read(((u8 *)TFlagManager::smInstance + SMS_OFFSET(TFlagManager, 0x1F4)), 0x90);
+     stream.skip(0x11C);
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x80294334, 0x8028C14C, 0, 0), extendFlagManagerLoad);
+ 
+ // 0x802939B8
+ static void extendFlagManagerSave(JSUMemoryOutputStream &stream) {
+-    stream.write(((u8 *)TFlagManager::smInstance + 0x1F4), 0x90);
++    stream.write(((u8 *)TFlagManager::smInstance + SMS_OFFSET(TFlagManager, 0x1F4)), 0x90);
+     stream.skip(0x11C, 0);
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x802939B8, 0x8028B7D0, 0, 0), extendFlagManagerSave);
+--- a/bse/src/shine/savefile.cpp
++++ b/bse/src/shine/savefile.cpp
+@@ -11,31 +11,31 @@
+ // extern -> SMS.cpp
+ static void resetGame(TFlagManager *flagManager) {
+     constexpr size_t mainResetSize = 0x100;
+-    memset(((u8 *)flagManager) + 0xD0, 0, 0x21);
+-    memset(((u8 *)flagManager) + 0xF4, 0, mainResetSize);  // OG =
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0xD0), 0, 0x21);
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0xF4), 0, mainResetSize);  // OG =
+                                                                        // 0x18C
+-    memset(((u8 *)flagManager) + 0x11F, 0, 1);
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0x11F), 0, 1);
+ }
+ SMS_PATCH_B(SMS_PORT_REGION(0x802950a0, 0, 0, 0), resetGame);
+ 
+ static void resetStage(TFlagManager *flagManager) {
+     constexpr size_t mainResetSize = 0x100;
+ 
+-    memset(((u8 *)flagManager) + 0xE4, 0, 0xD);
+-    memset(((u8 *)flagManager) + 0xF4, 0, mainResetSize);  // OG =
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0xE4), 0, 0xD);
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0xF4), 0, mainResetSize);  // OG =
+                                                            // 0x18C
+-    memset(((u8 *)flagManager) + 0x11F, 0, 1);
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0x11F), 0, 1);
+ }
+ SMS_PATCH_B(SMS_PORT_REGION(0x80294EF4, 0x8028CD0C, 0, 0), resetStage);
+ 
+ static void resetFirstStartExt(TFlagManager *flagManager) {
+-    memset(((u8 *)flagManager) + 0x1F4, 0, 0x8C);
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0x1F4), 0, 0x8C);
+     flagManager->correctFlag();
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x80293DE4, 0, 0, 0), resetFirstStartExt);
+ 
+ static void extendResetCard(TFlagManager *flagManager) {
+     flagManager->resetStage();
+-    memset(((u8 *)flagManager) + 0x1F4, 0, 0x8C);
++    memset(((u8 *)flagManager) + SMS_OFFSET(TFlagManager, 0x1F4), 0, 0x8C);
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x80295470, 0, 0, 0), extendResetCard);
+\ No newline at end of file
+--- a/eclipse/src/camera/2d_camera.cpp
++++ b/eclipse/src/camera/2d_camera.cpp
+@@ -40,15 +40,15 @@
+     camera->mTargetPos.z      = gpMarioPos->z;
+     camera->mWorldTranslation = camera->mTranslation;
+ 
+-    *(f32 *)((u8 *)camera + 0x130) = camera->mTranslation.x;
+-    *(f32 *)((u8 *)camera + 0x134) = camera->mTranslation.y;
+-    *(f32 *)((u8 *)camera + 0x138) = camera->mTranslation.z;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x130)) = camera->mTranslation.x;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x134)) = camera->mTranslation.y;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x138)) = camera->mTranslation.z;
+ 
+-    *(f32 *)((u8 *)camera + 0x148) = camera->mTranslation.x;
+-    *(f32 *)((u8 *)camera + 0x14C) = camera->mTranslation.y;
+-    *(f32 *)((u8 *)camera + 0x150) = gpMarioPos->z;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x148)) = camera->mTranslation.x;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x14C)) = camera->mTranslation.y;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x150)) = gpMarioPos->z;
+ 
+-    *(f32 *)((u8 *)camera + 0x154) = camera->mTranslation.x;
+-    *(f32 *)((u8 *)camera + 0x158) = camera->mTranslation.y;
+-    *(f32 *)((u8 *)camera + 0x15C) = gpMarioPos->z;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x154)) = camera->mTranslation.x;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x158)) = camera->mTranslation.y;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x15C)) = gpMarioPos->z;
+ }
+--- a/eclipse/src/camera/bowser_camera.cpp
++++ b/eclipse/src/camera/bowser_camera.cpp
+@@ -81,7 +81,7 @@
+         sFixedCameraPos  = {0.0f, 2000.0f, -3000.0f};
+         sFixedCameraFovy = 60.0f;
+ 
+-        *((u8 *)gpMarDirector->mGCConsole + 0x50) = 0;
++        *((u8 *)gpMarDirector->mGCConsole + SMS_OFFSET(TGCConsole2, 0x50)) = 0;
+ 
+         BetterSMS::Music::setVolumeFade(20, 1.0f);
+     }
+@@ -278,19 +278,19 @@
+ 
+     camera->mWorldTranslation = camera->mTranslation;
+ 
+-    *(f32 *)((u8 *)camera + 0x130) = camera->mTranslation.x;
+-    *(f32 *)((u8 *)camera + 0x134) = camera->mTranslation.y;
+-    *(f32 *)((u8 *)camera + 0x138) = camera->mTranslation.z;
+-
+-    *(f32 *)((u8 *)camera + 0x148) = camera->mTargetPos.x;
+-    *(f32 *)((u8 *)camera + 0x14C) = camera->mTargetPos.y;
+-    *(f32 *)((u8 *)camera + 0x150) = camera->mTargetPos.z;
+-
+-    *(f32 *)((u8 *)camera + 0x154) = camera->mTargetPos.x;
+-    *(f32 *)((u8 *)camera + 0x158) = camera->mTargetPos.y;
+-    *(f32 *)((u8 *)camera + 0x15C) = camera->mTargetPos.z;
+-
+-    gpCameraShake->execShake(camera->mTranslation, (TVec3f *)((u8 *)camera + 0x148),
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x130)) = camera->mTranslation.x;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x134)) = camera->mTranslation.y;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x138)) = camera->mTranslation.z;
++
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x148)) = camera->mTargetPos.x;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x14C)) = camera->mTargetPos.y;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x150)) = camera->mTargetPos.z;
++
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x154)) = camera->mTargetPos.x;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x158)) = camera->mTargetPos.y;
++    *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x15C)) = camera->mTargetPos.z;
++
++    gpCameraShake->execShake(camera->mTranslation, (TVec3f *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x148)),
+                              &camera->mUpVector);
+ 
+     sCanSwitchMode = true;
+--- a/eclipse/src/camera/camera.cpp
++++ b/eclipse/src/camera/camera.cpp
+@@ -48,7 +48,7 @@
+     }
+ 
+     if (SME::isCameraFixedMode()) {
+-        *(s32 *)((u8 *)camera->mInbetween + 0x4) = 0;
++        *(s32 *)((u8 *)camera->mInbetween + SMS_OFFSET(TCameraInbetween, 0x4)) = 0;
+ 
+         TVec3f followPos = sFixedCameraPos;
+         if (sFixedCameraActor != nullptr) {
+@@ -98,17 +98,17 @@
+ 
+         camera->mWorldTranslation = camera->mTranslation;
+ 
+-        *(f32 *)((u8 *)camera + 0x130) = camera->mTranslation.x;
+-        *(f32 *)((u8 *)camera + 0x134) = camera->mTranslation.y;
+-        *(f32 *)((u8 *)camera + 0x138) = camera->mTranslation.z;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x130)) = camera->mTranslation.x;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x134)) = camera->mTranslation.y;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x138)) = camera->mTranslation.z;
+ 
+-        *(f32 *)((u8 *)camera + 0x148) = camera->mTargetPos.x;
+-        *(f32 *)((u8 *)camera + 0x14C) = camera->mTargetPos.y;
+-        *(f32 *)((u8 *)camera + 0x150) = camera->mTargetPos.z;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x148)) = camera->mTargetPos.x;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x14C)) = camera->mTargetPos.y;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x150)) = camera->mTargetPos.z;
+ 
+-        *(f32 *)((u8 *)camera + 0x154) = camera->mTargetPos.x;
+-        *(f32 *)((u8 *)camera + 0x158) = camera->mTargetPos.y;
+-        *(f32 *)((u8 *)camera + 0x15C) = camera->mTargetPos.z;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x154)) = camera->mTargetPos.x;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x158)) = camera->mTargetPos.y;
++        *(f32 *)((u8 *)camera + SMS_OFFSET(CPolarSubCamera, 0x15C)) = camera->mTargetPos.z;
+ 
+         return;
+     }
+--- a/eclipse/src/darkness.cpp
++++ b/eclipse/src/darkness.cpp
+@@ -202,10 +202,10 @@
+     }
+     case TLightContext::ActiveType::FOLLOWCAMERA: {
+         manager.mDarkLevel = sBrightLevel;
+-        if (((f32 *)gpCamera)[0x134 / 4] > 13000.0f) {
++        if (*(f32 *)((u8 *)gpCamera + SMS_OFFSET(CPolarSubCamera, 0x134)) > 13000.0f) {
+             manager.mDarkLevel = lerp<f32>(
+                 static_cast<f32>(sBrightLevel), 255.0f,
+-                clamp(1.0f - ((21000.0f - ((f32 *)gpCamera)[0x134 / 4]) / 8000.0f), 0.0f, 1.0f));
++                clamp(1.0f - ((21000.0f - *(f32 *)((u8 *)gpCamera + SMS_OFFSET(CPolarSubCamera, 0x134))) / 8000.0f), 0.0f, 1.0f));
+         }
+ 
+         manager.mSphereStep           = mBaseScale * mLayerScale;
+--- a/eclipse/src/enemy/bowser_car.cpp
++++ b/eclipse/src/enemy/bowser_car.cpp
+@@ -822,7 +822,7 @@
+ 
+     if (mActorData->mBckInfo) {
+         mActorData->mBckInfo->setOldMotionBlendAnmPtr(
+-            *(J3DAnmTransform **)((u8 *)mActorData->mBckInfo + 0x24));
++            *(J3DAnmTransform **)((u8 *)mActorData->mBckInfo + SMS_OFFSET(MActorAnmBck, 0x24)));
+     }
+ 
+     mActorData->setBck(anm_name);
+@@ -1423,7 +1423,7 @@
+ 
+             if (JPABaseEmitter *emitterFire =
+                     gpMarioParticleManager->emitAndBindToMtxPtr(0x1a6, *fire_mtx, 1, bowser)) {
+-                *(JPACallBackBase<> **)((u8 *)emitterFire + 0x110) = &s_fire_particle_callback;
++                *(JPACallBackBase<> **)((u8 *)emitterFire + SMS_OFFSET(JPABaseEmitter, 0x110)) = &s_fire_particle_callback;
+             }
+ 
+             gpMarioParticleManager->emitAndBindToMtxPtr(0x1a5, *fire_mtx, 1, bowser);
+--- a/eclipse/src/enemy/dark_zhine.cpp
++++ b/eclipse/src/enemy/dark_zhine.cpp
+@@ -740,7 +740,7 @@
+ 
+     if (spine->mNerveTimer == 0) {
+         MSBgm::startBGM(BGM_BOSSHANA_2ND3RD);
+-        (*(MSModBgm **)((u8 *)gpMSound + 0x9C))->changeTempo(0, 1);
++        (*(MSModBgm **)((u8 *)gpMSound + SMS_OFFSET(MSound, 0x9C)))->changeTempo(0, 1);
+         actor->setBck("zhine_angry");
+         // actor->setFrameRate(0.2f, MActor::BCK);
+     }
+@@ -844,7 +844,7 @@
+             SMS_ResetDamageFogEffect(mActorData->mModel->mModelData);
+         }
+         J3DTevStage *tev_stage = mActorData->mModel->mModelData->mStages[0];
+-        J3DTevBlock *tev_block = *(J3DTevBlock **)((u8 *)tev_stage + 0x28);
++        J3DTevBlock *tev_block = *(J3DTevBlock **)((u8 *)tev_stage + SMS_OFFSET(J3DMaterial, 0x28));
+         tev_block->setTevKColor(0, {0, 0, 0, m_pol_alpha});
+     }
+ }
+--- a/eclipse/src/enemy/firey_petey.cpp
++++ b/eclipse/src/enemy/firey_petey.cpp
+@@ -80,11 +80,16 @@
+                 ((static_cast<float>(rand()) / static_cast<float>(0x7fff)) - 0.5f) * 10000.0f;
+ 
+             if (target->_118 < target->_114) {
+-                u32 *unk = ((target->_11C) + (target->_118) * 0x10);
+-                unk[0]   = (u32)target->mTarget;
+-                unk[1]   = target->_F8;
+-                unk[2]   = target->_FC;
+-                unk[3]   = target->_100;
++                // The retail step of 0x10 u32s is four TPathNodes (the port's size below).
++                struct PathNodeLayout {
++                    void *mTarget;
++                    f32 mPoint[3];
++                };
++                u8 *unk = (u8 *)target->_11C + target->_118 * 4 * sizeof(PathNodeLayout);
++                *(THitActor **)(unk + SMS_OFFSET(TPathNode, 0x0)) = target->mTarget;
++                *(u32 *)(unk + SMS_OFFSET(TPathNode, 0x4))        = target->_F8;
++                *(u32 *)(unk + SMS_OFFSET(TPathNode, 0x8))        = target->_FC;
++                *(u32 *)(unk + SMS_OFFSET(TPathNode, 0xC))        = target->_100;
+                 target->_118++;
+             }
+             target->mTarget = 0;
+@@ -317,7 +322,7 @@
+                         mFire->mVelocity.y = 0;
+                         mFire->mVelocity.z = 50.0f * cosf(angleToRadians(target->mRotation.y));
+                         mFire->mTranslation.set(
+-                            *reinterpret_cast<TVec3f *>(((u8 *)emitterFire) + 0x15C));
++                            *reinterpret_cast<TVec3f *>(((u8 *)emitterFire) + SMS_OFFSET(JPABaseEmitter, 0x15C)));
+                         mFire->mTranslation.y -= 237.5f;
+                         mFire->mLifetime = 30 * 4;
+                     }
+--- a/eclipse/src/menu/character_select.cpp
++++ b/eclipse/src/menu/character_select.cpp
+@@ -559,7 +559,7 @@
+ static int flagCharacterSelectMenu(u8 state) {
+     // Only here for time sake
+     if (gpApplication.mContext == TApplication::CONTEXT_DIRECT_STAGE) {
+-        *(*(u8 **)0x8040D05C + 0x98) = 0;
++        *((u8 *)gpMSound + SMS_OFFSET(MSound, 0x98)) = 0;
+         setWaterCameraFir__12MSSeCallBackFb(false);
+     }
+ 
+--- a/eclipse/src/message.cpp
++++ b/eclipse/src/message.cpp
+@@ -41,7 +41,7 @@
+ }
+ 
+ BETTER_SMS_FOR_CALLBACK void checkBalloonMessagePool(TMarDirector *director) {
+-    bool is_console_ready = *(u16 *)((u8 *)director->mGCConsole + 0x3F4) == 0;
++    bool is_console_ready = *(u16 *)((u8 *)director->mGCConsole + SMS_OFFSET(TGCConsole2, 0x3F4)) == 0;
+     bool is_water_card    = director->mGCConsole->mIsWaterCard;
+ 
+     AtomBalloonMessageViewer *message = AtomBalloonMessageViewer::peekMessage();
+--- a/eclipse/src/player/voice.cpp
++++ b/eclipse/src/player/voice.cpp
+@@ -105,8 +105,8 @@
+             }
+         } else if (player_id == SME::CharacterID::LUIGI) {
+             // u32 soundInf     = (u32)((u8 *)gpMSound + 0xB0 + (0xC * ((status & 2) != 0)));
+-            u32 soundInf     = *(u32 *)((u8 *)sound + 0xB0);
+-            u32 jai_actor[4] = {
++            void *soundInf   = *(void **)((u8 *)sound + SMS_OFFSET(MSound, 0xB0));
++            void *jai_actor[4] = {
+                 soundInf,
+                 soundInf,
+                 soundInf,
+@@ -117,40 +117,40 @@
+             case MSD_SE_MV24_JUMP_SPECIAL_01:
+             case MSD_SE_MV25A_JUMP_HUGE_01: {
+                 if (sound->gateCheck(MSD_SE_MV41_JUMP_T_01)) {
+-                    JAISound **sounds = (JAISound **)((u8 *)sound + 0x8C);
++                    JAISound **sounds = (JAISound **)((u8 *)sound + SMS_OFFSET(MSound, 0x8C));
+                     JAISound *sound = MSoundSE::startSoundActorInner(MSD_SE_MV41_JUMP_T_01, sounds,
+                                                                      (JAIActor *)jai_actor, 1, 4);
+                     if (sound) {
+                         sound->setPortData(11, 0);
+                     }
+                 }
+-                *(u32 *)((u8 *)sound + 0x94) = MSD_SE_MV41_JUMP_T_01;
++                *(u32 *)((u8 *)sound + SMS_OFFSET(MSound, 0x94)) = MSD_SE_MV41_JUMP_T_01;
+                 return MSD_SE_MV41_JUMP_T_01;
+             }
+             case MSD_SE_MV13_ACTION_SMALL_01:
+             case MSD_SE_MV22_JUMP_MID_01: {
+                 if (sound->gateCheck(MSD_SE_MV34_ACTION_T_01)) {
+-                    JAISound **sounds = (JAISound **)((u8 *)sound + 0x8C);
++                    JAISound **sounds = (JAISound **)((u8 *)sound + SMS_OFFSET(MSound, 0x8C));
+                     JAISound *sound   = MSoundSE::startSoundActorInner(
+                         MSD_SE_MV34_ACTION_T_01, sounds, (JAIActor *)jai_actor, 1, 4);
+                     if (sound) {
+                         sound->setPortData(11, 0);
+                     }
+                 }
+-                *(u32 *)((u8 *)sound + 0x94) = MSD_SE_MV34_ACTION_T_01;
++                *(u32 *)((u8 *)sound + SMS_OFFSET(MSound, 0x94)) = MSD_SE_MV34_ACTION_T_01;
+                 return MSD_SE_MV34_ACTION_T_01;
+             }
+             case MSD_SE_MV15_EXERT_INST_01:
+             case MSD_SE_MV23_JUMP_LARGE_01: {
+                 if (sound->gateCheck(MSD_SE_MV38_EXERT_INST_T_01)) {
+-                    JAISound **sounds = (JAISound **)((u8 *)sound + 0x8C);
++                    JAISound **sounds = (JAISound **)((u8 *)sound + SMS_OFFSET(MSound, 0x8C));
+                     JAISound *sound   = MSoundSE::startSoundActorInner(
+                         MSD_SE_MV38_EXERT_INST_T_01, sounds, (JAIActor *)jai_actor, 1, 4);
+                     if (sound) {
+                         sound->setPortData(11, 0);
+                     }
+                 }
+-                *(u32 *)((u8 *)sound + 0x94) = MSD_SE_MV38_EXERT_INST_T_01;
++                *(u32 *)((u8 *)sound + SMS_OFFSET(MSound, 0x94)) = MSD_SE_MV38_EXERT_INST_T_01;
+                 return MSD_SE_MV38_EXERT_INST_T_01;
+             }
+             default:
+@@ -164,7 +164,7 @@
+             case MSD_SE_MV24_JUMP_SPECIAL_01:
+             case MSD_SE_MV25A_JUMP_HUGE_01: {
+                 if (sound->gateCheck(MSD_SE_NPC_VA_MTMAN_JUMP1)) {
+-                    JAISound **sounds = (JAISound **)((u8 *)sound + 0x8C + (0x4 * 1));
++                    JAISound **sounds = (JAISound **)((u8 *)sound + SMS_OFFSET(MSound, 0x8C)) + 1;
+                     MSoundSE::startSoundActor(MSD_SE_NPC_VA_MTMAN_JUMP1, player->mTranslation, 0,
+                                               sounds, 1, 4);
+                 }
+@@ -178,7 +178,7 @@
+ 
+     // Shadow Mario
+     if (isShadowMario) {
+-        *(TVec3f **)((u8 *)gpMSound + 0xB0 + (0xC * 1)) = &player->mTranslation;
++        *(TVec3f **)((u8 *)gpMSound + SMS_OFFSET(MSound, 0xBC)) = &player->mTranslation;
+ 
+         health = 8;
+         switch (soundID) {
+--- a/eclipse/src/stage/behavior.cpp
++++ b/eclipse/src/stage/behavior.cpp
+@@ -185,7 +185,7 @@
+         if (JDrama::TNameRef *p = name_ref->searchF(key_code, "LanciaLight")) {
+             TGenericRailObj *light_obj = reinterpret_cast<TGenericRailObj *>(p);
+             J3DTevStage *tev_stage     = light_obj->mActorData->mModel->mModelData->mStages[0];
+-            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + 0x28);
++            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + SMS_OFFSET(J3DMaterial, 0x28));
+             tev_block->setTevKColor(0, is_enabled ? enabled_color : disabled_color);
+ 
+             if (is_enabled &&
+@@ -201,7 +201,7 @@
+         if (JDrama::TNameRef *p = name_ref->searchF(key_code, "VaporLight")) {
+             TGenericRailObj *light_obj = reinterpret_cast<TGenericRailObj *>(p);
+             J3DTevStage *tev_stage     = light_obj->mActorData->mModel->mModelData->mStages[0];
+-            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + 0x28);
++            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + SMS_OFFSET(J3DMaterial, 0x28));
+             tev_block->setTevKColor(0, is_enabled ? on_color : off_color);
+ 
+             if (is_enabled &&
+@@ -218,7 +218,7 @@
+         if (JDrama::TNameRef *p = name_ref->searchF(key_code, "CityLight")) {
+             TGenericRailObj *light_obj = reinterpret_cast<TGenericRailObj *>(p);
+             J3DTevStage *tev_stage     = light_obj->mActorData->mModel->mModelData->mStages[0];
+-            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + 0x28);
++            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + SMS_OFFSET(J3DMaterial, 0x28));
+             tev_block->setTevKColor(0, is_enabled ? enabled_color : disabled_color);
+ 
+             if (is_enabled &&
+@@ -235,7 +235,7 @@
+         if (JDrama::TNameRef *p = name_ref->searchF(key_code, "YoshiLight")) {
+             TGenericRailObj *light_obj = reinterpret_cast<TGenericRailObj *>(p);
+             J3DTevStage *tev_stage     = light_obj->mActorData->mModel->mModelData->mStages[0];
+-            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + 0x28);
++            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + SMS_OFFSET(J3DMaterial, 0x28));
+             tev_block->setTevKColor(0, is_enabled ? enabled_color : disabled_color);
+ 
+             if (is_enabled &&
+@@ -252,7 +252,7 @@
+         if (JDrama::TNameRef *p = name_ref->searchF(key_code, "PeachLight")) {
+             TGenericRailObj *light_obj = reinterpret_cast<TGenericRailObj *>(p);
+             J3DTevStage *tev_stage     = light_obj->mActorData->mModel->mModelData->mStages[0];
+-            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + 0x28);
++            J3DTevBlock *tev_block     = *(J3DTevBlock **)((u8 *)tev_stage + SMS_OFFSET(J3DMaterial, 0x28));
+             tev_block->setTevKColor(0, is_enabled ? enabled_color : disabled_color);
+ 
+             if (is_enabled &&
+@@ -369,7 +369,7 @@
+         SME::TGlobals::sCharacterIDList[2] = SME::CharacterID::PIANTISSIMO;
+         SME::TGlobals::sCharacterIDList[3] = SME::CharacterID::SHADOW_MARIO;
+         TFlagManager::smInstance->resetCard();
+-        memset(((u8 *)TFlagManager::smInstance) + 0xF4, 0, 0x18C);
++        memset(((u8 *)TFlagManager::smInstance) + SMS_OFFSET(TFlagManager, 0xF4), 0, 0x18C);
+         return;
+     }
+ 
+@@ -395,9 +395,9 @@
+     // Force unlock all gates, yoshi, and nozzles post-corona mountain
+     if (TFlagManager::smInstance->getBool(0x10077)) {
+         // Set the nozzle flags
+-        *((u8 *)TFlagManager::smInstance + 0x6C) |= 0xC0;
+-        *((u8 *)TFlagManager::smInstance + 0x6D) |= 0xFF;
+-        *((u8 *)TFlagManager::smInstance + 0x6E) |= 0x7F;
++        *((u8 *)TFlagManager::smInstance + SMS_OFFSET(TFlagManager, 0x6C)) |= 0xC0;
++        *((u8 *)TFlagManager::smInstance + SMS_OFFSET(TFlagManager, 0x6D)) |= 0xFF;
++        *((u8 *)TFlagManager::smInstance + SMS_OFFSET(TFlagManager, 0x6E)) |= 0x7F;
+ 
+         TFlagManager::smInstance->setBool(true, 0x10384);  // Bianco gate
+         TFlagManager::smInstance->setBool(true, 0x10385);  // M on statue
+@@ -456,12 +456,12 @@
+ s32 s_final_boss_debs_list[] = {20, 21, -1};
+ 
+ static void setDolpic11DEBSList(TGCConsole2 *console2) {
+-    *(s32 **)((u8 *)console2 + 0x574) = s_dolpic_11_debs_list;
++    *(s32 **)((u8 *)console2 + SMS_OFFSET(TGCConsole2, 0x574)) = s_dolpic_11_debs_list;
+ }
+ SMS_WRITE_32(0x803C0360, setDolpic11DEBSList);
+ 
+ static void setFinalBossDEBSList(TGCConsole2 *console2) {
+-    *(s32 **)((u8 *)console2 + 0x574) = s_final_boss_debs_list;
++    *(s32 **)((u8 *)console2 + SMS_OFFSET(TGCConsole2, 0x574)) = s_final_boss_debs_list;
+ }
+ SMS_WRITE_32(0x803C0364, setFinalBossDEBSList);
+ 
+--- a/eclipse/src/stage/intro.cpp
++++ b/eclipse/src/stage/intro.cpp
+@@ -52,7 +52,7 @@
+     }
+ 
+     director->mGamePads[0]->mState._09 = 1;
+-    *(u32 *)((u8 *)director + 0x68)    = 0;
++    *(u32 *)((u8 *)director + SMS_OFFSET(TMarDirector, 0x68)) = 0;
+ 
+     char camera_name[32] = {};
+     sprintf(camera_name, "startcamera%d", director->mEpisodeID);
+@@ -68,14 +68,14 @@
+ 
+     bool isExStage = SMS_isExMap__Fv();
+     if (!isExStage && director->mAreaID > 60) {
+-        *(u16 *)((u8 *)director + 0x50) |= 6;
++        *(u16 *)((u8 *)director + SMS_OFFSET(TMarDirector, 0x50)) |= 6;
+     }
+ 
+-    u16 unk_state = *(u16 *)((u8 *)director + 0x50);
++    u16 unk_state = *(u16 *)((u8 *)director + SMS_OFFSET(TMarDirector, 0x50));
+ 
+     if ((unk_state & 0x4) != 0) {
+         director->mGCConsole->mConsoleStr->startAppearScenario();
+-        *(u16 *)((u8 *)director + 0x50) &= ~0x4;
++        *(u16 *)((u8 *)director + SMS_OFFSET(TMarDirector, 0x50)) &= ~0x4;
+     }
+ 
+     startStageEntranceDemo__10MSMainProcFUcUc(director->mAreaID, director->mEpisodeID);
+--- a/eclipse/src/stage/music.cpp
++++ b/eclipse/src/stage/music.cpp
+@@ -93,16 +93,28 @@
+     bool mFadedPermanently;
+ };
+ 
++// The statics these retail addresses hold (0x8040E1EC..0x8040E204), by name.
++namespace MSMainProc {
++    namespace MSStageInfo {
++        extern u32 demoBgm;
++        extern u8 flags;
++        extern u16 volOffCategory;
++        extern u8 fadeEvent;
++        extern u32 switchBgm;
++        extern u32 switchBgm2;
++    }  // namespace MSStageInfo
++}  // namespace MSMainProc
++
+ static bool setMSoundEnterStageExtended(TFlagManager *manager, u32 flag) {
+     if (gpMarDirector->mAreaID >= SME::STAGE_ERTO &&
+         gpMarDirector->mAreaID <= SME::STAGE_LACRIMA_BACKHOUSE) {
+         if (gpMarDirector->mEpisodeID == 6) {
+-            *(u32 *)0x8040E200 = -16;
+-            *(u32 *)0x8040E204 = -16;
+-            *(u16 *)0x8040E1FA += -0x83;
+-            *(u32 *)0x8040E1EC = BGM_KAGEMARIO;
+-            *(u8 *)0x8040E1F9  = 6;
+-            *(u8 *)0x8040E1FC  = 1;
++            MSMainProc::MSStageInfo::switchBgm = -16;       // 0x8040E200
++            MSMainProc::MSStageInfo::switchBgm2 = -16;      // 0x8040E204
++            MSMainProc::MSStageInfo::volOffCategory += -0x83;  // 0x8040E1FA
++            MSMainProc::MSStageInfo::demoBgm = BGM_KAGEMARIO;  // 0x8040E1EC
++            MSMainProc::MSStageInfo::flags  = 6;            // 0x8040E1F9
++            MSMainProc::MSStageInfo::fadeEvent  = 1;        // 0x8040E1FC
+             OSReport("MSoundEnterStageExtended: Episode 6\n");
+         }
+     }
+@@ -114,7 +126,7 @@
+     bool excluded = area == SME::STAGE_LACRIMA || area == SME::STAGE_LACRIMA_INSIDE;
+     if (!excluded && area >= SME::STAGE_ERTO && area <= SME::STAGE_LACRIMA_BACKHOUSE) {
+         if (episode == 6) {
+-            Vec *posptr   = *(Vec **)((u8 *)gpMSound + 0xBC);
++            Vec *posptr   = *(Vec **)((u8 *)gpMSound + SMS_OFFSET(MSound, 0xBC));
+             auto *msstage = new MSStageDistFadeStream(posptr, 6000.0f, 1600.0f, 0x5A, true);
+             return (void *)msstage;
+         }
+--- a/eclipse/src/stage/record.cpp
++++ b/eclipse/src/stage/record.cpp
+@@ -48,13 +48,13 @@
+ static void flagManager2XSetter(TFlagManager *manager, u32 flags, s32 val) {
+     flags &= 0xFFFF;
+     if (flags < 0xE || flags == 0x12 || flags == 0x13 || flags == 0x14) {
+-        *(u32 *)((u8 *)manager + 0x78 + (flags << 2)) = val;
++        *(u32 *)((u8 *)manager + SMS_OFFSET(TFlagManager, 0x78) + (flags << 2)) = val;
+     } else {
+         if (flags > 0x14) {
+             flags -= 3;
+         }
+         flags -= 0xE;
+-        return set_10bit_flag((u32 *)((u8 *)manager + 0x78) + 0xE, flags, val);
++        return set_10bit_flag((u32 *)((u8 *)manager + SMS_OFFSET(TFlagManager, 0x78)) + 0xE, flags, val);
+     }
+ }
+ SMS_WRITE_32(SMS_PORT_REGION(0x803DEE40, 0x803D6620, 0, 0), flagManager2XSetter);
+@@ -62,13 +62,13 @@
+ static u32 flagManager2XGetter(TFlagManager *manager, u32 flags) {
+     flags &= 0xFFFF;
+     if (flags < 0xE || flags == 0x12 || flags == 0x13 || flags == 0x14) {
+-        return *(u32 *)((u8 *)manager + 0x78 + (flags << 2));
++        return *(u32 *)((u8 *)manager + SMS_OFFSET(TFlagManager, 0x78) + (flags << 2));
+     } else {
+         if (flags > 0x14) {
+             flags -= 3;
+         }
+         flags -= 0xE;
+-        return get_10bit_flag((u32 *)((u8 *)manager + 0x78) + 0xE, flags);
++        return get_10bit_flag((u32 *)((u8 *)manager + SMS_OFFSET(TFlagManager, 0x78)) + 0xE, flags);
+     }
+     return 0;
+ }
+--- a/eclipse/src/stage/tutorial.cpp
++++ b/eclipse/src/stage/tutorial.cpp
+@@ -188,7 +188,7 @@
+ static int processCheckpoints(const BoundingBox *boxes, const int *dialogues, int checkpointCount,
+                               int currentCheckpoint, bool includeWater, bool playSound,
+                               TMario *player, bool isMario) {
+-    bool is_console_ready = *(u16 *)((u8 *)gpMarDirector->mGCConsole + 0x3F4) == 0;
++    bool is_console_ready = *(u16 *)((u8 *)gpMarDirector->mGCConsole + SMS_OFFSET(TGCConsole2, 0x3F4)) == 0;
+ 
+     if (sShouldFluddDialogue && gpMarDirector->mGCConsole->mIsWaterCard && is_console_ready) {
+         startAppearBalloon__11TGCConsole2FUlb(gpMarDirector->mGCConsole, *sShouldFluddDialogue,
+--- a/eclipse/src/stage/warp.cpp
++++ b/eclipse/src/stage/warp.cpp
+@@ -21,7 +21,7 @@
+     u32 *tpausemenu;
+     SMS_FROM_GPR(29, tpausemenu);
+ 
+-    bool needs_exit_area = tpausemenu[0x104 / 4] == 3;
++    bool needs_exit_area = *(u32 *)((u8 *)tpausemenu + SMS_OFFSET(TPauseMenu2, 0x104)) == 3;
+ 
+     for (u32 i = 0; i < sizeof(s_no_exit_areas); i++) {
+         if (app->mCurrentScene.mAreaID == s_no_exit_areas[i]) {
+@@ -36,7 +36,7 @@
+         }
+     }
+ 
+-    tpausemenu[0x104 / 4] = needs_exit_area ? 3 : 2;
++    *(u32 *)((u8 *)tpausemenu + SMS_OFFSET(TPauseMenu2, 0x104)) = needs_exit_area ? 3 : 2;
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x80156B70, 0, 0, 0), assignExitAreaStages);
+ SMS_WRITE_32(SMS_PORT_REGION(0x80156B80, 0, 0, 0), 0x60000000);
+--- a/moveset/src/moveset/fastturbo.cpp
++++ b/moveset/src/moveset/fastturbo.cpp
+@@ -41,11 +41,11 @@
+ 
+     u32 state = 1;
+ 
+-    TMario *player = reinterpret_cast<TMario *>(marioEffect[0x68 / 4]);
++    TMario *player = *(TMario **)((u8 *)marioEffect + SMS_OFFSET(TMarioEffect, 0x68));
+     if (player->mFludd->mCurrentNozzle == TWaterGun::Spray && gFastTurboSetting.getBool())
+         state = 0;
+ 
+-    marioEffect[0x7C / 4] = state;
++    *(u32 *)((u8 *)marioEffect + SMS_OFFSET(TMarioEffect, 0x7C)) = state;
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x80271ACC, 0, 0, 0), turboNozzleConeCondition);
+ 
+@@ -57,7 +57,7 @@
+     if (!player->mAttributes.mIsFluddEmitting)
+         return nullptr;
+ 
+-    MActor *coneActor = reinterpret_cast<MActor *>(marioEffect[0x80 / 4]);
++    MActor *coneActor = *(MActor **)((u8 *)marioEffect + SMS_OFFSET(TMarioEffect, 0x80));
+     if (player->mFludd->mNozzleTurbo.mSprayState == TNozzleTrigger::ACTIVE &&
+         gFastTurboSetting.getBool()) {
+         coneActor->mModel->mBaseScale.set(player->mController->mButtons.mAnalogR,
+--- a/moveset/src/moveset/hoverburst.cpp
++++ b/moveset/src/moveset/hoverburst.cpp
+@@ -18,11 +18,11 @@
+     SMS_FROM_GPR(30, fludd);
+ 
+     if (fludd->mCurrentNozzle == TWaterGun::TNozzleType::Hover) {
+-        ((float *)(fludd))[0x1CEC / 4] = 0.0f;
++        *(float *)((u8 *)fludd + SMS_OFFSET(TWaterGun, 0x1CEC)) = 0.0f;
+     } else {
+-        ((float *)(fludd))[0x1CEC / 4] -= 0.1f;
+-        if (((float *)(fludd))[0x1CEC / 4] < 0.0f)
+-            ((float *)(fludd))[0x1CEC / 4] = 0.0f;
++        *(float *)((u8 *)fludd + SMS_OFFSET(TWaterGun, 0x1CEC)) -= 0.1f;
++        if (*(float *)((u8 *)fludd + SMS_OFFSET(TWaterGun, 0x1CEC)) < 0.0f)
++            *(float *)((u8 *)fludd + SMS_OFFSET(TWaterGun, 0x1CEC)) = 0.0f;
+     }
+ }
+ SMS_PATCH_BL(SMS_PORT_REGION(0x802699CC, 0, 0, 0), snapNozzleToReady);
+--- a/moveset/src/moveset/waterpound.cpp
++++ b/moveset/src/moveset/waterpound.cpp
+@@ -115,8 +115,8 @@
+         yoshi->mActor->setBckFromIndex(bckId);
+         yoshi->thinkBtp(bckId);
+ 
+-        u32 *anmSound = *(u32 **)(((u8 *)yoshi) + 0x11C);
+-        initAnmSound__9MAnmSoundFPvUlf(*(MAnmSound **)(((u8 *)yoshi) + 0x118),
++        void **anmSound = *(void ***)(((u8 *)yoshi) + SMS_OFFSET(TYoshi, 0x11C));
++        initAnmSound__9MAnmSoundFPvUlf(*(MAnmSound **)(((u8 *)yoshi) + SMS_OFFSET(TYoshi, 0x118)),
+                                        *(u32 **)(anmSound + bckId), 1, 0.0f);
+         if (yoshi->mActor->mBckInfo) {
+             yoshi->mActor->mBckInfo->setMotionBlendRatio(0.0f);

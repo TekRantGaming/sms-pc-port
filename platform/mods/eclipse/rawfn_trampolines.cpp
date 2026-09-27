@@ -66,29 +66,30 @@
 #include <THPPlayer/THPPlayer.h>
 
 namespace {
-// An int-returning macro's value: integers as they are, pointers and
-// references as addresses, nothing for void.
+// An int-returning macro's value (pointer-sized: fixup_sources.py makes the
+// macros return intptr_t, so pointers survive on 64-bit hosts): integers as
+// they are, pointers and references as addresses, nothing for void.
 template <class T, bool = std::is_void<T>::value> struct RawInt {
-	template <class F> static int get(F f) { return conv(f()); }
-	template <class U> static int conv(U* p) { return (int)(uintptr_t)p; }
+	template <class F> static intptr_t get(F f) { return conv(f()); }
+	template <class U> static intptr_t conv(U* p) { return (intptr_t)p; }
 	template <class U>
-	static typename std::enable_if<std::is_integral<U>::value || std::is_enum<U>::value, int>::type conv(U v)
+	static typename std::enable_if<std::is_integral<U>::value || std::is_enum<U>::value, intptr_t>::type conv(U v)
 	{
-		return (int)v;
+		return (intptr_t)v;
 	}
-	template <class U> static typename std::enable_if<std::is_class<U>::value, int>::type conv(U& v)
+	template <class U> static typename std::enable_if<std::is_class<U>::value, intptr_t>::type conv(U& v)
 	{
-		return (int)(uintptr_t)&v;
+		return (intptr_t)&v;
 	}
 };
 template <class T> struct RawInt<T, true> {
-	template <class F> static int get(F f)
+	template <class F> static intptr_t get(F f)
 	{
 		f();
 		return 0;
 	}
 };
-template <class F> int rawfn_int(F f) { return RawInt<decltype(f())>::get(f); }
+template <class F> intptr_t rawfn_int(F f) { return RawInt<decltype(f())>::get(f); }
 
 void rawfn_missing(const char* sym)
 {
@@ -97,45 +98,45 @@ void rawfn_missing(const char* sym)
 }
 } // namespace
 
-extern "C" int sms_rawfn_CLBPalFrame_l(s32 p0)
+extern "C" intptr_t sms_rawfn_CLBPalFrame_l(s32 p0)
 {
 	return rawfn_int([&]() -> decltype(CLBPalFrame<s32>(p0)) { return CLBPalFrame<s32>(p0); });
 }
 
-extern "C" int sms_rawfn_Callback()
+extern "C" intptr_t sms_rawfn_Callback()
 {
 	rawfn_missing("Callback");
 	return 0;
 }
 
-extern "C" int sms_rawfn_Hx_MotionUpdate()
+extern "C" intptr_t sms_rawfn_Hx_MotionUpdate()
 {
 	rawfn_missing("Hx_MotionUpdate");
 	return 0;
 }
 
-extern "C" int sms_rawfn_JSGGetTranslation__Q26JDrama6TActorCFP3Vec(void* self, Vec* p0)
+extern "C" intptr_t sms_rawfn_JSGGetTranslation__Q26JDrama6TActorCFP3Vec(void* self, Vec* p0)
 {
 	return rawfn_int([&]() -> decltype(((const JDrama::TActor*)self)->JDrama::TActor::JSGGetTranslation(p0)) { return ((const JDrama::TActor*)self)->JDrama::TActor::JSGGetTranslation(p0); });
 }
 
-extern "C" int sms_rawfn_JSGGetViewPosition__Q26JDrama13TLookAtCameraCFP3Vec(void* self, Vec* p0)
+extern "C" intptr_t sms_rawfn_JSGGetViewPosition__Q26JDrama13TLookAtCameraCFP3Vec(void* self, Vec* p0)
 {
 	return rawfn_int([&]() -> decltype(((const JDrama::TLookAtCamera*)self)->JDrama::TLookAtCamera::JSGGetViewPosition(p0)) { return ((const JDrama::TLookAtCamera*)self)->JDrama::TLookAtCamera::JSGGetViewPosition(p0); });
 }
 
-extern "C" int sms_rawfn_JSGSetTranslation__Q26JDrama6TActorFRC3Vec(void* self, const Vec* p0)
+extern "C" intptr_t sms_rawfn_JSGSetTranslation__Q26JDrama6TActorFRC3Vec(void* self, const Vec* p0)
 {
 	return rawfn_int([&]() -> decltype(((JDrama::TActor*)self)->JDrama::TActor::JSGSetTranslation(*p0)) { return ((JDrama::TActor*)self)->JDrama::TActor::JSGSetTranslation(*p0); });
 }
 
-extern "C" int sms_rawfn_Reset()
+extern "C" intptr_t sms_rawfn_Reset()
 {
 	rawfn_missing("Reset");
 	return 0;
 }
 
-extern "C" int sms_rawfn_Retry()
+extern "C" intptr_t sms_rawfn_Retry()
 {
 	rawfn_missing("Retry");
 	return 0;
@@ -146,7 +147,7 @@ extern "C" double sms_rawfn_SMSGetAnmFrameRate__Fv()
 	return (double)(SMSGetAnmFrameRate());
 }
 
-extern "C" int sms_rawfn_SMSGetMessageData__FPvUl(void* p0, u32 p1)
+extern "C" intptr_t sms_rawfn_SMSGetMessageData__FPvUl(void* p0, u32 p1)
 {
 	return rawfn_int([&]() -> decltype(SMSGetMessageData(p0, p1)) { return SMSGetMessageData(p0, p1); });
 }
@@ -156,17 +157,17 @@ extern "C" bool sms_rawfn_SMS_IsMarioTouchGround4cm__Fv()
 	return rawfn_int([&]() -> decltype(SMS_IsMarioTouchGround4cm()) { return SMS_IsMarioTouchGround4cm(); });
 }
 
-extern "C" int sms_rawfn_SMS_MakeMActorWithAnmData__FPCcP13MActorAnmDataUlUl(const char* p0, MActorAnmData* p1, u32 p2, u32 p3)
+extern "C" intptr_t sms_rawfn_SMS_MakeMActorWithAnmData__FPCcP13MActorAnmDataUlUl(const char* p0, MActorAnmData* p1, u32 p2, u32 p3)
 {
 	return rawfn_int([&]() -> decltype(SMS_MakeMActorWithAnmData(p0, p1, p2, p3)) { return SMS_MakeMActorWithAnmData(p0, p1, p2, p3); });
 }
 
-extern "C" int sms_rawfn_SMS_getShineIDofExStage__FUc(int p0)
+extern "C" intptr_t sms_rawfn_SMS_getShineIDofExStage__FUc(int p0)
 {
 	return rawfn_int([&]() -> decltype(SMS_getShineIDofExStage((unsigned char)p0)) { return SMS_getShineIDofExStage((unsigned char)p0); });
 }
 
-extern "C" int sms_rawfn_SMS_getShineStage__FUc(int p0)
+extern "C" intptr_t sms_rawfn_SMS_getShineStage__FUc(int p0)
 {
 	return rawfn_int([&]() -> decltype(SMS_getShineStage((unsigned char)p0)) { return SMS_getShineStage((unsigned char)p0); });
 }
@@ -186,62 +187,62 @@ extern "C" bool sms_rawfn_SMS_isMultiPlayerMap__Fv()
 	return rawfn_int([&]() -> decltype(SMS_isMultiPlayerMap()) { return SMS_isMultiPlayerMap(); });
 }
 
-extern "C" int sms_rawfn_SetViewFrustumClipCheckPerspective__Fffff(double p0, double p1, double p2, double p3)
+extern "C" intptr_t sms_rawfn_SetViewFrustumClipCheckPerspective__Fffff(double p0, double p1, double p2, double p3)
 {
 	return rawfn_int([&]() -> decltype(SetViewFrustumClipCheckPerspective((float)p0, (float)p1, (float)p2, (float)p3)) { return SetViewFrustumClipCheckPerspective((float)p0, (float)p1, (float)p2, (float)p3); });
 }
 
-extern "C" int sms_rawfn_THPPlayerDrawDone()
+extern "C" intptr_t sms_rawfn_THPPlayerDrawDone()
 {
 	return rawfn_int([&]() -> decltype(THPPlayerDrawDone()) { return THPPlayerDrawDone(); });
 }
 
-extern "C" int sms_rawfn_ViewFrustumClipCheck__FPQ26JDrama9TGraphicsP3Vecf(JDrama::TGraphics* p0, Vec* p1, double p2)
+extern "C" intptr_t sms_rawfn_ViewFrustumClipCheck__FPQ26JDrama9TGraphicsP3Vecf(JDrama::TGraphics* p0, Vec* p1, double p2)
 {
 	return rawfn_int([&]() -> decltype(ViewFrustumClipCheck(p0, p1, (float)p2)) { return ViewFrustumClipCheck(p0, p1, (float)p2); });
 }
 
-extern "C" int sms_rawfn___ct__10TBoundPaneFP9J2DScreenUl(void* self, J2DScreen* p0, u32 p1)
+extern "C" intptr_t sms_rawfn___ct__10TBoundPaneFP9J2DScreenUl(void* self, J2DScreen* p0, u32 p1)
 {
-	new (self) TBoundPane(p0, p1); return (int)(uintptr_t)self;
+	new (self) TBoundPane(p0, p1); return (intptr_t)self;
 }
 
-extern "C" int sms_rawfn___ct__7TExPaneFP9J2DScreenUl(void* self, J2DScreen* p0, u32 p1)
+extern "C" intptr_t sms_rawfn___ct__7TExPaneFP9J2DScreenUl(void* self, J2DScreen* p0, u32 p1)
 {
-	new (self) TExPane(p0, p1); return (int)(uintptr_t)self;
+	new (self) TExPane(p0, p1); return (intptr_t)self;
 }
 
-extern "C" int sms_rawfn_changeBck__11TBossPakkunFi(void* self, int p0)
+extern "C" intptr_t sms_rawfn_changeBck__11TBossPakkunFi(void* self, int p0)
 {
 	return rawfn_int([&]() -> decltype(((TBossPakkun*)self)->TBossPakkun::changeBck(p0)) { return ((TBossPakkun*)self)->TBossPakkun::changeBck(p0); });
 }
 
-extern "C" int sms_rawfn_changeNozzle__9TWaterGunFQ29TWaterGun11TNozzleTypeb(void* self, TWaterGun::TNozzleType p0, int p1)
+extern "C" intptr_t sms_rawfn_changeNozzle__9TWaterGunFQ29TWaterGun11TNozzleTypeb(void* self, TWaterGun::TNozzleType p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(((TWaterGun*)self)->TWaterGun::changeNozzle(p0, (bool)p1)) { return ((TWaterGun*)self)->TWaterGun::changeNozzle(p0, (bool)p1); });
 }
 
-extern "C" int sms_rawfn_control__14TMapObjGeneralFv(void* self)
+extern "C" intptr_t sms_rawfn_control__14TMapObjGeneralFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TMapObjGeneral*)self)->TMapObjGeneral::control()) { return ((TMapObjGeneral*)self)->TMapObjGeneral::control(); });
 }
 
-extern "C" int sms_rawfn_deleteEmitter__17JPAEmitterManagerFP14JPABaseEmitter(void* self, JPABaseEmitter* p0)
+extern "C" intptr_t sms_rawfn_deleteEmitter__17JPAEmitterManagerFP14JPABaseEmitter(void* self, JPABaseEmitter* p0)
 {
 	return rawfn_int([&]() -> decltype(((JPAEmitterManager*)self)->JPAEmitterManager::deleteEmitter(p0)) { return ((JPAEmitterManager*)self)->JPAEmitterManager::deleteEmitter(p0); });
 }
 
-extern "C" int sms_rawfn_disappear__6TYoshiFv(void* self)
+extern "C" intptr_t sms_rawfn_disappear__6TYoshiFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TYoshi*)self)->TYoshi::disappear()) { return ((TYoshi*)self)->TYoshi::disappear(); });
 }
 
-extern "C" int sms_rawfn_drawHPMeter__11TEnemyMarioFPA4_f(void* self, float (*p0)[4])
+extern "C" intptr_t sms_rawfn_drawHPMeter__11TEnemyMarioFPA4_f(void* self, float (*p0)[4])
 {
 	return rawfn_int([&]() -> decltype(((TEnemyMario*)self)->TEnemyMario::drawHPMeter(p0)) { return ((TEnemyMario*)self)->TEnemyMario::drawHPMeter(p0); });
 }
 
-extern "C" int sms_rawfn_fill_rect__9()
+extern "C" intptr_t sms_rawfn_fill_rect__9()
 {
 	rawfn_missing("fill_rect__9");
 	return 0;
@@ -252,87 +253,87 @@ extern "C" float sms_rawfn_fmodf__3stdFff(double p0, double p1)
 	return (float)(__builtin_fmodf((float)p0, (float)p1));
 }
 
-extern "C" int sms_rawfn_generate__16TEffectExplosionFRQ29JGeometry8TVec3_f(void* self, JGeometry::TVec3<float>* p0, JGeometry::TVec3<float>* p1)
+extern "C" intptr_t sms_rawfn_generate__16TEffectExplosionFRQ29JGeometry8TVec3_f(void* self, JGeometry::TVec3<float>* p0, JGeometry::TVec3<float>* p1)
 {
 	return rawfn_int([&]() -> decltype(((TEffectExplosion*)self)->TEffectExplosion::generate(*p0, *p1)) { return ((TEffectExplosion*)self)->TEffectExplosion::generate(*p0, *p1); });
 }
 
-extern "C" int sms_rawfn_generate__17TEffectColumWaterFRQ29JGeometry8TVec3_f(void* self, JGeometry::TVec3<float>* p0, JGeometry::TVec3<float>* p1)
+extern "C" intptr_t sms_rawfn_generate__17TEffectColumWaterFRQ29JGeometry8TVec3_f(void* self, JGeometry::TVec3<float>* p0, JGeometry::TVec3<float>* p1)
 {
 	return rawfn_int([&]() -> decltype(((TEffectColumWater*)self)->TEffectColumWater::generate(*p0, *p1)) { return ((TEffectColumWater*)self)->TEffectColumWater::generate(*p0, *p1); });
 }
 
-extern "C" int sms_rawfn_getNameRef__Q26JDrama11TNameRefGenCFPCc(void* self, const char* p0)
+extern "C" intptr_t sms_rawfn_getNameRef__Q26JDrama11TNameRefGenCFPCc(void* self, const char* p0)
 {
 	return rawfn_int([&]() -> decltype(((const JDrama::TNameRefGen*)self)->JDrama::TNameRefGen::getNameRef(p0)) { return ((const JDrama::TNameRefGen*)self)->JDrama::TNameRefGen::getNameRef(p0); });
 }
 
-extern "C" int sms_rawfn_initAnmSound__9MAnmSoundFPvUlf(void* self, void* p0, u32 p1, double p2)
+extern "C" intptr_t sms_rawfn_initAnmSound__9MAnmSoundFPvUlf(void* self, void* p0, u32 p1, double p2)
 {
 	return rawfn_int([&]() -> decltype(((MAnmSound*)self)->MAnmSound::initAnmSound(p0, p1, (float)p2)) { return ((MAnmSound*)self)->MAnmSound::initAnmSound(p0, p1, (float)p2); });
 }
 
-extern "C" int sms_rawfn_initData__9TCardSaveFP13TMarioGamePad(void* self, TMarioGamePad* p0)
+extern "C" intptr_t sms_rawfn_initData__9TCardSaveFP13TMarioGamePad(void* self, TMarioGamePad* p0)
 {
 	return rawfn_int([&]() -> decltype(((TCardSave*)self)->TCardSave::initData(p0)) { return ((TCardSave*)self)->TCardSave::initData(p0); });
 }
 
-extern "C" int sms_rawfn_init__13TMapStaticObjFPCc(void* self, const char* p0)
+extern "C" intptr_t sms_rawfn_init__13TMapStaticObjFPCc(void* self, const char* p0)
 {
 	return rawfn_int([&]() -> decltype(((TMapStaticObj*)self)->TMapStaticObj::init(p0)) { return ((TMapStaticObj*)self)->TMapStaticObj::init(p0); });
 }
 
-extern "C" int sms_rawfn_init__7MSStageFUcUc(int p0, int p1)
+extern "C" intptr_t sms_rawfn_init__7MSStageFUcUc(int p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(MSStage::init((unsigned char)p0, (unsigned char)p1)) { return MSStage::init((unsigned char)p0, (unsigned char)p1); });
 }
 
-extern "C" int sms_rawfn_isAttack__7TRocketFv(void* self)
+extern "C" intptr_t sms_rawfn_isAttack__7TRocketFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TRocket*)self)->TRocket::isAttack()) { return ((TRocket*)self)->TRocket::isAttack(); });
 }
 
-extern "C" int sms_rawfn_isDamageToCannon__8TBombHeiFv(void* self)
+extern "C" intptr_t sms_rawfn_isDamageToCannon__8TBombHeiFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TBombHei*)self)->TBombHei::isDamageToCannon()) { return ((TBombHei*)self)->TBombHei::isDamageToCannon(); });
 }
 
-extern "C" int sms_rawfn_isEmitting__9TWaterGunFv(void* self)
+extern "C" intptr_t sms_rawfn_isEmitting__9TWaterGunFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TWaterGun*)self)->TWaterGun::isEmitting()) { return ((TWaterGun*)self)->TWaterGun::isEmitting(); });
 }
 
-extern "C" int sms_rawfn_isMarioClimb__16TCameraMarioDataCFUl(void* self, u32 p0)
+extern "C" intptr_t sms_rawfn_isMarioClimb__16TCameraMarioDataCFUl(void* self, u32 p0)
 {
 	return rawfn_int([&]() -> decltype(((const TCameraMarioData*)self)->TCameraMarioData::isMarioClimb(p0)) { return ((const TCameraMarioData*)self)->TCameraMarioData::isMarioClimb(p0); });
 }
 
-extern "C" int sms_rawfn_isNowCanTaken__8TBaseNPCCFv(void* self)
+extern "C" intptr_t sms_rawfn_isNowCanTaken__8TBaseNPCCFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((const TBaseNPC*)self)->TBaseNPC::isNowCanTaken()) { return ((const TBaseNPC*)self)->TBaseNPC::isNowCanTaken(); });
 }
 
-extern "C" int sms_rawfn_killEnemiesWithin__10TConductorFRCQ29JGeometry8TVec3_f(void* self, const JGeometry::TVec3<float>* p0, double p1)
+extern "C" intptr_t sms_rawfn_killEnemiesWithin__10TConductorFRCQ29JGeometry8TVec3_f(void* self, const JGeometry::TVec3<float>* p0, double p1)
 {
 	return rawfn_int([&]() -> decltype(((TConductor*)self)->TConductor::killEnemiesWithin(*p0, (float)p1)) { return ((TConductor*)self)->TConductor::killEnemiesWithin(*p0, (float)p1); });
 }
 
-extern "C" int sms_rawfn_loadAfter__Q26JDrama8TNameRefFv(void* self)
+extern "C" intptr_t sms_rawfn_loadAfter__Q26JDrama8TNameRefFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((JDrama::TNameRef*)self)->JDrama::TNameRef::loadAfter()) { return ((JDrama::TNameRef*)self)->JDrama::TNameRef::loadAfter(); });
 }
 
-extern "C" int sms_rawfn_loadModelData__16TModelDataKeeperFPCcUlPCc(const char* p0, u32 p1, const char* p2)
+extern "C" intptr_t sms_rawfn_loadModelData__16TModelDataKeeperFPCcUlPCc(const char* p0, u32 p1, const char* p2)
 {
 	return rawfn_int([&]() -> decltype(TModelDataKeeper::loadModelData(p0, p1, p2)) { return TModelDataKeeper::loadModelData(p0, p1, p2); });
 }
 
-extern "C" int sms_rawfn_load__Q26JDrama6TActorFR20JSUMemoryInputStream(void* self, JSUMemoryInputStream* p0)
+extern "C" intptr_t sms_rawfn_load__Q26JDrama6TActorFR20JSUMemoryInputStream(void* self, JSUMemoryInputStream* p0)
 {
 	return rawfn_int([&]() -> decltype(((JDrama::TActor*)self)->JDrama::TActor::load(*p0)) { return ((JDrama::TActor*)self)->JDrama::TActor::load(*p0); });
 }
 
-extern "C" int sms_rawfn_load__Q26JDrama8TNameRefFR20JSUMemoryInputStream(void* self, JSUMemoryInputStream* p0)
+extern "C" intptr_t sms_rawfn_load__Q26JDrama8TNameRefFR20JSUMemoryInputStream(void* self, JSUMemoryInputStream* p0)
 {
 	return rawfn_int([&]() -> decltype(((JDrama::TNameRef*)self)->JDrama::TNameRef::load(*p0)) { return ((JDrama::TNameRef*)self)->JDrama::TNameRef::load(*p0); });
 }
@@ -342,198 +343,198 @@ extern "C" float sms_rawfn_matan__Fff(double p0, double p1)
 	return (float)(matan((float)p0, (float)p1));
 }
 
-extern "C" int sms_rawfn_npcMadIn__8TBaseNPCFv(void* self)
+extern "C" intptr_t sms_rawfn_npcMadIn__8TBaseNPCFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TBaseNPC*)self)->TBaseNPC::npcMadIn()) { return ((TBaseNPC*)self)->TBaseNPC::npcMadIn(); });
 }
 
-extern "C" int sms_rawfn_npcStepIn__8TBaseNPCFv(void* self)
+extern "C" intptr_t sms_rawfn_npcStepIn__8TBaseNPCFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TBaseNPC*)self)->TBaseNPC::npcStepIn()) { return ((TBaseNPC*)self)->TBaseNPC::npcStepIn(); });
 }
 
-extern "C" int sms_rawfn_npcWaitIn__8TBaseNPCFv(void* self)
+extern "C" intptr_t sms_rawfn_npcWaitIn__8TBaseNPCFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TBaseNPC*)self)->TBaseNPC::npcWaitIn()) { return ((TBaseNPC*)self)->TBaseNPC::npcWaitIn(); });
 }
 
-extern "C" int sms_rawfn_replace__14TScreenTextureFP12J3DModelDataPCc(void* self, J3DModelData* p0, const char* p1)
+extern "C" intptr_t sms_rawfn_replace__14TScreenTextureFP12J3DModelDataPCc(void* self, J3DModelData* p0, const char* p1)
 {
 	return rawfn_int([&]() -> decltype(((TScreenTexture*)self)->TScreenTexture::replace(p0, p1)) { return ((TScreenTexture*)self)->TScreenTexture::replace(p0, p1); });
 }
 
-extern "C" int sms_rawfn_resetObjects__6TGuideFv(void* self)
+extern "C" intptr_t sms_rawfn_resetObjects__6TGuideFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TGuide*)self)->TGuide::resetObjects()) { return ((TGuide*)self)->TGuide::resetObjects(); });
 }
 
-extern "C" int sms_rawfn_ride__6TYoshiFv(void* self)
+extern "C" intptr_t sms_rawfn_ride__6TYoshiFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TYoshi*)self)->TYoshi::ride()) { return ((TYoshi*)self)->TYoshi::ride(); });
 }
 
-extern "C" int sms_rawfn_search__19JALListS_5(u32 p0)
+extern "C" intptr_t sms_rawfn_search__19JALListS_5(u32 p0)
 {
 	return rawfn_int([&]() -> decltype(JALListS<MSBgm, u32>::search(p0)) { return JALListS<MSBgm, u32>::search(p0); });
 }
 
-extern "C" int sms_rawfn_setAnmFromIndex__12MActorAnmBckFiPUs(void* self, int p0, unsigned short* p1)
+extern "C" intptr_t sms_rawfn_setAnmFromIndex__12MActorAnmBckFiPUs(void* self, int p0, unsigned short* p1)
 {
 	return rawfn_int([&]() -> decltype(((MActorAnmBck*)self)->MActorAnmBck::setAnmFromIndex(p0, p1)) { return ((MActorAnmBck*)self)->MActorAnmBck::setAnmFromIndex(p0, p1); });
 }
 
-extern "C" int sms_rawfn_setLevel__10THinokuri2Fi(void* self, int p0)
+extern "C" intptr_t sms_rawfn_setLevel__10THinokuri2Fi(void* self, int p0)
 {
 	return rawfn_int([&]() -> decltype(((THinokuri2*)self)->THinokuri2::setLevel(p0)) { return ((THinokuri2*)self)->THinokuri2::setLevel(p0); });
 }
 
-extern "C" int sms_rawfn_setMSoundEnterStage__10MSMainProcFUcUc(int p0, int p1)
+extern "C" intptr_t sms_rawfn_setMSoundEnterStage__10MSMainProcFUcUc(int p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(MSMainProc::setMSoundEnterStage((unsigned char)p0, (unsigned char)p1)) { return MSMainProc::setMSoundEnterStage((unsigned char)p0, (unsigned char)p1); });
 }
 
-extern "C" int sms_rawfn_setNextMessage__11TNpcBalloonFUll(void* self, u32 p0, s32 p1)
+extern "C" intptr_t sms_rawfn_setNextMessage__11TNpcBalloonFUll(void* self, u32 p0, s32 p1)
 {
 	return rawfn_int([&]() -> decltype(((TNpcBalloon*)self)->TNpcBalloon::setNextMessage(p0, p1)) { return ((TNpcBalloon*)self)->TNpcBalloon::setNextMessage(p0, p1); });
 }
 
-extern "C" int sms_rawfn_setParamInitDataPointer__18JAIGlobalParameterFPv(void* p0)
+extern "C" intptr_t sms_rawfn_setParamInitDataPointer__18JAIGlobalParameterFPv(void* p0)
 {
 	return rawfn_int([&]() -> decltype(JAIGlobalParameter::setParamInitDataPointer(p0)) { return JAIGlobalParameter::setParamInitDataPointer(p0); });
 }
 
-extern "C" int sms_rawfn_setWaterCameraFir__12MSSeCallBackFb(int p0)
+extern "C" intptr_t sms_rawfn_setWaterCameraFir__12MSSeCallBackFb(int p0)
 {
 	return rawfn_int([&]() -> decltype(MSSeCallBack::setWaterCameraFir((bool)p0)) { return MSSeCallBack::setWaterCameraFir((bool)p0); });
 }
 
-extern "C" int sms_rawfn_startAppearBalloon__11TGCConsole2FUlb(void* self, u32 p0, int p1)
+extern "C" intptr_t sms_rawfn_startAppearBalloon__11TGCConsole2FUlb(void* self, u32 p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startAppearBalloon(p0, (bool)p1)) { return ((TGCConsole2*)self)->TGCConsole2::startAppearBalloon(p0, (bool)p1); });
 }
 
-extern "C" int sms_rawfn_startAppearRedCoin__11TGCConsole2Fv(void* self)
+extern "C" intptr_t sms_rawfn_startAppearRedCoin__11TGCConsole2Fv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startAppearRedCoin()) { return ((TGCConsole2*)self)->TGCConsole2::startAppearRedCoin(); });
 }
 
-extern "C" int sms_rawfn_startAppearTelop__11TGCConsole2Fb(void* self, int p0)
+extern "C" intptr_t sms_rawfn_startAppearTelop__11TGCConsole2Fb(void* self, int p0)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startAppearTelop((bool)p0)) { return ((TGCConsole2*)self)->TGCConsole2::startAppearTelop((bool)p0); });
 }
 
-extern "C" int sms_rawfn_startAppearTimer__11TGCConsole2Fil(void* self, int p0, s32 p1)
+extern "C" intptr_t sms_rawfn_startAppearTimer__11TGCConsole2Fil(void* self, int p0, s32 p1)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startAppearTimer(p0, p1)) { return ((TGCConsole2*)self)->TGCConsole2::startAppearTimer(p0, p1); });
 }
 
-extern "C" int sms_rawfn_startDecrease__19TSelectShineManagerFi(void* self, int p0)
+extern "C" intptr_t sms_rawfn_startDecrease__19TSelectShineManagerFi(void* self, int p0)
 {
 	return rawfn_int([&]() -> decltype(((TSelectShineManager*)self)->TSelectShineManager::startDecrease(p0)) { return ((TSelectShineManager*)self)->TSelectShineManager::startDecrease(p0); });
 }
 
-extern "C" int sms_rawfn_startDemo__8TBathtubFv(void* self)
+extern "C" intptr_t sms_rawfn_startDemo__8TBathtubFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TBathtub*)self)->TBathtub::startDemo()) { return ((TBathtub*)self)->TBathtub::startDemo(); });
 }
 
-extern "C" int sms_rawfn_startDisappearBalloon__11TGCConsole2FUlb(void* self, u32 p0, int p1)
+extern "C" intptr_t sms_rawfn_startDisappearBalloon__11TGCConsole2FUlb(void* self, u32 p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startDisappearBalloon(p0, (bool)p1)) { return ((TGCConsole2*)self)->TGCConsole2::startDisappearBalloon(p0, (bool)p1); });
 }
 
-extern "C" int sms_rawfn_startDisappearTank__11TGCConsole2Fv(void* self)
+extern "C" intptr_t sms_rawfn_startDisappearTank__11TGCConsole2Fv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startDisappearTank()) { return ((TGCConsole2*)self)->TGCConsole2::startDisappearTank(); });
 }
 
-extern "C" int sms_rawfn_startDisappearTimer__11TGCConsole2Fv(void* self)
+extern "C" intptr_t sms_rawfn_startDisappearTimer__11TGCConsole2Fv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TGCConsole2*)self)->TGCConsole2::startDisappearTimer()) { return ((TGCConsole2*)self)->TGCConsole2::startDisappearTimer(); });
 }
 
-extern "C" int sms_rawfn_startIncrease__19TSelectShineManagerFi(void* self, int p0)
+extern "C" intptr_t sms_rawfn_startIncrease__19TSelectShineManagerFi(void* self, int p0)
 {
 	return rawfn_int([&]() -> decltype(((TSelectShineManager*)self)->TSelectShineManager::startIncrease(p0)) { return ((TSelectShineManager*)self)->TSelectShineManager::startIncrease(p0); });
 }
 
-extern "C" int sms_rawfn_startMove__11TSelectMenuFv(void* self)
+extern "C" intptr_t sms_rawfn_startMove__11TSelectMenuFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TSelectMenu*)self)->TSelectMenu::startMove()) { return ((TSelectMenu*)self)->TSelectMenu::startMove(); });
 }
 
-extern "C" int sms_rawfn_startOpenWindow__11TSelectMenuFv(void* self)
+extern "C" intptr_t sms_rawfn_startOpenWindow__11TSelectMenuFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TSelectMenu*)self)->TSelectMenu::startOpenWindow()) { return ((TSelectMenu*)self)->TSelectMenu::startOpenWindow(); });
 }
 
-extern "C" int sms_rawfn_startStageBGM__10MSMainProcFUcUc(int p0, int p1)
+extern "C" intptr_t sms_rawfn_startStageBGM__10MSMainProcFUcUc(int p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(MSMainProc::startStageBGM((unsigned char)p0, (unsigned char)p1)) { return MSMainProc::startStageBGM((unsigned char)p0, (unsigned char)p1); });
 }
 
-extern "C" int sms_rawfn_startStageEntranceDemo__10MSMainProcFUcUc(int p0, int p1)
+extern "C" intptr_t sms_rawfn_startStageEntranceDemo__10MSMainProcFUcUc(int p0, int p1)
 {
 	return rawfn_int([&]() -> decltype(MSMainProc::startStageEntranceDemo((unsigned char)p0, (unsigned char)p1)) { return MSMainProc::startStageEntranceDemo((unsigned char)p0, (unsigned char)p1); });
 }
 
-extern "C" int sms_rawfn_stateReady()
+extern "C" intptr_t sms_rawfn_stateReady()
 {
 	rawfn_missing("stateReady");
 	return 0;
 }
 
-extern "C" int sms_rawfn_testPerform__Q26JDrama8TViewObjFUlPQ26JDrama9TGraphics(void* self, u32 p0, JDrama::TGraphics* p1)
+extern "C" intptr_t sms_rawfn_testPerform__Q26JDrama8TViewObjFUlPQ26JDrama9TGraphics(void* self, u32 p0, JDrama::TGraphics* p1)
 {
 	return rawfn_int([&]() -> decltype(((JDrama::TViewObj*)self)->JDrama::TViewObj::testPerform(p0, p1)) { return ((JDrama::TViewObj*)self)->JDrama::TViewObj::testPerform(p0, p1); });
 }
 
-extern "C" int sms_rawfn_theNerve__13TNerveBPGetUpFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__13TNerveBPGetUpFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPGetUp*)self)->TNerveBPGetUp::theNerve()) { return ((TNerveBPGetUp*)self)->TNerveBPGetUp::theNerve(); });
 }
 
-extern "C" int sms_rawfn_theNerve__13TNerveBPPivotFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__13TNerveBPPivotFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPPivot*)self)->TNerveBPPivot::theNerve()) { return ((TNerveBPPivot*)self)->TNerveBPPivot::theNerve(); });
 }
 
-extern "C" int sms_rawfn_theNerve__13TNerveBPSwingFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__13TNerveBPSwingFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPSwing*)self)->TNerveBPSwing::theNerve()) { return ((TNerveBPSwing*)self)->TNerveBPSwing::theNerve(); });
 }
 
-extern "C" int sms_rawfn_theNerve__14TNerveBPPreDieFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__14TNerveBPPreDieFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPPreDie*)self)->TNerveBPPreDie::theNerve()) { return ((TNerveBPPreDie*)self)->TNerveBPPreDie::theNerve(); });
 }
 
-extern "C" int sms_rawfn_theNerve__15TNerveBPTornadoFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__15TNerveBPTornadoFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPTornado*)self)->TNerveBPTornado::theNerve()) { return ((TNerveBPTornado*)self)->TNerveBPTornado::theNerve(); });
 }
 
-extern "C" int sms_rawfn_theNerve__17TNerveBPTumbleOutFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__17TNerveBPTumbleOutFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPTumbleOut*)self)->TNerveBPTumbleOut::theNerve()) { return ((TNerveBPTumbleOut*)self)->TNerveBPTumbleOut::theNerve(); });
 }
 
-extern "C" int sms_rawfn_theNerve__18TNerveBPStompReactFv(void* self)
+extern "C" intptr_t sms_rawfn_theNerve__18TNerveBPStompReactFv(void* self)
 {
 	return rawfn_int([&]() -> decltype(((TNerveBPStompReact*)self)->TNerveBPStompReact::theNerve()) { return ((TNerveBPStompReact*)self)->TNerveBPStompReact::theNerve(); });
 }
 
-extern "C" int sms_rawfn_thinkBtp__6TYoshiFi(void* self, int p0)
+extern "C" intptr_t sms_rawfn_thinkBtp__6TYoshiFi(void* self, int p0)
 {
 	return rawfn_int([&]() -> decltype(((TYoshi*)self)->TYoshi::thinkBtp(p0)) { return ((TYoshi*)self)->TYoshi::thinkBtp(p0); });
 }
 
-extern "C" int sms_rawfn_xFadeBgmForce__10MSBgmXFadeFf(void* self, double p0)
+extern "C" intptr_t sms_rawfn_xFadeBgmForce__10MSBgmXFadeFf(void* self, double p0)
 {
 	return rawfn_int([&]() -> decltype(((MSBgmXFade*)self)->MSBgmXFade::xFadeBgmForce((float)p0)) { return ((MSBgmXFade*)self)->MSBgmXFade::xFadeBgmForce((float)p0); });
 }
 
-extern "C" int sms_rawfn_xFadeBgm__10MSBgmXFadeFf(void* self, double p0)
+extern "C" intptr_t sms_rawfn_xFadeBgm__10MSBgmXFadeFf(void* self, double p0)
 {
 	return rawfn_int([&]() -> decltype(((MSBgmXFade*)self)->MSBgmXFade::xFadeBgm((float)p0)) { return ((MSBgmXFade*)self)->MSBgmXFade::xFadeBgm((float)p0); });
 }

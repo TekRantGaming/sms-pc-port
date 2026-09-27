@@ -13,3 +13,9 @@
 extern "C"
 #endif
 void* sms_mod_rawaddr(unsigned int addr);
+
+// SMS_OFFSET(Class, retail offset): where the port keeps a member the mods
+// address by retail offset (tools/mods/shi_layout/offsets.py).
+#ifdef __cplusplus
+#include <sms_offsets.h>
+#endif

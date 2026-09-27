@@ -32,10 +32,20 @@ set(_defs NTSCU KURIBO_NO_TYPES "BETTER_SMS_VERSION=\"v2.0\"" BETTER_SMS_CUSTOM_
   BETTER_SMS_SLOT_B_SUPPORT=1 BETTER_SMS_SHADOW_MARIO_HEALTHBAR=1 "SUPER_MARIO_ECLIPSE_VERSION=\"v1.1\"")
 # -fno-use-init-array: static constructors go to .ctors, which the port
 # renames (cmake/eclipse.cmake) and runs when the modules load, as Kuribo does.
-# -malign-double: 8-byte members aligned to 8 inside structs, as on the
+# -malign-double (32-bit): 8-byte members aligned to 8 inside structs, as on the
 # GameCube, so SunshineHeaderInterface's classes match retail (and the port's
 # types.h, which does the same for s64/u64/f64).
-set(_opts -m32 -malign-double -O2 -g -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
+if(NOT SMS_ARCH)
+  set(SMS_ARCH 32)
+endif()
+set(_arch -m${SMS_ARCH})
+if(SMS_ARCH STREQUAL "32")
+  list(APPEND _arch -malign-double)
+endif()
+# -fnew-alignment=4: the game's operator new (JKRHeap) guarantees 4-byte
+# alignment, not the 16 clang would otherwise assume for aligned SSE stores;
+# -fno-aligned-new keeps every allocation on that operator (the game's heaps).
+set(_opts ${_arch} -fnew-alignment=4 -fno-aligned-new -O2 -g -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
   -fno-use-init-array
   -include ${PORT_MODS}/eclipse/shim/sms_mod_prelude.h
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20> $<$<COMPILE_LANGUAGE:C>:-std=gnu11>)
@@ -69,7 +79,7 @@ foreach(m moveset eclipse)
   target_compile_options(${m}_objs PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
   set(_o ${CMAKE_CURRENT_BINARY_DIR}/${m}_module.o)
   add_custom_command(OUTPUT ${_o}
-    COMMAND ${CMAKE_CXX_COMPILER} -m32 -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
+    COMMAND ${CMAKE_CXX_COMPILER} -m${SMS_ARCH} -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
     COMMAND ${CMAKE_OBJCOPY} --localize-hidden ${_o}
     DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> COMMAND_EXPAND_LISTS VERBATIM)
   list(APPEND _modules ${_o})
@@ -81,7 +91,7 @@ endforeach()
 # .ctors (mod_ctors.ld).
 set(_obj ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.o)
 add_custom_command(OUTPUT ${_obj}
-  COMMAND ${CMAKE_CXX_COMPILER} -m32 -r -nostdlib -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld -o ${_obj}
+  COMMAND ${CMAKE_CXX_COMPILER} -m${SMS_ARCH} -r -nostdlib -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld -o ${_obj}
     $<TARGET_OBJECTS:bse_objs> ${_modules}
   DEPENDS bse_objs $<TARGET_OBJECTS:bse_objs> ${_modules} ${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld
   COMMAND_EXPAND_LISTS VERBATIM)

@@ -8,12 +8,9 @@
 # code-mod registry (platform/mods/modhooks.cpp) and reach the game through
 # hooks in the decomp source (decomp-patches/modhook-*.patch).
 #
-# 32-bit only for now: their headers describe the GameCube's layout, which
-# the 32-bit port reproduces (decomp-patches/layout-01-*.patch).
-
-if(NOT SMS_ARCH STREQUAL "32")
-  message(FATAL_ERROR "SMS_ECLIPSE needs the 32-bit build (SMS_ARCH=32)")
-endif()
+# Their headers describe the GameCube's layout; platform/mods/eclipse/shi-layout.patch
+# (tools/mods/shi_layout) re-lays their classes out as the port lays out the
+# game's, on 32- and 64-bit hosts.
 find_program(SMS_CLANGXX NAMES clang++)
 find_program(SMS_CLANG NAMES clang)
 if(NOT SMS_CLANGXX OR NOT SMS_CLANG)
@@ -78,6 +75,7 @@ ExternalProject_Add(sms_eclipse_build
     -DECLIPSE_SRC=${SMS_ECLIPSE_SRC_DIR}/eclipse -DBSE_SRC=${SMS_ECLIPSE_SRC_DIR}/bse
     -DMOVESET_SRC=${SMS_ECLIPSE_SRC_DIR}/moveset
     -DSHI_SRC=${SMS_ECLIPSE_SRC_DIR}/shi -DPORT_MODS=${CMAKE_CURRENT_SOURCE_DIR}/platform/mods
+    -DSMS_ARCH=${SMS_ARCH}
   BUILD_ALWAYS ON
   INSTALL_COMMAND ""
   BUILD_BYPRODUCTS ${_eclipse_lib})
@@ -113,7 +111,20 @@ set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_eclipse_lib})
 target_link_options(sms PRIVATE
   -Wl,--defsym=gStageBGM=_ZN10MSMainProc11MSStageInfo8stageBgmE
   -Wl,--defsym=gAudioVolume=_ZN5MSBgm12smMainVolumeE
-  -Wl,--defsym=waterColor=gModelWaterManagerWaterColor
-  -Wl,--defsym=_ZN7JKRHeap5allocEjiPS_=_ZN7JKRHeap5allocEmiPS_
-  -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag)
+  -Wl,--defsym=waterColor=gModelWaterManagerWaterColor)
+if(SMS_ARCH STREQUAL "32")
+  target_link_options(sms PRIVATE
+    -Wl,--defsym=_ZN7JKRHeap5allocEjiPS_=_ZN7JKRHeap5allocEmiPS_
+    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag)
+else()
+  # On LP64 hosts it is the other way round: the game's u32 is unsigned int,
+  # and these declarations (size_t, unsigned long) say unsigned long.
+  target_link_options(sms PRIVATE
+    -Wl,--defsym=_ZN7JKRHeap5allocEmiPS_=_ZN7JKRHeap5allocEjiPS_
+    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag
+    -Wl,--defsym=_ZN6JStage6TActor11JSGSetShapeEm=_ZN6JStage6TActor11JSGSetShapeEj
+    -Wl,--defsym=_ZN6JStage6TActor15JSGSetAnimationEm=_ZN6JStage6TActor15JSGSetAnimationEj
+    -Wl,--defsym=_ZN6JStage7TSystem16JSGGetSystemDataEm=_ZN6JStage7TSystem16JSGGetSystemDataEj
+    -Wl,--defsym=_ZN6JStage7TSystem16JSGSetSystemDataEmm=_ZN6JStage7TSystem16JSGSetSystemDataEjj)
+endif()
 message(STATUS "SMS port: Super Mario Eclipse built in (sources in ${SMS_ECLIPSE_SRC_DIR})")

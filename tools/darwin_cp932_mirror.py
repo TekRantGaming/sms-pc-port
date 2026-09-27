@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Mirror decomp (and patched) sources as CP932 for Apple Clang.
+"""Mirror decomp (and patched) sources as CP932 for compilers without CP932 conversion.
 
-Apple Clang rejects -fexec-charset=CP932. Encoding the source tree as CP932
-makes string literal bytes match the disc (same as GCC's -fexec-charset=CP932).
+Apple Clang rejects -fexec-charset=CP932, and some portable GCC builds lack
+iconv. Encoding the source tree as CP932 makes string literal bytes match the
+disc (same as GCC's -fexec-charset=CP932).
 """
 from __future__ import annotations
 
 import argparse
 import codecs
-import shutil
 import sys
 from pathlib import Path
 
@@ -51,11 +51,11 @@ def mirror_file(src: Path, dst: Path) -> None:
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
-            dst.write_bytes(data)
-            return
-        dst.write_bytes(encode_cp932(text))
-    else:
-        shutil.copy2(src, dst)
+            pass
+        else:
+            data = encode_cp932(text)
+    if not dst.exists() or dst.read_bytes() != data:
+        dst.write_bytes(data)
 
 
 def main() -> int:
@@ -66,9 +66,12 @@ def main() -> int:
     args = ap.parse_args()
 
     out: Path = args.out
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
+    seen = set()
+
+    def mirror(src: Path, dst: Path) -> None:
+        mirror_file(src, dst)
+        seen.add(dst)
 
     patched_root: Path = args.patched
     decomp: Path = args.decomp
@@ -80,7 +83,7 @@ def main() -> int:
         rel = path.relative_to(include_src)
         patched = patched_root / "include" / rel
         src = patched if patched.is_file() else path
-        mirror_file(src, out / "include" / rel)
+        mirror(src, out / "include" / rel)
 
     src_root = decomp / "src"
     for path in src_root.rglob("*"):
@@ -91,7 +94,7 @@ def main() -> int:
         rel = path.relative_to(src_root)
         patched = patched_root / "src" / rel
         src = patched if patched.is_file() else path
-        mirror_file(src, out / "src" / rel)
+        mirror(src, out / "src" / rel)
 
     if patched_root.is_dir():
         for path in patched_root.rglob("*"):
@@ -99,8 +102,12 @@ def main() -> int:
                 continue
             rel = path.relative_to(patched_root)
             dst = out / rel
-            if not dst.exists():
-                mirror_file(path, dst)
+            if dst not in seen:
+                mirror(path, dst)
+
+    for path in out.rglob("*"):
+        if path.is_file() and path not in seen:
+            path.unlink()
 
     print(f"CP932 mirror at {out}", file=sys.stderr)
     return 0

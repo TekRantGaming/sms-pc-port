@@ -71,15 +71,12 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECT
   list(APPEND SMS_GAME_FLAGS -msse2 -mfpmath=sse)
 endif()
 # String literals are Shift-JIS on disc and in the MWCC build (sjiswrap).
-# GCC: -fexec-charset=CP932. Apple Clang rejects CP932, so on macOS without
-# that flag we mirror sources as CP932 (tools/darwin_cp932_mirror.py).
+# GCC normally uses -fexec-charset=CP932. Some portable compiler builds lack
+# iconv, and Apple Clang rejects CP932; both use the source mirror below.
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-fexec-charset=CP932" SMS_HAVE_CP932)
 if(SMS_HAVE_CP932)
   list(APPEND SMS_GAME_FLAGS -finput-charset=UTF-8 -fexec-charset=CP932)
-elseif(NOT APPLE)
-  message(FATAL_ERROR
-    "This compiler lacks -fexec-charset=CP932 (needed for Shift-JIS game string literals).")
 endif()
 check_cxx_compiler_flag("-fno-unreachable-traps" SMS_HAVE_NO_UNREACHABLE_TRAPS)
 if(SMS_HAVE_NO_UNREACHABLE_TRAPS)
@@ -107,7 +104,7 @@ if(APPLE)
 endif()
 
 set(SMS_GAME_INCLUDE_DIR ${SMS_DECOMP}/include)
-if(APPLE AND NOT SMS_HAVE_CP932)
+if(NOT SMS_HAVE_CP932)
   set(SMS_CP932_ROOT ${CMAKE_BINARY_DIR}/cp932)
   execute_process(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/darwin_cp932_mirror.py
@@ -135,7 +132,7 @@ if(APPLE AND NOT SMS_HAVE_CP932)
     endforeach()
     set(${lst} ${_retargeted})
   endforeach()
-  message(STATUS "SMS port: compiling game sources from CP932 mirror (Apple Clang)")
+  message(STATUS "SMS port: compiling game sources from CP932 mirror")
 endif()
 
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} PROPERTIES LANGUAGE CXX)

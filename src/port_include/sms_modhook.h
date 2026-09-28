@@ -47,23 +47,23 @@ static inline void* sms_mod_site_(unsigned int addr, void** cache, unsigned int*
 // object first). Used through __typeof__ only; never called.
 template <class T> struct sms_mod_type_ { typedef T type; };
 template <class R, class C> R (*sms_mod_as_free(R (C::*)()))(C*) { return 0; }
-template <class R, class C> R (*sms_mod_as_free(R (C::*)() const))(C*) { return 0; }
+template <class R, class C> R (*sms_mod_as_free(R (C::*)() const))(const C*) { return 0; }
 template <class R, class C, class A0> R (*sms_mod_as_free(R (C::*)(A0)))(C*, A0) { return 0; }
-template <class R, class C, class A0> R (*sms_mod_as_free(R (C::*)(A0) const))(C*, A0) { return 0; }
+template <class R, class C, class A0> R (*sms_mod_as_free(R (C::*)(A0) const))(const C*, A0) { return 0; }
 template <class R, class C, class A0, class A1> R (*sms_mod_as_free(R (C::*)(A0, A1)))(C*, A0, A1) { return 0; }
-template <class R, class C, class A0, class A1> R (*sms_mod_as_free(R (C::*)(A0, A1) const))(C*, A0, A1) { return 0; }
+template <class R, class C, class A0, class A1> R (*sms_mod_as_free(R (C::*)(A0, A1) const))(const C*, A0, A1) { return 0; }
 template <class R, class C, class A0, class A1, class A2> R (*sms_mod_as_free(R (C::*)(A0, A1, A2)))(C*, A0, A1, A2) { return 0; }
-template <class R, class C, class A0, class A1, class A2> R (*sms_mod_as_free(R (C::*)(A0, A1, A2) const))(C*, A0, A1, A2) { return 0; }
+template <class R, class C, class A0, class A1, class A2> R (*sms_mod_as_free(R (C::*)(A0, A1, A2) const))(const C*, A0, A1, A2) { return 0; }
 template <class R, class C, class A0, class A1, class A2, class A3> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3)))(C*, A0, A1, A2, A3) { return 0; }
-template <class R, class C, class A0, class A1, class A2, class A3> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3) const))(C*, A0, A1, A2, A3) { return 0; }
+template <class R, class C, class A0, class A1, class A2, class A3> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3) const))(const C*, A0, A1, A2, A3) { return 0; }
 template <class R, class C, class A0, class A1, class A2, class A3, class A4> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4)))(C*, A0, A1, A2, A3, A4) { return 0; }
-template <class R, class C, class A0, class A1, class A2, class A3, class A4> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4) const))(C*, A0, A1, A2, A3, A4) { return 0; }
+template <class R, class C, class A0, class A1, class A2, class A3, class A4> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4) const))(const C*, A0, A1, A2, A3, A4) { return 0; }
 template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5)))(C*, A0, A1, A2, A3, A4, A5) { return 0; }
-template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5) const))(C*, A0, A1, A2, A3, A4, A5) { return 0; }
+template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5) const))(const C*, A0, A1, A2, A3, A4, A5) { return 0; }
 template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5, class A6> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5, A6)))(C*, A0, A1, A2, A3, A4, A5, A6) { return 0; }
-template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5, class A6> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5, A6) const))(C*, A0, A1, A2, A3, A4, A5, A6) { return 0; }
+template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5, class A6> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5, A6) const))(const C*, A0, A1, A2, A3, A4, A5, A6) { return 0; }
 template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5, class A6, class A7> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5, A6, A7)))(C*, A0, A1, A2, A3, A4, A5, A6, A7) { return 0; }
-template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5, class A6, class A7> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5, A6, A7) const))(C*, A0, A1, A2, A3, A4, A5, A6, A7) { return 0; }
+template <class R, class C, class A0, class A1, class A2, class A3, class A4, class A5, class A6, class A7> R (*sms_mod_as_free(R (C::*)(A0, A1, A2, A3, A4, A5, A6, A7) const))(const C*, A0, A1, A2, A3, A4, A5, A6, A7) { return 0; }
 
 // A replaced call to a free or static function `fn`; arguments as in the call.
 #define SMS_MOD_CALLF(addr, fn, original, ...)                                                     \

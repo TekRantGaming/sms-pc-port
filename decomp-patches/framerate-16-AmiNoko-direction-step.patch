@@ -1,0 +1,35 @@
+Reason: port: with frame_rate = 60 the fence Koopas (TAmiNoko) turn at their 30 fps speed; calcDirection creeps the up and facing vectors by a fixed amount on every calc-anim pass, which comes every frame, so they turned twice as fast, and the up vector decides which side of the fence a punch hits
+--- a/src/Enemy/amiNoko.cpp
++++ b/src/Enemy/amiNoko.cpp
+@@ -567,10 +567,31 @@ void TAmiNoko::bind()
+ 	}
+ }
+ 
++#ifdef TARGET_PC
++// Port: with frame_rate = 60 TMarDirector::direct still runs CUE_MOVE in
++// 1/120 s ticks (two a frame instead of four) but CUE_CALC_ANIM comes every
++// frame, twice as often per second as at 30. calcDirection() creeps mUp and
++// mFront towards the fence normal and the next path node by a fixed
++// getSLMtxRotSpeed() per call, so the fence Koopas turned twice as fast; mUp
++// is gameplay (isHitValid decides from it which side of the fence a punch
++// lands on). Step it once per 1/30 s: on the calc pass of every other frame
++// at 60 (the director counts one unk5C per tick, two a frame).
++extern "C" int port_fps60_active;
++static inline bool AmiNokoPortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ void TAmiNoko::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
++#ifdef TARGET_PC
++	if ((cue & CUE_CALC_ANIM) && AmiNokoPortCalcStep())
++		calcDirection();
++#else
+ 	if (cue & CUE_CALC_ANIM)
+ 		calcDirection();
++#endif
+ 
+ 	TSmallEnemy::perform(cue, graphics);
+ 	mAmiHit->perform(cue, graphics);

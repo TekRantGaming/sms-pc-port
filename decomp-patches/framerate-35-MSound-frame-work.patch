@@ -1,0 +1,76 @@
+Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop: JAI fades and volume moves, sound-set repeat intervals, dummy-position lifetimes) keeps its 30 fps timing; it counts displayed frames, so every fade, interval and lifetime ran twice as fast; the stage-exit fade, the one gameplay caller that scales its length by the frame rate, is given in 30 fps frames
+--- a/src/MSound/MSound.cpp
++++ b/src/MSound/MSound.cpp
+@@ -599,8 +599,37 @@ MSound::MSound(JKRHeap* param_1, JKRHeap* param_2, u32 param_3, u8* param_4,
+ 
+ void MSound::requestShineAppearFanfare() { }
+ 
++#ifdef TARGET_PC
++// Port: TApplication::gameLoop calls mainLoop once per displayed frame, and
++// its work is counted in those calls: MSSetSound's repeat intervals, JAI's
++// sequence and SE volume moves and fades (given in frames by the game, e.g.
++// pauseOn's 60), the dummy-position lifetimes that stop a sound when they
++// run out, and the play-frame counters. With frame_rate = 60 every one of
++// them ran twice as fast. At 60 do the work on every other call, which is
++// the 30 fps timing; requests made in between wait at most 1/60 s. This is
++// all on the game thread; the audio thread is untouched. (The entrance-demo
++// counter, unkA4, only feeds MSMainProc::entranceDemoLoop, which is empty
++// in retail: 4 bytes in the map.)
++extern "C" int port_fps60_active;
++static inline bool MSoundPortSkipFrame()
++{
++	static bool skip;
++	if (!port_fps60_active) {
++		skip = false;
++		return false;
++	}
++	bool result = skip;
++	skip        = !skip;
++	return result;
++}
++#endif
++
+ void MSound::mainLoop()
+ {
++#ifdef TARGET_PC
++	if (MSoundPortSkipFrame())
++		return;
++#endif
+ 	if (unkCF == 0 && unkA8 == 0)
+ 		return;
+ 
+--- a/src/System/MarDirectorDirect.cpp
++++ b/src/System/MarDirectorDirect.cpp
+@@ -41,6 +41,19 @@
+ 
+ extern OSThread gSetupThread;
+ 
++#ifdef TARGET_PC
++// Port: MSound::mainLoop does JAI's frame work every other frame at
++// frame_rate = 60 (see MSound.cpp), so a fade given in frames must be given
++// in 30 fps frames. The stage-exit fade below is the one gameplay caller
++// that scales its length by SMSGetVSyncTimesPerSec(); at 60 that asked for
++// 24 frames of work, 0.8 s. Halve it to keep its 0.4 s.
++extern "C" int port_fps60_active;
++static inline f32 MarDirectorPortSoundFrames(f32 frames)
++{
++	return port_fps60_active ? 0.5f * frames : frames;
++}
++#endif
++
+ // TODO: 98.5%, frame 0x150 vs retail 0x198 (TGraphics sits 0x48 higher, a
+ // dead low region) and the saved GPRs are permuted (retail: this r26, uVar8
+ // r27, i r28, desiredAppState r29, the pad offset and ~uVar8 in r31).
+@@ -772,7 +785,12 @@ void TMarDirector::nextStateInitialize(u8 next_state)
+ 			SMSGetMSound()->startSoundSystemSE(MSD_SE_MA_INTO_DOKAN, 0, nullptr,
+ 			                                   0);
+ 		MSound* sound = gpMSound;
++#ifdef TARGET_PC
++		sound->fadeOutAllSound(
++		    MarDirectorPortSoundFrames(SMSGetVSyncTimesPerSec() * 0.4f));
++#else
+ 		sound->fadeOutAllSound(SMSGetVSyncTimesPerSec() * 0.4f);
++#endif
+ 		SMSRumbleMgr->reset();
+ 		for (int i = 0; i < 4; ++i)
+ 			JUTGamePad::CRumble::stopMotor(unk18[i]->mPortNum);

@@ -1,0 +1,52 @@
+Reason: port: with frame_rate = 60 a held cursor in the pause menu and the talk choices auto-repeats at its 30 fps timing; the repeat delay and interval are counted in pad reads and set at boot from the 30 fps rate, and the pads are read once per displayed frame, so the cursor repeated twice as fast
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -83,12 +83,48 @@ extern "C" int port_frame_rate;
+ extern "C" int port_fps60_active;
+ int port_fps60_active;
+ f32 SMSGetVSyncTimesPerSec();
++f32 SMSGetAnmFrameRate();
++
++// Port: TMarioGamePad::reset (in its constructor, at boot, at 30) sets the
++// menu auto-repeat to 20 / SMSGetAnmFrameRate() pad reads before the first
++// repeat and 6 / SMSGetAnmFrameRate() between repeats, i.e. 1/3 s and 1/10 s
++// at 30. The pads are read once per displayed frame, so at 60 a held cursor
++// in the pause menu and the talk choices repeated twice as fast. When the
++// rate changes, recompute both from the rate in force, as reset() would; a
++// held button's count is rescaled rather than restarted.
++static void portRescalePadRepeat(JUTGamePad::CButton& button, u32 delay,
++                                 u32 rate)
++{
++	if (button.mRepeatDelay != 0)
++		button.mRepeatCount = button.mRepeatCount * delay / button.mRepeatDelay;
++	button.mRepeatDelay = delay;
++	button.mRepeatRate  = rate;
++}
++
++static void portSetPadRepeat(TApplication* app)
++{
++	u32 delay = 20.0f / SMSGetAnmFrameRate();
++	u32 rate  = 6.0f / SMSGetAnmFrameRate();
++	for (int i = 0; i < 4; ++i) {
++		TMarioGamePad* pad = app->mGamePads[i];
++		if (pad == nullptr)
++			continue;
++		portRescalePadRepeat(pad->mButton, delay, rate);
++		if (pad->getPortNum() >= 0)
++			portRescalePadRepeat(JUTGamePad::mPadButton[pad->getPortNum()],
++			                     delay, rate);
++	}
++}
++
+ static void portSetGameplayFrameRate(TApplication* app, bool gameplay)
+ {
++	int was             = port_fps60_active;
+ 	port_fps60_active   = gameplay && port_frame_rate == 60;
+ 	app->mDisplay->unk4C = port_fps60_active ? 1 : 2;
+ 	// the root fader outlives directors; it was made with the boot-time rate
+ 	app->mFader->mRate = SMSGetVSyncTimesPerSec();
++	if (port_fps60_active != was)
++		portSetPadRepeat(app);
+ }
+ #endif
+ 

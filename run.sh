@@ -21,6 +21,15 @@ sms_select_arch run
 exe="$sms_build_dir/sms$sms_exe_suffix"
 standalone=$(sms_standalone_exe)
 
+run_game() {
+  if [[ "$sms_os" == linux && "$sms_arch" == 32 && -n "${SMS_LINUX32_ROOT:-}" ]]; then
+    export SMS_GAME_EXECUTABLE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+    exec "$SMS_LINUX32_ROOT/i686-buildroot-linux-gnu/sysroot/lib/ld-linux.so.2" \
+      --library-path "$SMS_LINUX32_LIBRARY_PATH" "$@"
+  fi
+  exec "$@"
+}
+
 have_disc=0
 for arg in "$@"; do
   if [[ "$arg" != -* ]]; then
@@ -36,7 +45,7 @@ if (( have_disc == 0 )) && [[ -x "$standalone" ]]; then
   if [[ -e "$exe" && "$exe" -nt "$standalone" ]]; then
     echo "Note: $standalone is older than $exe; ./build.sh with your disc image refreshes it." >&2
   fi
-  exec "$standalone" "$@"
+  run_game "$standalone" "$@"
 fi
 [[ -e "$exe" ]] || sms_die "No build in $sms_build_dir/: run ./build.sh first."
 if (( have_disc == 0 )); then
@@ -44,4 +53,4 @@ if (( have_disc == 0 )); then
   [[ -n "$rom" ]] || sms_die "No game: put your GMSE01 disc image (.iso, .gcm or .ciso) in rom/, or pass its path: ./run.sh /path/to/GMSE01.iso"
   set -- "$rom" "$@"
 fi
-exec "$exe" "$@"
+run_game "$exe" "$@"

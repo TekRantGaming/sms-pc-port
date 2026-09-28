@@ -147,7 +147,16 @@ set_source_files_properties(${SMS_DECOMP_PCH_SOURCES} PROPERTIES
   COMPILE_OPTIONS "-include;${_sms_pch}")
 
 option(SMS_WITH_GX "Build and link platform/gx (the graphics layer)" ON)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32" AND DEFINED ENV{SMS_LINUX32_ROOT})
+  set(_graphics "$ENV{SMS_LINUX32_ROOT}/graphics/usr")
+  add_library(SDL2::SDL2 SHARED IMPORTED GLOBAL)
+  set_target_properties(SDL2::SDL2 PROPERTIES
+    IMPORTED_LOCATION "${_graphics}/lib/i386-linux-gnu/libSDL2-2.0.so.0"
+    INTERFACE_INCLUDE_DIRECTORIES "${_graphics}/include/SDL2;${_graphics}/include/i386-linux-gnu")
+  set(CMAKE_DISABLE_FIND_PACKAGE_SDL2 ON)
+  set(SMS_GX_EGL_LIB "${_graphics}/lib/i386-linux-gnu/libEGL.so.1" CACHE FILEPATH "" FORCE)
+  set(SMS_GX_EGL_INCLUDE "${_graphics}/include" CACHE PATH "" FORCE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32")
   # Only the i386 runtime libraries are installed (no :i386 -dev packages):
   # compile against the amd64 SDL2/EGL headers and link the .so files directly.
   set(_i386 /usr/lib/i386-linux-gnu)

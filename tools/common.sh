@@ -33,7 +33,10 @@ sms_detect_os() {
         sms_die "Use the MSYS2 MINGW64 shell (or build.cmd / run.cmd from PowerShell). See BUILD.md#windows-msys2-mingw64."
       fi
       sms_os=windows
-      if [[ "${MSYSTEM:-}" == MINGW64 ]]; then sms_arches=(64); else sms_arches=(32); fi
+      if [[ "${MSYSTEM:-}" == MINGW64 ]]; then
+        sms_arches=(64)
+        [[ "${SMS_WINDOWS_32_CROSS:-}" == 1 ]] && sms_arches+=(32)
+      else sms_arches=(32); fi
       sms_exe_suffix=.exe
       ;;
     *)

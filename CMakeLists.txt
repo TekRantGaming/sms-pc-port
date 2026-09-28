@@ -154,7 +154,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32"
     IMPORTED_LOCATION "${_graphics}/lib/i386-linux-gnu/libSDL2-2.0.so.0"
     INTERFACE_INCLUDE_DIRECTORIES "${_graphics}/include;${_graphics}/include/SDL2;${_graphics}/include/i386-linux-gnu")
   # The cross linker also needs SDL2's private X11/audio/Wayland dependencies.
-  add_link_options("LINKER:-rpath-link,${_graphics}/lib/i386-linux-gnu"
+  # RUNPATH lets the private loader prefer this SDK's newer libc/C++ runtime.
+  add_link_options("LINKER:--enable-new-dtags"
+    "LINKER:-rpath-link,${_graphics}/lib/i386-linux-gnu"
     "LINKER:-rpath-link,$ENV{SMS_LINUX32_ROOT}/graphics/lib/i386-linux-gnu"
     "LINKER:-rpath-link,${_graphics}/lib/i386-linux-gnu/pulseaudio")
   set(CMAKE_DISABLE_FIND_PACKAGE_SDL2 ON)

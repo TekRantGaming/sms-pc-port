@@ -1,0 +1,84 @@
+Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, fed by TModelGate::screenBlur) fades in and out at its 30 fps speed; both chase their targets by a fixed part of the gap once per drawn frame, so the blur came and went twice as fast
+--- a/src/MarioUtil/ScreenUtil.cpp
++++ b/src/MarioUtil/ScreenUtil.cpp
+@@ -89,6 +89,24 @@ void TAfterEffect::calcDashBlurValue()
+ 	unk15 = 0;
+ }
+ 
++#ifdef TARGET_PC
++#include <math.h>
++
++// Port: perform (on CUE_SET_PROJECTION, once per drawn frame) chases the
++// blur's alphas, offsets and scales towards their targets by unk48 (0.05) of
++// the gap a call. With frame_rate = 60 that comes twice as often per second
++// as at 30, so the plaza gates' radial blur came and went twice as fast. At
++// 60 chase by 1 - sqrt(1 - unk48), which closes the same part of the gap per
++// second and keeps the motion smooth. (The dash-blur countdown in
++// calcDashBlurValue is only reached through TMario::thinkDashEffect, which
++// is empty in retail, so it is left alone.)
++extern "C" int port_fps60_active;
++static inline f32 AfterEffectPortChase(f32 rate)
++{
++	return port_fps60_active ? 1.0f - std::sqrtf(1.0f - rate) : rate;
++}
++#endif
++
+ // TODO: 99.8% — pure r30/r31 swap over 22 instructions (frame/slots/count
+ // exact). Retail keeps the CSE'd constant 0 in r31 (color byte stores + the
+ // first `checkFlag(4)` false path; sites 2 and 3 materialise into r0) and
+@@ -145,12 +163,22 @@ void TAfterEffect::perform(u32 cue, JDrama::TGraphics* graphics)
+ 
+ 	const JDrama::TRect& rect = graphics->getViewport();
+ 
++#ifdef TARGET_PC
++	f32 chase = AfterEffectPortChase(unk48);
++	unk20 += chase * (unk1B - unk20);
++	unk24 += chase * (unk1C - unk24);
++	unk38 += chase * (unk28 - unk38);
++	unk3C += chase * (unk2C - unk3C);
++	unk40 += chase * (unk30 - unk40);
++	unk44 += chase * (unk34 - unk44);
++#else
+ 	unk20 += unk48 * (unk1B - unk20);
+ 	unk24 += unk48 * (unk1C - unk24);
+ 	unk38 += unk48 * (unk28 - unk38);
+ 	unk3C += unk48 * (unk2C - unk3C);
+ 	unk40 += unk48 * (unk30 - unk40);
+ 	unk44 += unk48 * (unk34 - unk44);
++#endif
+ 
+ 	GXClearVtxDesc();
+ 	GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
+--- a/src/MoveBG/ModelGate.cpp
++++ b/src/MoveBG/ModelGate.cpp
+@@ -244,6 +244,18 @@ static inline void ModelGateStartRadialBlur(u8 alpha,
+ 	effect->unk5C        = dir;
+ }
+ 
++#ifdef TARGET_PC
++// Port: screenBlur runs on CUE_CALC_VIEW, once per drawn frame, and chases
++// mBlurAlpha towards its target by mBlurAlphaRate of the gap a call; with
++// frame_rate = 60 that is twice as often per second as at 30. At 60 chase by
++// 1 - sqrt(1 - mBlurAlphaRate), which closes the same part of the gap per
++// second (TAfterEffect's own chase is adjusted the same way).
++static inline f32 ModelGatePortChase(f32 rate)
++{
++	return port_fps60_active ? 1.0f - std::sqrtf(1.0f - rate) : rate;
++}
++#endif
++
+ void TModelGate::screenBlur(JDrama::TGraphics* graphics)
+ {
+ 	// Direction from the gate to Mario, in view space, so the radial blur
+@@ -280,7 +292,11 @@ void TModelGate::screenBlur(JDrama::TGraphics* graphics)
+ 	if (angle < -0x2AAA || angle > 0x2AAA)
+ 		target = 0.0f;
+ 
++#ifdef TARGET_PC
++	mBlurAlpha += ModelGatePortChase(mBlurAlphaRate) * (target - mBlurAlpha);
++#else
+ 	mBlurAlpha += mBlurAlphaRate * (target - mBlurAlpha);
++#endif
+ 
+ 	// Retail hands the blur to one inline: gpAfterEffect is loaded once for
+ 	// all four stores, `viewDir` is a plain Vec copied by floats into the

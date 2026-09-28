@@ -1,0 +1,35 @@
+Reason: port: with frame_rate = 60 Eely-Mouth's eyes blend between animations at their 30 fps speed; the blend steps on the calc-anim pass, which comes every frame, so it finished in half the time
+--- a/src/Enemy/bosseel.cpp
++++ b/src/Enemy/bosseel.cpp
+@@ -1209,6 +1209,18 @@ static inline TMarioParticleManager* BosseelEyeParticleManager()
+ 	return manager;
+ }
+ 
++#ifdef TARGET_PC
++// Port: the eye's motion blend (mBlendRatio) falls 0.01 a calc-anim pass,
++// which with frame_rate = 60 comes every frame, twice as often per second
++// as at 30, so a new eye animation blended in in half the time. At 60 take
++// half a step, which keeps the blend per second and the motion smooth.
++extern "C" int port_fps60_active;
++static inline f32 BossEelEyePortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++#endif
++
+ void TBossEelEye::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (getOwner()->mLiveFlag
+@@ -1232,7 +1244,12 @@ void TBossEelEye::perform(u32 cue, JDrama::TGraphics* graphics)
+ 			MTXCopy(mtx, blendMtx);
+ 		}
+ 
++#ifdef TARGET_PC
++		mBlendRatio = MsClamp(mBlendRatio - BossEelEyePortStep(0.01f), 0.0f,
++		                      1.0f);
++#else
+ 		mBlendRatio = MsClamp(mBlendRatio - 0.01f, 0.0f, 1.0f);
++#endif
+ 		BosseelEyeMActor(this)->setMotionBlendRatioForBck(mBlendRatio);
+ 		if (mAnimationMode == 1
+ 		    && getMActor()->curAnmEndsNext(ANM_TYPE_BCK, nullptr)) {

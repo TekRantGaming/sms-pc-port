@@ -1,0 +1,35 @@
+Reason: port: with frame_rate = 60 Gooper Blooper's wash runs on for its 30 fps time after the spray stops; the run-on count is taken on the calc-anim pass, which comes every frame, so the wash stopped in half the time
+--- a/src/Enemy/bossgesso.cpp
++++ b/src/Enemy/bossgesso.cpp
+@@ -1654,6 +1654,21 @@ void TBossGesso::performInContainer(u32 cue, JDrama::TGraphics* graphics)
+ 	mTentacles[0]->testPerform(cue, graphics);
+ }
+ 
++#ifdef TARGET_PC
++// Port: while Gooper Blooper is sprayed, a nerve keeps unk194 at 5, and the
++// calc-anim pass requests the keep-alive wash emitter and counts unk194 down,
++// so the wash runs on for five passes after the spray stops. With
++// frame_rate = 60 that pass comes every frame, twice as often per second as
++// at 30, so the wash stopped in half the time. Keep requesting it on every
++// pass but count down once per 1/30 s: on the calc pass of every other frame
++// at 60 (the director counts one unk5C per tick, two a frame).
++extern "C" int port_fps60_active;
++static inline bool BossGessoPortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ // TODO: 99.7%, frame 0x228 vs 0x2c8. Left: performInContainer's first
+ // setPosition keeps the checked mTentacles[0] where ours reloads it (a named
+ // tentacle keeps it for both; direct member stores, set() and a named inner
+@@ -1715,6 +1730,9 @@ void TBossGesso::perform(u32 cue, JDrama::TGraphics* graphics)
+ 		if (unk194 > 0) {
+ 			gpMarioParticleManager->emitAndBindToMtxPtr(
+ 			    BGESO_JPA_MS_BOGE_WASH, getModel()->getAnmMtx(0), 1, this);
++#ifdef TARGET_PC
++			if (BossGessoPortCalcStep())
++#endif
+ 			unk194--;
+ 		}
+ 	}

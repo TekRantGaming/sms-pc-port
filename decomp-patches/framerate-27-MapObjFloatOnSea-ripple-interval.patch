@@ -1,0 +1,53 @@
+Reason: port: with frame_rate = 60 floating objects (TMapObjFloatOnSea) ripple at their 30 fps interval; the interval is counted on the calc-anim pass, which comes every frame, so they rippled twice as often; the ripple's keep-alive emitters are requested for the same 1/30 s as at 30
+--- a/src/MoveBG/MapObjFloat.cpp
++++ b/src/MoveBG/MapObjFloat.cpp
+@@ -58,8 +58,38 @@ void TMapObjFloatOnSea::control()
+ 	mtx[1][3] += unk194->getCurrentHeight(mPosition.x, mPosition.z);
+ }
+ 
++#ifdef TARGET_PC
++#include <System/MarDirector.hpp>
++
++// Port: calc() (the calc-anim pass) counts unk19C up to unk198 (15) between
++// ripples. With frame_rate = 60 that pass comes every frame, twice as often
++// per second as at 30, so the floating logs, boats and buoys rippled twice as
++// often. Count once per 1/30 s: on the calc pass of every other frame at 60
++// (the director counts one unk5C per tick, two a frame). Both ripple
++// emitters are keep-alive requests that TMarioParticleManager kills on the
++// first pass they are not repeated, so at 30 they live one frame, 1/30 s; on
++// the frame after a ripple (unk19C == -1, set only at 60) request them again
++// so they live as long.
++extern "C" int port_fps60_active;
++static inline bool FloatOnSeaPortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ void TMapObjFloatOnSea::calc()
+ {
++#ifdef TARGET_PC
++	if (!FloatOnSeaPortCalcStep()) {
++		if (unk19C == -1) {
++			JGeometry::TVec3<f32> v(unk1AC, unk1AC, unk1AC);
++			emitAndScale(SCENE_MAPOBJ_MS_OBJ_HAMON_B, 3, &unk1A0, v);
++			emitAndScale(0x1C6, 1, &unk1A0, v);
++			unk19C = 0;
++		}
++		return;
++	}
++#endif
+ 	unk1A0.x = mPosition.x;
+ 	unk1A0.y = 0.0f;
+ 	unk1A0.z = mPosition.z;
+@@ -69,6 +99,10 @@ void TMapObjFloatOnSea::calc()
+ 		emitAndScale(SCENE_MAPOBJ_MS_OBJ_HAMON_B, 3, &unk1A0, v);
+ 		emitAndScale(0x1C6, 1, &unk1A0, v);
+ 		unk19C = 0;
++#ifdef TARGET_PC
++		if (port_fps60_active)
++			unk19C = -1;
++#endif
+ 	} else {
+ 		unk19C += 1;
+ 	}

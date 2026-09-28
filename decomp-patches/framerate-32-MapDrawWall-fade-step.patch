@@ -1,0 +1,44 @@
+Reason: port: with frame_rate = 60 the wall screen overlay (TMapDrawWall) fades at its 30 fps speed; it steps its alpha on every draw pass, which comes every frame, so it faded in half the time
+--- a/src/Map/MapDraw.cpp
++++ b/src/Map/MapDraw.cpp
+@@ -14,11 +14,30 @@
+ // return a u16, but here they MUST return an int for some reason???
+ #include <System/Resolution.hpp>
+ 
++#ifdef TARGET_PC
++#include <System/MarDirector.hpp>
++
++// Port: the wall screen overlay (wall.bti, shown while gpCamera->unk2C8 is
++// set) fades out 5 and in 3 alpha a draw pass, which with frame_rate = 60
++// comes every frame, twice as often per second as at 30, so it faded in half
++// the time. Fade once per 1/30 s: on every other frame at 60 (the director
++// counts one unk5C per tick, two a frame); the alpha moves in whole steps,
++// so halving them would not be exact.
++extern "C" int port_fps60_active;
++static inline bool MapDrawWallPortStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ void TMapDrawWall::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (!(cue & CUE_DRAW))
+ 		return;
+ 
++#ifdef TARGET_PC
++	if (MapDrawWallPortStep()) {
++#endif
+ 	if (gpCamera->getUnk2C8() == -1) {
+ 		if (unk18 > 0) {
+ 			unk18 -= 5;
+@@ -30,6 +49,9 @@ void TMapDrawWall::perform(u32 cue, JDrama::TGraphics* graphics)
+ 			unk18 += 3;
+ 		}
+ 	}
++#ifdef TARGET_PC
++	}
++#endif
+ 
+ 	if (!unk18)
+ 		return;

@@ -1,0 +1,34 @@
+Reason: port: with frame_rate = 60 grass sways at its 30 fps speed; its phase steps on the calc-anim pass, which comes every frame, so it swayed twice as fast
+--- a/src/MoveBG/MapObjGrass.cpp
++++ b/src/MoveBG/MapObjGrass.cpp
+@@ -222,6 +222,18 @@ void TMapObjGrassManager::draw() const
+ 		unk14[i]->drawFar();
+ }
+ 
++#ifdef TARGET_PC
++// Port: the sway phase (unk18) steps mSwingSpeed on the calc-anim pass,
++// which with frame_rate = 60 comes every frame, twice as often per second as
++// at 30, so the grass swayed twice as fast. At 60 step half as far, which
++// keeps the sway per second and the motion smooth.
++extern "C" int port_fps60_active;
++static inline f32 GrassPortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++#endif
++
+ void TMapObjGrassManager::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & CUE_CALC_ANIM) {
+@@ -231,7 +243,11 @@ void TMapObjGrassManager::perform(u32 cue, JDrama::TGraphics* graphics)
+ 			unk24[i] = unk20[i];
+ 			fVar1 += sGrassAddTime;
+ 		}
++#ifdef TARGET_PC
++		unk18 += GrassPortStep(mSwingSpeed);
++#else
+ 		unk18 += mSwingSpeed;
++#endif
+ 		if (unk18 > 3.14159f * 2)
+ 			unk18 = 0.0f;
+ 

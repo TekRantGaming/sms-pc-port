@@ -1,0 +1,35 @@
+Reason: port: with frame_rate = 60 the wire sparks (TWireTrap) spin at their 30 fps speed; the spin steps on the calc-anim pass, which comes every frame, so they spun twice as fast
+--- a/src/Enemy/wireTrap.cpp
++++ b/src/Enemy/wireTrap.cpp
+@@ -308,6 +308,19 @@ void TWireTrap::behaveHitWireTrap(
+ 	mSpine->pushNerve(&TNerveWireTrapWait::theNerve());
+ }
+ 
++#ifdef TARGET_PC
++// Port: the sliding spark spins -17.75 degrees a call of calcRootMatrix (the
++// calc-anim pass), which with frame_rate = 60 comes every frame, twice as
++// often per second as at 30, so it spun twice as fast. At 60 turn half as
++// far, which keeps the spin per second and the motion smooth. The keep-alive
++// spark emitters are still requested on every pass.
++extern "C" int port_fps60_active;
++static inline f32 WireTrapPortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++#endif
++
+ // The body spins about its own Z axis after the wire alignment, so the spin
+ // is the right-hand factor (`quat * spinQuat`, as the ROM's products read),
+ // and the matrix goes through J3DModel::setBaseTRMtx, which is what keeps
+@@ -340,7 +353,11 @@ void TWireTrap::calcRootMatrix()
+ 	// against a zero lower bound rather than simplified away: the wrap goes
+ 	// through the two-level helper pair below, which is what makes MWCC call
+ 	// the weak std::fmodf the map lists here rather than expand it.
++#ifdef TARGET_PC
++	mRotation.z += WireTrapPortStep(-17.75f);
++#else
+ 	mRotation.z += -17.75f;
++#endif
+ 	mRotation.z = WrapAngleF(mRotation.z);
+ 
+ 	spinQuat.setRotate(JGeometry::TVec3<f32>(0.0f, 0.0f, 1.0f),

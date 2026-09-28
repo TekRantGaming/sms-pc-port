@@ -1,0 +1,37 @@
+Reason: port: with frame_rate = 60 a watered Goomba stack (TDangoHamuKuri) spins at its 30 fps speed; each spin steps 40 degrees on the calc-anim pass, which comes every frame, and the next Goomba waits for it, so spins and the chain up the stack went twice as fast
+--- a/src/Enemy/hamukuri.cpp
++++ b/src/Enemy/hamukuri.cpp
+@@ -2110,6 +2110,21 @@ static inline void DangoHamuRotate(TDangoHamuKuri* p, MtxPtr m)
+ 	MTXConcat(m, rot, m);
+ }
+ 
++#ifdef TARGET_PC
++// Port: a stacked Goomba hit by water spins a full turn, 40 degrees a call
++// of calcRootMatrix (the calc-anim pass), and while it spins (unk230) the one
++// above it cannot start its own. With frame_rate = 60 that pass comes every
++// frame, twice as often per second as at 30, so the spin, and the chain up
++// the stack, went twice as fast. At 60 turn half as far: the turn still ends
++// on the same count (1 + 20 * 18 > 360 as 1 + 40 * 9), in the same time, and
++// the motion stays smooth.
++extern "C" int port_fps60_active;
++static inline f32 DangoHamuPortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++#endif
++
+ void TDangoHamuKuri::calcRootMatrix()
+ {
+ 	DangoHamuGetModel(this)->setBaseScale(mScaling);
+@@ -2118,7 +2133,11 @@ void TDangoHamuKuri::calcRootMatrix()
+ 		MtxPtr takingMtx = DangoHamuGetHolder(this)->getTakingMtx();
+ 		if (takingMtx) {
+ 			if (unk230) {
++#ifdef TARGET_PC
++				unk210 += DangoHamuPortStep(40.0f);
++#else
+ 				unk210 += 40.0f;
++#endif
+ 				if (unk210 > 360.0f) {
+ 					TMsRange<f32> spin(10.0f, 20.0f);
+ 					unk210 = -spin.rand();

@@ -1,0 +1,34 @@
+Reason: port: with frame_rate = 60 the sky on map 15 turns at its 30 fps speed; its angle steps on the calc-anim pass, which comes every frame, so it spun twice as fast
+--- a/src/Map/Sky.cpp
++++ b/src/Map/Sky.cpp
+@@ -14,6 +14,18 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++// Port: on map 15 the sky turns by unk4C degrees on the calc-anim pass,
++// which with frame_rate = 60 comes every frame, twice as often per second as
++// at 30, so it spun twice as fast. At 60 turn half as far, which keeps the
++// spin per second and the motion smooth.
++extern "C" int port_fps60_active;
++static inline f32 SkyPortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++#endif
++
+ void TSky::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & CUE_CALC_ANIM) {
+@@ -55,7 +67,11 @@ void TSky::perform(u32 cue, JDrama::TGraphics* graphics)
+ 			local_8C[2][2] = fVar3;
+ 			local_8C[2][3] = 0.0f;
+ 			MTXConcat(local_8C, local_BC, local_BC);
++#ifdef TARGET_PC
++			unk48 += SkyPortStep(getUnk4C());
++#else
+ 			unk48 += getUnk4C();
++#endif
+ 			unk48 = MsWrap<f32>(getUnk48(), 0.0f, 360.0f);
+ 		}
+ 		MTXCopy(local_BC, getMActor()->getModel()->getBaseTRMtx());

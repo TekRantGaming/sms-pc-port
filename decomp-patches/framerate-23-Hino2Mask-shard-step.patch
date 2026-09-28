@@ -1,0 +1,39 @@
+Reason: port: with frame_rate = 60 THinokuri2's broken mask (THino2Mask) falls, spins and fades at its 30 fps speed; its two halves are stepped on the calc-anim pass, which comes every frame, so they fell about four times as far, spun twice as fast and vanished in half the time
+--- a/src/Enemy/hinokuri2.cpp
++++ b/src/Enemy/hinokuri2.cpp
+@@ -329,6 +329,23 @@ static inline THino2Params* Hino2Params(THinokuri2* self)
+ 	return params;
+ }
+ 
++#ifdef TARGET_PC
++// Port: once the mask breaks, its two halves fall on the calc-anim pass:
++// gravity into the velocity, the velocity into the position, and unk8 counts
++// up to 240 (the life), 60 (the flicker start) and turns the halves one
++// degree a count. With frame_rate = 60 that pass comes every frame, twice as
++// often per second as at 30, so the halves fell about four times as far in
++// the same time, spun twice as fast and vanished in half the time. Step them
++// once per 1/30 s: on the calc pass of every other frame at 60 (the director
++// counts one unk5C per tick, two a frame). The matrices are still set on
++// every pass.
++extern "C" int port_fps60_active;
++static inline bool Hino2MaskPortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ // TODO: retail keeps calcAnim and the unk4C base in r26, ours in r27; every
+ // other instruction and the frame match. Inert or worse: calcAnim as int or
+ // BOOL, afStack_88 declared first, no transMtx alias, raw unk4C at either
+@@ -349,7 +366,11 @@ void THino2Mask::perform(u32 cue, JDrama::TGraphics* graphics)
+ 		unk10->perform(cue, graphics);
+ 	} else {
+ 		u32 calcAnim = cue & CUE_CALC_ANIM;
++#ifdef TARGET_PC
++		if (calcAnim && Hino2MaskPortCalcStep()) {
++#else
+ 		if (calcAnim) {
++#endif
+ 			if (unk8 > 240) {
+ 				unk4 = 0;
+ 				return;

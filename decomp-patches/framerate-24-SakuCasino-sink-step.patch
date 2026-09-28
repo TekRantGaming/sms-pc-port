@@ -1,0 +1,44 @@
+Reason: port: with frame_rate = 60 the casino fence (TSakuCasino) sinks at its 30 fps speed once the panel puzzle is solved; it sinks and flattens by a fixed amount on the calc-anim pass, which comes every frame, so it sank twice as fast
+--- a/src/MoveBG/MapObjSirena.cpp
++++ b/src/MoveBG/MapObjSirena.cpp
+@@ -1200,6 +1200,26 @@ void TSakuCasino::loadAfter()
+ 	unk144 = JDrama::TNameRefGen::search<TCasinoPanelGate>("pazul");
+ }
+ 
++#ifdef TARGET_PC
++// Port: once the casino panel puzzle is solved, calcRootMatrix (the
++// calc-anim pass) sinks the fence 1 unit and flattens it by 0.99 per call.
++// With frame_rate = 60 that pass comes every frame, twice as often per
++// second as at 30, so the fence sank twice as fast. At 60 take half of each
++// step (the square root of the scale factor), which keeps the rate per
++// second and the motion smooth. The fence's collision is removed at once
++// either way.
++extern "C" int port_fps60_active;
++static inline f32 SakuCasinoPortSink()
++{
++	return port_fps60_active ? 0.5f : 1.0f;
++}
++
++static inline f32 SakuCasinoPortShrink()
++{
++	return port_fps60_active ? 0.99498744f : 0.99f; // sqrt(0.99)
++}
++#endif
++
+ void TSakuCasino::calcRootMatrix()
+ {
+ 	J3DModel* model = getModel();
+@@ -1214,8 +1234,13 @@ void TSakuCasino::calcRootMatrix()
+ 		unk138->remove();
+ 	}
+ 	if (unk13C != 0) {
++#ifdef TARGET_PC
++		unk140 -= SakuCasinoPortSink();
++		mScaling.y *= SakuCasinoPortShrink();
++#else
+ 		unk140 -= 1.0f;
+ 		mScaling.y *= 0.99f;
++#endif
+ 	}
+ }
+ 

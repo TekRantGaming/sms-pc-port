@@ -1,0 +1,92 @@
+Reason: port: with frame_rate = 60 the boid flocks (fish, birds, butterflies, bees) fly at their 30 fps speed; the flock steps its speeds, turns and goal on the calc-anim pass with unscaled amounts, and that pass comes every frame, so every flock flew twice as fast
+--- a/src/Animal/boid.cpp
++++ b/src/Animal/boid.cpp
+@@ -3,6 +3,27 @@
+ #include <MarioUtil/RandomUtil.hpp>
+ #include <dolphin/mtx.h>
+ 
++#ifdef TARGET_PC
++// Port: TBoidLeader::perform steps the flock (fish, birds, butterflies, the
++// bee swarm) on the calc-anim pass, which with frame_rate = 60 comes every
++// frame, twice as often per second as at 30, with unscaled per-call steps:
++// each boid moves mBaseSpeed + mSpeed along its heading, turns mYawSpeed and
++// pitches mPitchSpeed, its pitch relaxes by 0.98, and the graph goal moves
++// 0.9 * mBaseSpeed. So every flock flew twice as fast. At 60 take half of
++// each step (the square root of the relaxation), which keeps the speeds and
++// turn rates per second and the motion smooth.
++extern "C" int port_fps60_active;
++static inline f32 BoidPortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++
++static inline f32 BoidPortPitchDecay()
++{
++	return port_fps60_active ? 0.9899495f : 0.98f; // sqrt(0.98)
++}
++#endif
++
+ TBoid::TBoid()
+ {
+ 	mNeighbors = 0;
+@@ -111,6 +132,26 @@ void TBoidLeader::calcBoids()
+ 		for (TBoid* b = mBoids; b != end; ++b) {
+ 			JGeometry::TVec3<f32> force = calcForces(b);
+ 			if (!force.isZero()) {
++#ifdef TARGET_PC
++				if (force.y < -0.01f) {
++					b->mRotation.x += BoidPortStep(mPitchSpeed);
++					if (b->mRotation.x > mMaxPitch)
++						b->mRotation.x = mMaxPitch;
++				} else if (force.y > 0.01f) {
++					b->mRotation.x -= BoidPortStep(mPitchSpeed);
++					if (b->mRotation.x < -mMaxPitch)
++						b->mRotation.x = -mMaxPitch;
++				} else {
++					b->mRotation.x *= BoidPortPitchDecay();
++				}
++
++				f32 targetYaw = MsGetRotFromZaxisY(force);
++				f32 diff      = MsAngleDiff(targetYaw, b->mRotation.y);
++				if (diff < -0.01f)
++					diff = -BoidPortStep(mYawSpeed);
++				else if (diff > 0.01f)
++					diff = BoidPortStep(mYawSpeed);
++#else
+ 				if (force.y < -0.01f) {
+ 					b->mRotation.x += mPitchSpeed;
+ 					if (b->mRotation.x > mMaxPitch)
+@@ -129,6 +170,7 @@ void TBoidLeader::calcBoids()
+ 					diff = -mYawSpeed;
+ 				else if (diff > 0.01f)
+ 					diff = mYawSpeed;
++#endif
+ 
+ 				f32 newYaw = b->mRotation.y + diff;
+ 				while (newYaw >= 360.0f)
+@@ -143,8 +185,13 @@ void TBoidLeader::calcBoids()
+ 			b->mHeading.set(m[0][2], m[1][2], m[2][2]);
+ 			VECNormalize(&b->mHeading, &b->mHeading);
+ 
++#ifdef TARGET_PC
++			b->mPosition += b->mHeading * (mBaseSpeed + b->mSpeed)
++			                * BoidPortStep(force.length());
++#else
+ 			b->mPosition
+ 			    += b->mHeading * (mBaseSpeed + b->mSpeed) * force.length();
++#endif
+ 		}
+ 	}
+ }
+@@ -182,7 +229,11 @@ void TBoidLeader::updateGoal()
+ 			mTracer->moveToRandomNext();
+ 		} else {
+ 			VECNormalize(&dir, &dir);
++#ifdef TARGET_PC
++			dir *= BoidPortStep(0.9f * mBaseSpeed);
++#else
+ 			dir *= 0.9f * mBaseSpeed;
++#endif
+ 			mGraphGoal += dir;
+ 		}
+ 	}

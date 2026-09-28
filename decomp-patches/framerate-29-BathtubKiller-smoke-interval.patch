@@ -1,0 +1,76 @@
+Reason: port: with frame_rate = 60 the bathtub Bullet Bills (TBathtubKiller) blink and smoke at their 30 fps rate; the nose blink and the smoke interval step on the calc-anim pass, which comes every frame, so the nose blinked twice as fast and they smoked twice as often; the puff's keep-alive emitter is requested for the same 1/30 s as at 30
+--- a/src/Enemy/BathtubKiller.cpp
++++ b/src/Enemy/BathtubKiller.cpp
+@@ -396,6 +396,32 @@ void TBathtubKiller::bind()
+ 	mLinearVelocity = nextPos - mPosition;
+ }
+ 
++#ifdef TARGET_PC
++#include <System/MarDirector.hpp>
++
++// Port: the Bullet Bill's calc-anim pass blinks its nose (unk1FC steps
++// unk1F8 between 0 and 1) and counts unk1D4 up to mSLSmokeInterval between
++// smoke puffs. With frame_rate = 60 that pass comes every frame, twice as
++// often per second as at 30, so the nose blinked twice as fast and it
++// smoked twice as often. The blink takes half a step at 60 (the same per
++// second, and smooth); the smoke is counted once per 1/30 s: on the calc
++// pass of every other frame at 60 (the director counts one unk5C per tick,
++// two a frame). The puff is a keep-alive request that TMarioParticleManager
++// kills on the first pass it is not repeated, so at 30 it lives one frame,
++// 1/30 s; on the frame after a puff (unk1D4 == -1, set only at 60) request
++// it again so it lives as long.
++extern "C" int port_fps60_active;
++static inline bool BathtubKillerPortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++
++static inline f32 BathtubKillerPortStep(f32 step)
++{
++	return port_fps60_active ? 0.5f * step : step;
++}
++#endif
++
+ // TODO: 98.5%, frame exact. Ours holds &mPosition in r29 across the distance
+ // and the sound call where retail rematerialises it; every raw/accessor
+ // combination over the five mPosition sites is inert or shrinks the frame by
+@@ -430,13 +456,27 @@ void TBathtubKiller::perform(u32 cue, JDrama::TGraphics* graphics)
+ 	if ((cue & CUE_CALC_ANIM) && !checkLiveFlag(LIVE_FLAG_DEAD)) {
+ 		if (!BKIsDying(this)) {
+ 			makeNoseColor();
++#ifdef TARGET_PC
++			if (BathtubKillerPortCalcStep()) {
++#endif
+ 			unk1D4++;
+ 			if (unk1D4 >= getSaveParam2()->mSLSmokeInterval.get()) {
+ 				unk1D4 = 0;
+ 				unk220.setQT(mQuat, mPosition);
+ 				gpMarioParticleManager->emitAndBindToMtxPtr(
+ 				    MAP_MAP_MS_KP_KILL_SMOKE, unk220, 1, this);
++#ifdef TARGET_PC
++				if (port_fps60_active)
++					unk1D4 = -1;
++#endif
++			}
++#ifdef TARGET_PC
++			} else if (unk1D4 == -1) {
++				gpMarioParticleManager->emitAndBindToMtxPtr(
++				    MAP_MAP_MS_KP_KILL_SMOKE, unk220, 1, this);
++				unk1D4 = 0;
+ 			}
++#endif
+ 			f32 distToMario = getPosition().distance(*gpMarioPos);
+ 			gpMSound->startSoundActorWithInfo(MSD_SE_EN_KILLER_FLY,
+ 			                                  getPosition(), nullptr,
+@@ -449,7 +489,11 @@ void TBathtubKiller::perform(u32 cue, JDrama::TGraphics* graphics)
+ void TBathtubKiller::makeNoseColor()
+ {
+ 	if (unk194 == 2) {
++#ifdef TARGET_PC
++		unk1FC += BathtubKillerPortStep(unk1F8);
++#else
+ 		unk1FC += unk1F8;
++#endif
+ 		if (unk1FC > 1.0f) {
+ 			unk1FC = 1.0f;
+ 			unk1F8 = -getSaveParam2()->mSLColorChangeRateDelta.get();

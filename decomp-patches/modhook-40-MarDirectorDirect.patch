@@ -41,7 +41,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  			GXInvalidateTexAll();
  		}
  		desiredAppState = changeState();
-@@ -555,7 +579,11 @@
+@@ -564,7 +588,11 @@
  			decideNextStage();
  #endif
  			offUnk4CFlag(0x100);
@@ -53,7 +53,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  			unkE4     = 2;
  			nextState = STATE_UNK9;
  			break;
-@@ -589,7 +617,11 @@
+@@ -598,7 +626,11 @@
  				} else
  #endif
  				offUnk4CFlag(0x100);
@@ -65,7 +65,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  				gpApplication.mFader->setFadeStatus(
  				    TSMSFader::FADE_STATUS_FULLY_FADED_OUT);
  				desiredAppState = TApplication::APP_STATE_GAMEPLAY;
-@@ -619,7 +651,11 @@
+@@ -628,7 +660,11 @@
  				TFlagManager::smInstance->setBool(true, 0x30002);
  				decideNextStageOfClear();
  				offUnk4CFlag(0x100);
@@ -77,7 +77,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  				unkE4 = 0xf;
  				gpApplication.mFader->setColor(JUtility::TColor(0, 0, 0, 0xff));
  				nextState = STATE_UNK12;
-@@ -667,6 +703,13 @@
+@@ -676,6 +712,13 @@
  	if (nextState != mState) {
  #endif
  		currentStateFinalize(nextState);
@@ -91,7 +91,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  		nextStateInitialize(nextState);
  		mState = nextState;
  	}
-@@ -1224,7 +1267,11 @@
+@@ -1233,7 +1276,11 @@
  			}
  
  			if (checkUnk4CFlag(0x2)) {

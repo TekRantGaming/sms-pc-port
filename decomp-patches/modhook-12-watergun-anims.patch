@@ -11,7 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's 
  
  TNozzleBmdData nozzleBmdData = {
  	{
-@@ -1283,7 +1286,13 @@
+@@ -1284,7 +1287,13 @@
  	// useful
  	// TODO: Check if already exists
  	MActorAnmData* watergunAnmData = new MActorAnmData();
@@ -25,9 +25,9 @@ Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's 
  	mFluddModel = new MActor(watergunAnmData);
  
  	void* fluddModelData
-@@ -1328,7 +1337,13 @@
- 		if (nozzleBmdData.getPath(i)) {
- 
+@@ -1334,7 +1343,13 @@
+ 			// function-scope local, a named MActor, an anm-data or MActor
+ 			// helper. The frame is also 0x100 short.
  			MActorAnmData* nozzleData = new MActorAnmData();
 +#ifdef TARGET_PC
 +			SMS_MOD_CALLM(0x8026A6E8, MActorAnmData, init,

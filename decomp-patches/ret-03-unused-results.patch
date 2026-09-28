@@ -57,7 +57,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  {
 --- a/src/Enemy/Kumokun.cpp
 +++ b/src/Enemy/Kumokun.cpp
-@@ -946,7 +946,12 @@
+@@ -939,7 +939,12 @@
  	return mSpine->getLatestNerve() == &TNerveKumokunFly::theNerve();
  }
  
@@ -71,33 +71,9 @@ Reason: Returns: functions with no return statement whose value is never used: s
  
  bool TKumokun::isHitPlane() const { return mHitPlaneCounter > 0; }
  
---- a/src/Enemy/bgtentacle.cpp
-+++ b/src/Enemy/bgtentacle.cpp
-@@ -713,9 +713,19 @@
- 	mOwner->stopIfRoll();
- }
- 
--BOOL TBGTentacle::isAttacking() const { }
-+BOOL TBGTentacle::isAttacking() const
-+{
-+#ifdef TARGET_PC
-+	return FALSE; // UNUSED in retail (stripped): never called
-+#endif
-+}
- 
--bool TBGTentacle::canTake() const { }
-+bool TBGTentacle::canTake() const
-+{
-+#ifdef TARGET_PC
-+	return false; // UNUSED in retail (stripped): never called
-+#endif
-+}
- 
- f32 TBGTentacle::getNodeLen() const
- {
 --- a/src/Enemy/bosseel.cpp
 +++ b/src/Enemy/bosseel.cpp
-@@ -1857,7 +1857,12 @@
+@@ -1862,7 +1862,12 @@
  	return false;
  }
  
@@ -113,17 +89,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  {
 --- a/src/Enemy/graph.cpp
 +++ b/src/Enemy/graph.cpp
-@@ -629,6 +629,9 @@
- }
- 
- int TGraphWeb::findFarthestNodeIndex(const JGeometry::TVec3<f32>&, u32) const {
-+#ifdef TARGET_PC
-+	return 0; // UNUSED in retail (stripped): never called
-+#endif
- }
- 
- int TGraphWeb::findNearestVisibleIndex(const JGeometry::TVec3<f32>& param_1,
-@@ -661,6 +664,9 @@
+@@ -681,6 +681,9 @@
  int TGraphWeb::findNearestNodeIndexCheckY(const JGeometry::TVec3<f32>&, f32,
                                            u32) const
  {
@@ -151,7 +117,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  {
 --- a/src/Enemy/namekuri.cpp
 +++ b/src/Enemy/namekuri.cpp
-@@ -756,7 +756,12 @@
+@@ -765,7 +765,12 @@
  		return false;
  }
  
@@ -183,7 +149,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  {
 --- a/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
 +++ b/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
-@@ -701,7 +701,12 @@
+@@ -717,7 +717,12 @@
  
  void JAIBasic::startSoundVec(u32, JAISoundHandle*, Vec*, u32, u32, u8) { }
  
@@ -224,22 +190,6 @@ Reason: Returns: functions with no return statement whose value is never used: s
  }
  
  int JKRDvdFile::readData(void* data, s32 length, s32 ofs)
---- a/src/JSystem/JParticle/JPAMath.cpp
-+++ b/src/JSystem/JParticle/JPAMath.cpp
-@@ -199,7 +199,12 @@
- 	return (float)r5 * 1e-05f;
- }
- 
--s16 JPAConvertFloatToFix(f32) { }
-+s16 JPAConvertFloatToFix(f32)
-+{
-+#ifdef TARGET_PC
-+	return 0; // UNUSED in retail (stripped): never called
-+#endif
-+}
- 
- void JPAConvertFixVecToFloatVec(JGeometry::TVec3<f32>& param_1,
-                                 const JGeometry::TVec3<s16>& param_2)
 --- a/src/JSystem/JUtility/JUTConsole.cpp
 +++ b/src/JSystem/JUtility/JUTConsole.cpp
 @@ -12,6 +12,9 @@
@@ -322,31 +272,9 @@ Reason: Returns: functions with no return statement whose value is never used: s
  
  void TDLTexQuadMulti::setEnd() { }
  
---- a/src/MoveBG/MapObjLib.cpp
-+++ b/src/MoveBG/MapObjLib.cpp
-@@ -258,6 +258,9 @@
- TMapCollisionStatic* TMapObjBase::newAndInitBuildingCollisionStatic(int,
-                                                                     TLiveActor*)
- {
-+#ifdef TARGET_PC
-+	return nullptr; // UNUSED in retail (stripped): never called
-+#endif
- }
- 
- J3DJoint* TMapObjBase::getBuildingJoint(int i)
-@@ -1021,6 +1024,9 @@
- JPABaseEmitter* TMapObjBase::emitAndRotate(s32, u8,
-                                            const JGeometry::TVec3<f32>*) const
- {
-+#ifdef TARGET_PC
-+	return nullptr; // UNUSED in retail (stripped): never called
-+#endif
- }
- 
- void TMapObjVibration::startSlowly(f32) { }
 --- a/src/NPC/NpcChange.cpp
 +++ b/src/NPC/NpcChange.cpp
-@@ -143,7 +143,12 @@
+@@ -146,7 +146,12 @@
  	return result;
  }
  
@@ -392,7 +320,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  // MarioDraw.cpp so it stays a `bl`, and 0x38 is 14 instructions: 7 of frame
 --- a/src/Player/Yoshi.cpp
 +++ b/src/Player/Yoshi.cpp
-@@ -406,6 +406,9 @@
+@@ -428,6 +428,9 @@
  	pos->x = mtx[0][3];
  	pos->y = mtx[1][3];
  	pos->z = mtx[2][3];
@@ -404,7 +332,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  void TYoshi::setEggYoshiPtr(TEggYoshi* egg) { mEgg = egg; }
 --- a/src/System/CardManager.cpp
 +++ b/src/System/CardManager.cpp
-@@ -158,7 +158,12 @@
+@@ -195,7 +195,12 @@
  }
  
  // TODO: what is this?
@@ -420,7 +348,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  {
 --- a/src/THPPlayer/THPRead.c
 +++ b/src/THPPlayer/THPRead.c
-@@ -100,6 +100,9 @@
+@@ -109,6 +109,9 @@
  void* PushReadedBuffer(void* buffer)
  {
  	OSSendMessage(&ReadedBufferQueue, buffer, 1);

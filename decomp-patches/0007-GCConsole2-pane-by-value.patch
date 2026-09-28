@@ -1,9 +1,9 @@
 Reason: g++: TBlendPane* cannot bind to TBoundPane*&; take the pane by value (callee never reseats it)
 --- a/src/GC2D/GCConsole2.cpp
 +++ b/src/GC2D/GCConsole2.cpp
-@@ -792,7 +792,7 @@
+@@ -301,7 +301,7 @@
  // fabricated: the coin counter's "swap the digit texture and puff a particle
- // over it" step. The five sites in updateCoinCounterAnimation share one JUTRect
+ // over it" step. The five sites in perform's coin counter share one JUTRect
  // and one position vector, so both are passed in.
 -static inline void changeCoinNum(TBoundPane*& pane, JUTTexture** textures,
 +static inline void changeCoinNum(TBoundPane* pane, JUTTexture** textures,

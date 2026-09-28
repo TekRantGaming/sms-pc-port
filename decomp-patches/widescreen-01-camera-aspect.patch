@@ -1,9 +1,9 @@
 Reason: port: SMS_WIDESCREEN widens the game camera's aspect by the displayed width over 4:3, so the view, frustum culling, particles and screen-projected textures all see the wider frame that sms_gx renders
 --- a/src/System/MarDirectorSetupObjects.cpp
 +++ b/src/System/MarDirectorSetupObjects.cpp
-@@ -35,6 +35,12 @@
- #include <MSound/MSoundBGM.hpp>
- #include <System/DummyStrings.hpp>
+@@ -38,6 +38,12 @@
+ #include <sms_modhook.h>
+ #endif
  
 +#ifdef TARGET_PC
 +// SMS_WIDESCREEN (platform): the displayed width over the GameCube's 4:3, 1
@@ -14,8 +14,8 @@ Reason: port: SMS_WIDESCREEN widens the game camera's aspect by the displayed wi
  extern void* gpSceneCmnDat;
  extern int gpSceneCmnDatSize;
  
-@@ -353,6 +359,9 @@
- 		    = (JDrama::TLookAtCamera*)JDrama::TNameRefGen::search2("camera 1");
+@@ -397,6 +403,9 @@
+ #endif
  		cam->mAspect = (u16)SMSGetGameVideoWidth() * 0.91346145f
  		               / (u16)SMSGetGameVideoHeight();
 +#ifdef TARGET_PC

@@ -157,10 +157,10 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioSpecial inline patches (fence
 +#else
  			f32 stickH = 0.015625f * work->mStickH;
 +#endif
- 			newPos.x += normX * stickH * fenceSp;
- 			newPos.z += normZ * stickH * fenceSp;
- 
-@@ -1421,8 +1527,58 @@
+ 			// Named: retail's fmadds reads the product before fenceSp.
+ 			f32 dx = normX * stickH;
+ 			f32 dz = normZ * stickH;
+@@ -1424,8 +1530,58 @@
  			TBGCheckData* sideWall1 = checkWallPlane(&sideFront, 20.0f, 50.0f);
  			TBGCheckData* sideWall2
  			    = checkWallPlane(&sideFront2, 140.0f, 50.0f);

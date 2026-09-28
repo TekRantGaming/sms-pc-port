@@ -1,11 +1,10 @@
 Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes and reads its save/option fields big-endian, and TCardSector stores its write count and checksum big-endian and sums big-endian halfwords, so real GameCube saves stay compatible
 --- a/src/System/FlagManager.cpp
 +++ b/src/System/FlagManager.cpp
-@@ -1,6 +1,30 @@
- #include <System/FlagManager.hpp>
+@@ -2,6 +2,30 @@
  #include <System/StageUtil.hpp>
  #include <dolphin/os.h>
-+
+ 
 +#ifdef TARGET_PC
 +// Memory-card data keeps retail's big-endian layout.
 +static void port_write_be(JSUMemoryOutputStream& out, const void* p, int size, int width)
@@ -29,9 +28,10 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
 +}
 +#define PORT_WRITE_BE(out, p, size, width) port_write_be(out, p, size, width)
 +#endif
- 
++
  TFlagManager* TFlagManager::smInstance = 0;
  
+ TFlagManager* TFlagManager::start(JKRHeap* heap)
 @@ -389,9 +413,15 @@
  
  	u32 magic;
@@ -142,9 +142,8 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
 +	PORT_WRITE_BE(out, mSavedOptionInts, sizeof(mSavedOptionInts), 4);
 +#else
  	out.write(mSavedOptionInts, sizeof(mSavedOptionInts));
--}
 +#endif
-+}
+ }
 --- a/src/System/CardManager.cpp
 +++ b/src/System/CardManager.cpp
 @@ -30,8 +30,14 @@
@@ -162,8 +161,8 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	}
  	return (top << 16) | bottom & 0xffff;
  }
-@@ -72,6 +78,18 @@
- // next thing to fix.
+@@ -80,6 +86,18 @@
+ // costs getWriteStream/getOptionWriteStream ~7.
  void TCardSector::setCheckSum(u32 write_count)
  {
 +#ifdef TARGET_PC
@@ -181,7 +180,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	mWriteCount = write_count;
  	u16* ptr    = (u16*)this;
  	u32 top, bottom;
-@@ -81,6 +99,7 @@
+@@ -89,6 +107,7 @@
  		bottom += ~ptr[0];
  	}
  	mCheckSum = (top << 16) | bottom & 0xffff;
@@ -189,7 +188,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  }
  
  // TODO: incorrect
-@@ -95,9 +114,15 @@
+@@ -103,9 +122,15 @@
  	s32 errc = CARDRead(file, this, sizeof(TCardSector),
  	                    index * sizeof(TCardSector));
  	if (errc == CARD_RESULT_READY) {

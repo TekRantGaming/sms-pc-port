@@ -1,7 +1,7 @@
 Reason: port: SMS_WARP=stage,scenario[,shines] sends a file-select load to another area (debugging aid)
 --- a/src/GC2D/CardLoad.cpp
 +++ b/src/GC2D/CardLoad.cpp
-@@ -2251,6 +2251,36 @@
+@@ -2309,6 +2309,36 @@
  		setupScoreScreen();
  	}
  }
@@ -38,8 +38,8 @@ Reason: port: SMS_WARP=stage,scenario[,shines] sends a file-select load to anoth
  
  // TODO: every instruction matches; only the frame differs (0x178 vs retail's
  // 0x1e0). The gap is not one block: measured against retail's slots it is
-@@ -2731,6 +2750,9 @@
- 			gpMarDirector->setNextStage(0, nullptr);
+@@ -2796,6 +2826,9 @@
+ #endif
  		else
  			gpMarDirector->setNextStage(1, nullptr);
 +#ifdef TARGET_PC

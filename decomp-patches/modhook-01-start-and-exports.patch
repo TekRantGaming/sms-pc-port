@@ -21,8 +21,8 @@ Reason: port: code mods (Super Mario Eclipse) start at the end of TApplication::
 +#endif
  extern "C" void ReInitializeGX();
  
- f32 SMSGetVSyncTimesPerSec()
-@@ -265,6 +272,12 @@
+ #ifdef TARGET_PC
+@@ -297,6 +304,12 @@
  	srand(OSGetTick());
  	gpSetupThreadStack = new (0x20) u8[0x10000];
  

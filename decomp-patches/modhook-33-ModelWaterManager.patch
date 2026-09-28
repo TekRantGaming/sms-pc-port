@@ -10,8 +10,8 @@ Reason: port: code-mod hooks (sms_modhook.h): TModelWaterManager shine shadow an
  // Port: the position the shine shadow sphere is drawn at is a constant in
  // the retail game, which code mods overwrite (retail map name gShineShadowPos).
  Vec gShineShadowPos = { 0.0f, 3600.0f, -7458.0f };
-@@ -242,6 +244,12 @@
- 		unk5E0C = fVar1 * 24000.0f + 8000.0f;
+@@ -240,6 +242,12 @@
+ 		unk5E0C = fVar1 * range + base;
  	else
  		unk5D60 &= ~0x100;
 +#ifdef TARGET_PC
@@ -23,7 +23,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TModelWaterManager shine shadow an
  }
  
  f32 TModelWaterManager::getWPGravity(int i) const
-@@ -345,6 +353,18 @@
+@@ -343,6 +351,18 @@
  void TModelWaterManager::splashGround(int i)
  {
  	mParticleLifetimeSOA[i] -= getPlaneVanishSpeed(unk2914[i]);
@@ -42,7 +42,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TModelWaterManager shine shadow an
  	gpPollution->clean(
  	    mParticlePositionSOA[i].x, mParticlePositionSOA[i].y,
  	    mParticlePositionSOA[i].z,
-@@ -1798,7 +1818,16 @@
+@@ -1808,7 +1828,16 @@
  void TModelWaterManager::drawShineShadowVolume(MtxPtr param_1)
  {
  

@@ -27,7 +27,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario fall, jump-ground and wait 
  	mFaceAngle.x    = 0;
  	mModelFaceAngle = mFaceAngle.y;
  	return walkProcess();
-@@ -391,6 +403,15 @@
+@@ -398,6 +410,15 @@
  			passable = false;
  
  		if (passable == 0 && pos.y <= mFloorPosition.y) {
@@ -43,31 +43,31 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario fall, jump-ground and wait 
  			mPosition.y = mFloorPosition.y;
  			groundCode  = 1;
  		}
-@@ -416,7 +437,23 @@
+@@ -421,7 +442,23 @@
+ 				if (checkFlag(MARIO_FLAG_VISIBLE))
+ 					onFlag(MARIO_FLAG_UNK200);
  
- 				if (param_2 & 0x2) {
- 					BOOL canHang = (mHeldObject == nullptr && !onYoshi());
 +#ifdef TARGET_PC
-+					// BetterSunshineEngine (canUnkActionWall, retail
-+					// 0x80256A40, with the words at 0x80256A3C: lhz r4, 0(r3),
-+					// 0x80256A44, 0x80256A48, 0x80256A4C, 0x80256A50: nops,
-+					// 0x80256A54: cmpwi r3, 0): its result (on the roof and
-+					// its type; it reads this from r22) replaces isFence().
-+					// (The mod's patch sits in an #if 0 block.)
-+					if (canHang
-+					    && (SMS_MOD_SITE(0x80256A40)
-+					            ? (SMS_MOD_GPR(22, this),
-+					               ((bool (*)(TBGCheckData*, u16))SMS_MOD_SITE(
-+					                   0x80256A40))((TBGCheckData*)mRoofPlane,
-+					                                mRoofPlane->mBGType))
-+					            : mRoofPlane->isFence()))
++				// BetterSunshineEngine (canUnkActionWall, retail
++				// 0x80256A40, with the words at 0x80256A3C: lhz r4, 0(r3),
++				// 0x80256A44, 0x80256A48, 0x80256A4C, 0x80256A50: nops,
++				// 0x80256A54: cmpwi r3, 0): its result (on the roof and
++				// its type; it reads this from r22) replaces isFence().
++				// (The mod's patch sits in an #if 0 block.)
++				if ((param_2 & 0x2) && MarioCanHang(this)
++				    && (SMS_MOD_SITE(0x80256A40)
++				            ? (SMS_MOD_GPR(22, this),
++				               ((bool (*)(TBGCheckData*, u16))SMS_MOD_SITE(
++				                   0x80256A40))((TBGCheckData*)mRoofPlane,
++				                                mRoofPlane->mBGType))
++				            : mRoofPlane->isFence()))
 +#else
- 					if (canHang && mRoofPlane->isFence())
+ 				if ((param_2 & 0x2) && MarioCanHang(this) && mRoofPlane->isFence())
 +#endif
- 						roofCode = 4;
- 					else
- 						roofCode = 0;
-@@ -480,8 +517,22 @@
+ 					roofCode = 4;
+ 				else
+ 					roofCode = 0;
+@@ -482,8 +519,22 @@
  	if (mStatus & 0x21000)
  		return false;
  
@@ -90,7 +90,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario fall, jump-ground and wait 
  
  	return false;
  }
-@@ -495,8 +546,19 @@
+@@ -497,8 +548,19 @@
  	} else {
  		if (isFallCancel()) {
  			mVel.y *= 0.75f;
@@ -112,7 +112,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario fall, jump-ground and wait 
  		           && mVel.y < 0.0f) {
  			mVel.y -= mJumpParams.mSpinJumpGravity.get();
  		} else {
-@@ -506,6 +568,15 @@
+@@ -508,6 +570,15 @@
  			mYoshi->thinkHoldOut();
  		}
  	}

@@ -30,7 +30,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE shine ids in TGuide::resetObje
  
  // rogue includes needed for matching sinit & bss
  #include <MSound/MSSetSound.hpp>
-@@ -188,6 +210,9 @@
+@@ -185,6 +207,9 @@
  // place in retail (ours: `blt` for the if, an `mr` for a ternary); the first
  // isGetShine miss returns the zeroed counter (`mr r3, r24`); callee-saved
  // registers rotate (retail i r31, total r28); frame 0x50 against 0x60.
@@ -40,7 +40,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE shine ids in TGuide::resetObje
  void TGuide::resetObjects()
  {
  	int total = 0;
-@@ -267,6 +292,9 @@
+@@ -264,6 +289,9 @@
  	mCursors[0]->getPane()->mVisible = true;
  	mCursors[1]->getPane()->mVisible = true;
  }
@@ -48,9 +48,9 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE shine ids in TGuide::resetObje
 +#undef SMS_isGetShine
 +#endif
  
- // fabricated: retail reads the digit texture before the pane search at these
- // sites, so the search and the swap were one inline taking the texture.
-@@ -463,9 +491,25 @@
+ // TODO: retail keeps `remaining` in r5 apart from the clamp's compare temp
+ // (r0); ours coalesces them (IRO @ web). Clamp spellings and total types inert.
+@@ -452,9 +480,25 @@
  void TGuide::linkSelect()
  {
  	mGamePad->onFlag(TMarioGamePad::PAD_FLAG_0x80);

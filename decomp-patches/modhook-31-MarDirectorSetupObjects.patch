@@ -11,8 +11,8 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector::setupObjects stage r
  
  extern void* gpSceneCmnDat;
  extern int gpSceneCmnDatSize;
-@@ -154,6 +157,11 @@
- // cc32: not attempted beyond triage; the function is 8 KB.
+@@ -174,6 +177,11 @@
+ // getChildren().push_back breaks >100 instructions.
  bool TMarDirector::setupObjects()
  {
 +#ifdef TARGET_PC
@@ -23,7 +23,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector::setupObjects stage r
  	TFlagManager::getInstance()->resetStage();
  	TFlagManager::getInstance()->setFlag(0x60003, 1);
  	TGameSequence& currArea = gpApplication.mCurrArea;
-@@ -349,8 +357,22 @@
+@@ -371,8 +379,22 @@
  			obj->load(leftoversStream);
  		}
  

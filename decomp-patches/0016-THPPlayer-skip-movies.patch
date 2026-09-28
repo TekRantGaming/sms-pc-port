@@ -1,7 +1,7 @@
 Reason: port: SMS_SKIP_MOVIES=1 skips THP preparation and reports the movie as finished, without starting decoder threads for frames that will never be shown
 --- a/src/THPPlayer/THPPlayer.c
 +++ b/src/THPPlayer/THPPlayer.c
-@@ -346,10 +346,24 @@
+@@ -346,12 +346,26 @@
  	OSSendMessage(&PrepareReadyQueue, (OSMessage)msg, OS_MESSAGE_BLOCK);
  }
  
@@ -26,9 +26,9 @@ Reason: port: SMS_SKIP_MOVIES=1 skips THP preparation and reports the movie as f
 +		}
 +#endif
  		if (frame > 0) {
-@@ -435,8 +449,16 @@
- 	return FALSE;
- }
+ 			offset = ActivePlayer.header.offsetDataOffsets;
+ 			if (offset == 0)
+@@ -437,6 +451,14 @@
  
  BOOL THPPlayerPlay()
  {

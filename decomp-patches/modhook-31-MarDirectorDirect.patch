@@ -173,33 +173,45 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		++i;
  	} while (i < 7);
  
-@@ -251,8 +382,25 @@
+@@ -247,13 +378,37 @@
+ // `li r3, 0` hoisted above the first branch and the separate final zero.
+ // Inert: TFlagManager::getInstance()/SMSGetFlagManager() receivers at every
+ // site (call receivers keep their register), a compared shadow-Mario result.
++#ifdef TARGET_PC
++// Eclipse: the word at retail 0x8029961C (`addi r4, r4, 0x3ae`) tests another
++// flag, and getScenarioForLateDolpic (0x8029962C, over `li r3, 2`) supplies
++// the scenario.
++static u32 sms_mod_late_dolpic_flag()
++{
++	unsigned int sms_mod_w_;
++	if (sms_mod_word(0x8029961C, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x3884)
++		return 0x10000 + (s16)sms_mod_w_;
++	return 0x103AE;
++}
++static int sms_mod_late_dolpic_scenario()
++{
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029962C))
++		return ((u32(*)())sms_mod_t_)();
++	return 2;
++}
++#endif
++
+ static int decideNextScenario(u8 param_1)
  {
+ 	int scenario = 0;
  	switch (param_1) {
  	case 1:
 +#ifdef TARGET_PC
-+	{
-+		// Eclipse: the word at retail 0x8029961C (`addi r4, r4, 0x3ae`)
-+		// tests another flag, and getScenarioForLateDolpic (0x8029962C,
-+		// over `li r3, 2`) supplies the scenario.
-+		unsigned int sms_mod_w_;
-+		u32 sms_mod_flag_ = 0x103AE;
-+		if (sms_mod_word(0x8029961C, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x3884)
-+			sms_mod_flag_ = 0x10000 + (s16)sms_mod_w_;
-+		if (TFlagManager::smInstance->getBool(sms_mod_flag_)) {
-+			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029962C))
-+				return ((u32(*)())sms_mod_t_)();
-+			return 2;
-+		}
-+	}
++		if (TFlagManager::smInstance->getBool(sms_mod_late_dolpic_flag()))
++			scenario = sms_mod_late_dolpic_scenario();
 +#else
  		if (TFlagManager::smInstance->getBool(0x103AE))
- 			return 2;
+ 			scenario = 2;
 +#endif
- 		if (checkDefeatShadowMarioAll())
- 			return 9;
- 		if (TFlagManager::smInstance->getBool(0x10389))
-@@ -285,6 +433,16 @@
+ 		else if (checkDefeatShadowMarioAll())
+ 			scenario = 9;
+ 		else if (TFlagManager::smInstance->getBool(0x10389))
+@@ -287,6 +442,16 @@
  {
  	const TGameSequence& curArea = gpApplication.mCurrArea;
  	if (SMS_isExMap() || curArea.getStage() == 0 || curArea.getStage() == 60) {
@@ -216,7 +228,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		getNextArea().set(curArea.getStage(), 0, 0);
  	} else {
  		decideNextStage();
-@@ -391,7 +549,11 @@
+@@ -393,7 +558,11 @@
  			unkB4     = TApplication::APP_STATE_DONE;
  			break;
  		case 5:
@@ -228,7 +240,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			offUnk4CFlag(0x100);
  			moveStage();
  			unkE4     = 2;
-@@ -416,6 +578,16 @@
+@@ -418,6 +587,16 @@
  				} else {
  					getNextArea().set(1, 0xff, 0);
  				}
@@ -245,7 +257,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  				offUnk4CFlag(0x100);
  				moveStage();
  				gpApplication.mFader->setFadeStatus(
-@@ -479,7 +651,21 @@
+@@ -481,7 +660,21 @@
  		unkB4 = TApplication::APP_STATE_DONE;
  	}
  
@@ -267,7 +279,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		currentStateFinalize(nextState);
  		nextStateInitialize(nextState);
  		mState = nextState;
-@@ -862,6 +1048,54 @@
+@@ -864,6 +1057,54 @@
  				break;
  			}
  
@@ -322,7 +334,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			if (mMap != 15) {
  				if (unk18[0]->mButton.mTrigger & 0x10) {
  					r29 = STATE_UNK10;
-@@ -870,6 +1104,7 @@
+@@ -872,6 +1113,7 @@
  
  				if (unk18[0]->mEnabledFrameMeaning & 0x1) {
  					if (gpMarioOriginal->checkActionThing3()) {
@@ -330,7 +342,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  						r29 = STATE_UNK5;
  						break;
  					}
-@@ -895,14 +1130,48 @@
+@@ -897,14 +1139,48 @@
  				console->unk47 = 1;
  				MSBgm::startBGM(MSD_BGM_GET_SHINE);
  				TFlagManager::getInstance()->setBool(true, 0x30006);

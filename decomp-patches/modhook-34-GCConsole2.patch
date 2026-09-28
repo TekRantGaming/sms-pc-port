@@ -34,45 +34,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  extern JPAEmitterManager* gpEmitterManager4D2;
  
-@@ -497,7 +523,15 @@
- 			console->unk18 = 5;
- 			console->unk38 = 0;
- 		}
-+#ifdef TARGET_PC
-+		// BetterSunshineEngine writes a nop over the `bne` at 0x801410E4
-+		// (inlined into perform) that skips this while Mario is under water.
-+		if ((!gpMarioOriginal->isUnderWater()
-+		     || SMS_MOD_WORD(0x801410E4, 0) == 0x60000000)
-+		    && console->unk84 == 0)
-+#else
- 		if (!gpMarioOriginal->isUnderWater() && console->unk84 == 0)
-+#endif
- 			console->unk84 = 1;
- 		if (!(amount >= 8 && console->unk84 == 0) && console->unk84 < 1000)
- 			++console->unk84;
-@@ -1294,7 +1328,21 @@
- 	// The ROM reads gpMarioOriginal->mFlag directly and tests 0x8000, not
- 	// the 0x10000 bit through the SMS_CheckMarioFlag wrapper: the tank only
- 	// comes up once Mario actually has FLUDD.
-+#ifdef TARGET_PC
-+	// BetterSunshineEngine (hasWaterCardOpen, retail 0x8014206C in perform,
-+	// reading r31 = console, with `cmpwi r3, 0x0` written at 0x80142070): the
-+	// mod's result replaces the unk46 test.
-+	bool sms_mod_open_;
-+	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8014206C)) {
-+		SMS_MOD_GPR(31, console);
-+		sms_mod_open_ = ((bool (*)())sms_mod_t_)();
-+	} else {
-+		sms_mod_open_ = console->unk46;
-+	}
-+	if (!sms_mod_open_ && gpMarioOriginal->checkFlag(MARIO_FLAG_HAS_FLUDD)
-+#else
- 	if (!console->unk46 && gpMarioOriginal->checkFlag(MARIO_FLAG_HAS_FLUDD)
-+#endif
- 	    && !console->unk45 && !console->unk50)
- 		console->startAppearTank();
- }
-@@ -1979,6 +2027,15 @@
+@@ -967,6 +993,15 @@
  	unk168 = TFlagManager::smInstance->getFlag(0x40001);
  
  	int spentBlueCoins = 0;
@@ -88,7 +50,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  	for (int flag = 0x46; flag < 0x56; ++flag)
  		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  			++spentBlueCoins;
-@@ -1986,6 +2043,9 @@
+@@ -974,6 +1009,9 @@
  	for (int flag = 0x6C; flag <= 0x73; ++flag)
  		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  			++spentBlueCoins;
@@ -98,7 +60,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  	int blueCoinValue = unk168;
  	blueCoinValue -= spentBlueCoins * 10;
-@@ -2686,7 +2746,21 @@
+@@ -1677,7 +1715,21 @@
  	for (int i = 0; i < 4; ++i)
  		unk414[i]->getPane()->hide();
  
@@ -120,7 +82,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  		unk3FC->setPaneOffset(80, 0, 0, 0, 465 - unk3FC->mInitialBounds.y1);
  	else
  		unk3FC->setPaneOffset(80, 0, -73, 0, 465 - unk3FC->mInitialBounds.y1);
-@@ -2792,8 +2866,20 @@
+@@ -1782,8 +1834,20 @@
  	JMSMesgEntry* entry
  	    = unk3D0->getMessageEntry(messageID & 0xffff);
  
@@ -141,7 +103,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  	if (unk10 != 0) {
  		if (unk3F4 == 0xffffffff) {
-@@ -2974,8 +3060,19 @@
+@@ -1955,8 +2019,19 @@
  
  	TWaterGun* waterGun = gpMarioOriginal->mWaterGun;
  	JUTRect bounds(((J2DPicture*)unk26C->getPane())->mBounds);
@@ -161,7 +123,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  	if (waterGun->isPressureOn()) {
  		f32 pressure    = waterGun->getPressure();
-@@ -3531,6 +3628,15 @@
+@@ -2519,6 +2594,15 @@
  	if (unk8A != 0) {
  		if (unk8A > 0xFB) {
  			int spentBlueCoins = 0;
@@ -177,7 +139,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  			for (int flag = 0x46; flag < 0x56; ++flag)
  				if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  					++spentBlueCoins;
-@@ -3538,6 +3644,9 @@
+@@ -2526,6 +2610,9 @@
  			for (int flag = 0x6C; flag <= 0x73; ++flag)
  				if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  					++spentBlueCoins;
@@ -187,7 +149,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  			if (unk170 != blueTotal - spentBlueCoins * 10) {
  				--unk170;
-@@ -3632,6 +3741,15 @@
+@@ -2620,6 +2707,15 @@
  		++unk168;
  
  		int spentBlueCoins = 0;
@@ -203,7 +165,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  		for (int flag = 0x46; flag < 0x56; ++flag)
  			if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  				++spentBlueCoins;
-@@ -3639,6 +3757,9 @@
+@@ -2627,6 +2723,9 @@
  		for (int flag = 0x6C; flag < 0x74; ++flag)
  			if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  				++spentBlueCoins;
@@ -213,7 +175,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  		int blueCoins = unk168;
  		blueCoins -= spentBlueCoins * 10;
-@@ -3791,6 +3912,15 @@
+@@ -2779,6 +2878,15 @@
  	TFlagManager::smInstance->getFlag(0x40001);
  
  	int blueCoins = 0;
@@ -229,7 +191,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  	for (int flag = 0x46; flag < 0x56; ++flag)
  		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  			++blueCoins;
-@@ -3798,6 +3928,9 @@
+@@ -2786,6 +2894,9 @@
  	for (int flag = 0x6C; flag <= 0x73; ++flag)
  		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
  			++blueCoins;
@@ -239,31 +201,84 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  
  	// TODO: retail computes this straight into the flag counter's register
  	// (`subf. r25`); the countBlueCoin/loadAfter `-=` spelling and reusing
-@@ -4610,10 +4743,27 @@
+@@ -3591,10 +3702,27 @@
+ static inline void updateConsole(TGCConsole2* console)
  {
- 	if (flags & 1) {
- 		if (!unk50) {
+ 	if (!console->unk50) {
 +#ifdef TARGET_PC
-+			// Eclipse (spoofCameraDemoForUI) redirects isDemoCamera's
-+			// isSimpleDemoCamera call at retail 0x8014087C.
-+			void* sms_mod_t_ = SMS_MOD_SITE(0x8014087C);
-+			if ((sms_mod_t_ ? sms_mod_isDemoCamera_(sms_mod_t_, gpCamera)
-+			                : gpCamera->isDemoCamera())
-+			    || SMS_CheckMarioFlag(0x400)
++		// Eclipse (spoofCameraDemoForUI) redirects isDemoCamera's
++		// isSimpleDemoCamera call at retail 0x8014087C.
++		void* sms_mod_t_ = SMS_MOD_SITE(0x8014087C);
++		if ((sms_mod_t_ ? sms_mod_isDemoCamera_(sms_mod_t_, gpCamera)
++		                : gpCamera->isDemoCamera())
++		    || SMS_CheckMarioFlag(0x400)
 +#else
- 			if (gpCamera->isDemoCamera() || SMS_CheckMarioFlag(0x400)
+ 		if (gpCamera->isDemoCamera() || SMS_CheckMarioFlag(0x400)
 +#endif
- 			    || (!mAppearFromDemo && TFlagManager::smInstance->getBool(0x30002)))
- 				startCameraDemo();
+ 		    || (!console->mAppearFromDemo && TFlagManager::smInstance->getBool(0x30002)))
+ 			console->startCameraDemo();
 +#ifdef TARGET_PC
-+			// Eclipse (spoofCameraDemoForUI) at retail 0x80140928, as above.
-+		} else if (!(SMS_MOD_SITE(0x80140928)
-+		                 ? sms_mod_isDemoCamera_(SMS_MOD_SITE(0x80140928), gpCamera)
-+		                 : gpCamera->isDemoCamera())
-+		           && !SMS_CheckMarioFlag(0x400)) {
++		// Eclipse (spoofCameraDemoForUI) at retail 0x80140928, as above.
++	} else if (!(SMS_MOD_SITE(0x80140928)
++	                 ? sms_mod_isDemoCamera_(SMS_MOD_SITE(0x80140928), gpCamera)
++	                 : gpCamera->isDemoCamera())
++	           && !SMS_CheckMarioFlag(0x400)) {
 +#else
- 		} else if (!gpCamera->isDemoCamera() && !SMS_CheckMarioFlag(0x400)) {
+ 	} else if (!gpCamera->isDemoCamera() && !SMS_CheckMarioFlag(0x400)) {
 +#endif
- 			endCameraDemo();
- 		}
+ 		console->endCameraDemo();
+ 	}
  
+@@ -3762,7 +3890,15 @@
+ 			console->unk18 = 5;
+ 			console->unk38 = 0;
+ 		}
++#ifdef TARGET_PC
++		// BetterSunshineEngine writes a nop over the `bne` at 0x801410E4
++		// (inlined into perform) that skips this while Mario is under water.
++		if ((!gpMarioOriginal->isUnderWater()
++		     || SMS_MOD_WORD(0x801410E4, 0) == 0x60000000)
++		    && console->unk84 == 0)
++#else
+ 		if (!gpMarioOriginal->isUnderWater() && console->unk84 == 0)
++#endif
+ 			console->unk84 = 1;
+ 		if (!(amount >= 8 && console->unk84 == 0) && console->unk84 < 1000)
+ 			++console->unk84;
+@@ -4031,7 +4167,21 @@
+ 	// The ROM reads gpMarioOriginal->mFlag directly and tests 0x8000, not
+ 	// the 0x10000 bit through the SMS_CheckMarioFlag wrapper: the tank only
+ 	// comes up once Mario actually has FLUDD.
++#ifdef TARGET_PC
++	// BetterSunshineEngine (hasWaterCardOpen, retail 0x8014206C in perform,
++	// reading r31 = console, with `cmpwi r3, 0x0` written at 0x80142070): the
++	// mod's result replaces the unk46 test.
++	bool sms_mod_open_;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8014206C)) {
++		SMS_MOD_GPR(31, console);
++		sms_mod_open_ = ((bool (*)())sms_mod_t_)();
++	} else {
++		sms_mod_open_ = console->unk46;
++	}
++	if (!sms_mod_open_ && gpMarioOriginal->checkFlag(MARIO_FLAG_HAS_FLUDD)
++#else
+ 	if (!console->unk46 && gpMarioOriginal->checkFlag(MARIO_FLAG_HAS_FLUDD)
++#endif
+ 	    && !console->unk45 && !console->unk50)
+ 		console->startAppearTank();
+ 
+@@ -4607,6 +4757,14 @@
+                                JDrama::TGraphics* graphics)
+ {
+ 	J2DOrthoGraph graph(graphics->getViewport());
++#ifdef TARGET_PC
++	// BetterSunshineEngine (drawStageCallbacks, retail 0x80143F14 in
++	// perform): the draw pass's first setup2D call runs the mod's stage draw
++	// callbacks, which set the orthograph up themselves.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80143F14))
++		((void (*)(J2DGrafContext*))sms_mod_t_)(&graph);
++	else
++#endif
+ 	graph.setup2D();
+ 
+ 	if (console->unk46 || console->unk45)

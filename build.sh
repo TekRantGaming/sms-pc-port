@@ -93,7 +93,9 @@ setup_macos() {
 
 setup_windows() {
   need git cmake ninja patch python
-  cmake_args+=(-G Ninja)
+  # FindPython otherwise prefers a registered system installation, even when
+  # the portable MSYS2 Python is first on PATH.
+  cmake_args+=(-G Ninja -DPython3_EXECUTABLE="$(cygpath -m "$(command -v python)")")
 }
 
 "setup_$sms_os"

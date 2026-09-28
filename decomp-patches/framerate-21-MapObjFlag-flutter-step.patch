@@ -1,7 +1,7 @@
 Reason: port: with frame_rate = 60 flags flutter at their 30 fps speed; the wave angle steps on the calc-anim pass, which comes every frame, so they fluttered twice as fast
 --- a/src/MoveBG/MapObjFlag.cpp
 +++ b/src/MoveBG/MapObjFlag.cpp
-@@ -144,6 +144,19 @@ void TMapObjFlag::updateVertex()
+@@ -144,6 +144,19 @@
  	}
  }
  
@@ -21,8 +21,8 @@ Reason: port: with frame_rate = 60 flags flutter at their 30 fps speed; the wave
  // UNUSED (0x114): the per-flag body of TMapObjFlagManager::perform's
  // CUE_CALC_ANIM loop, inlined there.
  void TMapObjFlag::update()
-@@ -152,7 +165,11 @@ void TMapObjFlag::update()
- 	               mRotation.y, mRotation.z);
+@@ -152,7 +165,11 @@
+ 	               getPosition().z, mRotation.x, mRotation.y, mRotation.z);
  	updateVertex();
  
 +#ifdef TARGET_PC

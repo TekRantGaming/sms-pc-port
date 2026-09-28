@@ -11,7 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): ferris wheel speed test in TFerris
  
  // TFerrisWheel
  
-@@ -126,7 +129,16 @@
+@@ -154,7 +157,16 @@
  	}
  
  	// The manta arena wants the wheel running much faster than usual.
@@ -27,4 +27,4 @@ Reason: port: code-mod hooks (sms_modhook.h): ferris wheel speed test in TFerris
 +#endif
  		mAnmRate = 10.0f;
  	else
- 		mAnmRate = SMSGetAnmFrameRate() / 4.0f;
+ #ifdef TARGET_PC

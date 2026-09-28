@@ -11,7 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  
  extern OSThread gSetupThread;
  
-@@ -90,6 +93,31 @@
+@@ -103,6 +106,31 @@
  			}
  			gpMSound->unkA8 = bVar7;
  
@@ -43,7 +43,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			switch (mState) {
  			case STATE_UNK5:
  			case STATE_UNK11:
-@@ -202,7 +230,13 @@
+@@ -210,7 +238,13 @@
  // +0x10). Spelling the copy as `gpApplication.mNextArea = local_3C` or a
  // direct three-argument `set` is worse (84%) and breaks the expanded copies
  // in changeState/updateGameMode.
@@ -57,7 +57,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  {
  	TGameSequence local_3C;
  
-@@ -217,9 +251,90 @@
+@@ -225,9 +259,92 @@
  		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
  		break;
  	}
@@ -77,7 +77,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +		}
 +	}
 +#endif
- 	MDDApp().setNextArea(local_3C);
+ 	SMSGetApplication().setNextArea(local_3C);
  }
  
 +#ifdef TARGET_PC
@@ -92,6 +92,8 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +	case 0:
 +		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
 +		break;
++	case 1:
++	case 2:
 +	default:
 +		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
 +		break;
@@ -148,7 +150,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  // UNUSED, 0x10c.
  // TODO: dead in the shipped game and 67 instructions in the map, with no call
  // site and no literal of its own to read; the body is unrecovered.
-@@ -234,8 +349,24 @@
+@@ -242,8 +359,24 @@
  
  	int i = 0;
  	do {
@@ -173,7 +175,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		++i;
  	} while (i < 7);
  
-@@ -247,13 +378,37 @@
+@@ -255,13 +388,37 @@
  // `li r3, 0` hoisted above the first branch and the separate final zero.
  // Inert: TFlagManager::getInstance()/SMSGetFlagManager() receivers at every
  // site (call receivers keep their register), a compared shadow-Mario result.
@@ -211,7 +213,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		else if (checkDefeatShadowMarioAll())
  			scenario = 9;
  		else if (TFlagManager::smInstance->getBool(0x10389))
-@@ -287,6 +442,16 @@
+@@ -295,6 +452,16 @@
  {
  	const TGameSequence& curArea = gpApplication.mCurrArea;
  	if (SMS_isExMap() || curArea.getStage() == 0 || curArea.getStage() == 60) {
@@ -228,7 +230,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		getNextArea().set(curArea.getStage(), 0, 0);
  	} else {
  		decideNextStage();
-@@ -393,7 +558,11 @@
+@@ -401,7 +568,11 @@
  			unkB4     = TApplication::APP_STATE_DONE;
  			break;
  		case 5:
@@ -240,7 +242,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			offUnk4CFlag(0x100);
  			moveStage();
  			unkE4     = 2;
-@@ -418,6 +587,16 @@
+@@ -426,6 +597,16 @@
  				} else {
  					getNextArea().set(1, 0xff, 0);
  				}
@@ -257,7 +259,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  				offUnk4CFlag(0x100);
  				moveStage();
  				gpApplication.mFader->setFadeStatus(
-@@ -481,7 +660,21 @@
+@@ -489,7 +670,21 @@
  		unkB4 = TApplication::APP_STATE_DONE;
  	}
  
@@ -279,7 +281,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		currentStateFinalize(nextState);
  		nextStateInitialize(nextState);
  		mState = nextState;
-@@ -864,6 +1057,54 @@
+@@ -877,6 +1072,54 @@
  				break;
  			}
  
@@ -334,7 +336,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			if (mMap != 15) {
  				if (unk18[0]->mButton.mTrigger & 0x10) {
  					r29 = STATE_UNK10;
-@@ -872,6 +1113,7 @@
+@@ -885,6 +1128,7 @@
  
  				if (unk18[0]->mEnabledFrameMeaning & 0x1) {
  					if (gpMarioOriginal->checkActionThing3()) {
@@ -342,7 +344,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  						r29 = STATE_UNK5;
  						break;
  					}
-@@ -897,14 +1139,48 @@
+@@ -910,14 +1154,48 @@
  				console->unk47 = 1;
  				MSBgm::startBGM(MSD_BGM_GET_SHINE);
  				TFlagManager::getInstance()->setBool(true, 0x30006);

@@ -41,9 +41,11 @@
 
 #include <dolphin/types.h> /* the port override (see port_include/) */
 
-/* JSUStreamEnum.hpp declares `enum EIoState { GOOD, EOF }`. Nothing in the
- * decomp scope uses stdio's EOF. */
+/* C++03 game code uses JSU's EOF enum. Modern platform code needs the
+ * host EOF macro in libc++; its JSU header wrapper protects the enum. */
+#if !defined(__cplusplus) || __cplusplus < 201103L
 #undef EOF
+#endif
 
 /* MSL's rand(): RAND_MAX is 32767 (the game computes 1.f / (RAND_MAX + 1)
  * in int, which overflows with glibc's 2^31-1) and the sequence is the ANSI C

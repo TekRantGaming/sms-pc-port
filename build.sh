@@ -36,7 +36,7 @@ need() {
 
 setup_linux() {
   need git cmake make patch python3 objcopy g++
-  if [[ "$sms_arch" == 32 ]] && ! echo 'int main(){return 0;}' | g++ -m32 -x c++ - -o /dev/null 2>/dev/null; then
+  if [[ "$sms_arch" == 32 ]] && ! echo 'int main(){return 0;}' | "${CXX:-g++}" -m32 -x c++ - -o /dev/null 2>/dev/null; then
     sms_die "g++ -m32 does not link: install the 32-bit packages (BUILD.md#linux), or build 64-bit with SMS_ARCH=64 ./build.sh."
   fi
 }

@@ -26,7 +26,7 @@ Every system uses the same scripts from the repository root:
   The game source is, in order: an image or extracted `files/` folder passed as argument, `SMS_DISC_IMAGE` or `SMS_DISC_ROOT`; else the standalone executable if it was built; else the image in `rom/`.
   Anything starting with `-` (such as `--headless`) goes to the game.
 - **`SMS_ARCH=32` or `64`** picks the word size for both scripts.
-  Linux builds either (32-bit is the default); macOS builds only 64-bit and Windows only 64-bit through the launcher.
+  Linux builds either (32-bit is the default); macOS builds only 64-bit. The launcher runs on 64-bit computers and offers both 32-bit and 64-bit games on Linux and Windows, defaulting to 64-bit. Its private tools include cross compilers and target libraries, so manual prerequisites below are not needed when using the launcher.
   When both Linux builds exist, `./run.sh` takes 32-bit unless `SMS_ARCH=64` is set; when only one exists, it takes that one.
 - **`./clean.sh`** deletes the build output: every `build/<os>-<arch>/` folder (with its standalone executable or `SMS.app`), captures in `build/`, and the build folders of older layouts (`build-mac/`, `build-64/`, `build32/`).
   It never deletes a disc image: `rom/` is never touched, an image left in an old build folder's `rom/` is moved to `rom/` first, and a folder that still holds an image is skipped.
@@ -143,7 +143,7 @@ Keep the app private: it contains the whole game and the icon art from your disc
 ## Windows (MSYS2 MINGW64)
 
 Install [MSYS2](https://www.msys2.org/) and open **MSYS2 MINGW64** from the Start menu.
-The default Windows build is native x86_64. Its game memory, executable image, and game thread stacks stay below 4 GiB because retail stores addresses in 32-bit slots. The process itself uses 64-bit pointers and x64 SDL2/compiler runtime DLLs. A legacy 32-bit build remains available with `SMS_ARCH=32` in a MINGW32 shell.
+The default Windows build is native x86_64. Its game memory, executable image, and game thread stacks stay below 4 GiB because retail stores addresses in 32-bit slots. The process itself uses 64-bit pointers and x64 SDL2/compiler runtime DLLs. A 32-bit build is also available with `SMS_ARCH=32` in a MINGW32 shell, or with the launcher’s x64-host cross compiler from MINGW64 (`SMS_WINDOWS_32_CROSS=1`).
 Install the compiler, SDL2, build tools and `patch`:
 
 ```sh

@@ -287,6 +287,12 @@ find_package(Threads REQUIRED)
 if(APPLE)
   # Apple ld: -force_load pulls every member (like --whole-archive).
   # force_load does not pull INTERFACE deps, so also link sms_gx normally for SDL2.
+  # Darwin requires even weak imports to be resolved unless explicitly allowed.
+  # These five code-mod symbols are intentionally absent from standard Sunshine.
+  foreach(_optional_mod_symbol IN ITEMS ___start_sms_mod_ctors ___stop_sms_mod_ctors
+          _sPlayerAnimeDatas _sPlayerAnimeInfos _sPlayerAnimeInfosSize)
+    target_link_options(sms PRIVATE "LINKER:-U,${_optional_mod_symbol}")
+  endforeach()
   target_link_libraries(sms PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(sms PRIVATE "LINKER:-force_load,$<TARGET_FILE:sms_game>")
   add_dependencies(sms sms_game)

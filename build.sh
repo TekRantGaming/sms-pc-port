@@ -45,7 +45,7 @@ setup_linux() {
 # SDL2.framework (Homebrew's sdl2 is arm64-only on Apple Silicon).
 setup_macos() {
   need git cmake make patch python3 clang++ curl
-  if [[ "$(uname -m)" == arm64 ]] && ! arch -x86_64 true >/dev/null 2>&1; then
+  if [[ "$(uname -m)" == arm64 ]] && ! /usr/bin/arch -x86_64 /usr/bin/true >/dev/null 2>&1; then
     sms_die "Rosetta 2 is required on Apple Silicon (the game is an x86_64 program): softwareupdate --install-rosetta"
   fi
 

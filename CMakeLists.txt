@@ -216,7 +216,7 @@ if(APPLE)
   # rewrite Mach-O archives — use llvm-objcopy (Homebrew llvm).
   set(_object_prefix "_")
   find_program(SMS_OBJCOPY NAMES llvm-objcopy
-    PATHS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin
+    PATHS "$ENV{SMS_LLVM_BIN}" /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin
     NO_DEFAULT_PATH)
   if(NOT SMS_OBJCOPY)
     find_program(SMS_OBJCOPY NAMES llvm-objcopy)

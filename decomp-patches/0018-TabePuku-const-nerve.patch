@@ -1,0 +1,12 @@
+Reason: clang: const nerve pointer bound to TNerveBase<TLiveActor>* (g++ -fpermissive only warns); const_cast
+--- a/src/Enemy/TabePuku.cpp
++++ b/src/Enemy/TabePuku.cpp
+@@ -237,7 +237,7 @@
+ 	mManager->manageActor(this);
+ 	setMActorAndKeeper();
+ 
+-	TNerveBase<TLiveActor>* nerve = &TNerveTabePukuGraphWander::theNerve();
++	TNerveBase<TLiveActor>* nerve = const_cast<TNerveTabePukuGraphWander*>(&TNerveTabePukuGraphWander::theNerve());
+ 	mSpine->initWith(nerve);
+ 
+ 	initCollision();

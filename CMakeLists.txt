@@ -335,7 +335,7 @@ else()
   endif()
 endif()
 
-option(SMS_ECLIPSE "Build Super Mario Eclipse in (32-bit; fetches its sources, see docs/ECLIPSE.md)" OFF)
+option(SMS_ECLIPSE "Build Super Mario Eclipse in (fetches its sources, see docs/ECLIPSE.md)" OFF)
 if(SMS_ECLIPSE)
   include(cmake/eclipse.cmake)
 elseif(WIN32)

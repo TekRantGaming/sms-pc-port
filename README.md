@@ -12,7 +12,7 @@ You build the program from source, and it reads the models, textures, levels, mu
 | Linux (x86) | 32-bit (default) | plays | `build/linux-32/sms` |
 | Linux (x86-64) | 64-bit (`SMS_ARCH=64`) | plays; still being tested stage by stage ([docs/64-BIT.md](docs/64-BIT.md)) | `build/linux-64/sms` |
 | macOS (Intel, or Apple Silicon under Rosetta 2) | 64-bit | plays | `build/macos-64/sms` |
-| Windows (MSYS2 MINGW32) | 32-bit | plays | `build/windows-32/sms.exe` |
+| Windows (MSYS2 MINGW64) | 64-bit | boots under Wine; native runtime checks | `build/windows-64/sms.exe` |
 
 The game code keeps pointers in 4-byte fields, so it was written for a 32-bit machine.
 The 64-bit builds keep every address the game sees below 4 GiB; see [docs/64-BIT.md](docs/64-BIT.md).
@@ -26,7 +26,7 @@ The 64-bit builds keep every address the game sees below 4 GiB; see [docs/64-BIT
    cd sms-pc-port
    ```
 
-2. **Install the prerequisites** for your system: [Linux](BUILD.md#linux), [macOS](BUILD.md#macos), [Windows](BUILD.md#windows-msys2-mingw32).
+2. **Install the prerequisites** for your system: [Linux](BUILD.md#linux), [macOS](BUILD.md#macos), [Windows](BUILD.md#windows-msys2-mingw64).
 
 3. **Put your disc image in [`rom/`](rom/)**: one `.iso`, `.gcm` or Dolphin `.ciso` of GMSE01 Rev 0.
 
@@ -37,7 +37,7 @@ The 64-bit builds keep every address the game sees below 4 GiB; see [docs/64-BIT
    ./run.sh
    ```
 
-   On Windows, run these in the MSYS2 MINGW32 shell, or run `.\build.cmd` and `.\run.cmd` from PowerShell.
+   On Windows, run these in the MSYS2 MINGW64 shell, or run `.\build.cmd` and `.\run.cmd` from PowerShell.
 
 The first build compiles about 600 game files and takes a while; later builds only rebuild what changed.
 Because the image is in `rom/`, `./build.sh` also makes a **standalone** copy with the game's files inside (`sms-standalone`, or `SMS.app` on macOS) that runs without the image.
@@ -54,7 +54,7 @@ The same two scripts work on every system:
 | `./build.sh [IMAGE]` | builds `build/<os>-<arch>/sms`; with an image (argument, `SMS_DISC_IMAGE`, or the one in `rom/`) also the standalone copy |
 | `./run.sh [IMAGE] [--headless]` | runs that build: with the image you pass, else the standalone copy, else the image in `rom/` |
 | `./clean.sh [--all] [--dry-run]` | deletes the build output (every `build/<os>-<arch>/`); never deletes your disc image, and keeps the downloaded SDL2; `--all` deletes all of `build/` |
-| `SMS_ARCH=64 ./build.sh` | chooses the word size (Linux: `32` default or `64`; macOS: `64` only; Windows: `32` only) |
+| `SMS_ARCH=64 ./build.sh` | chooses the word size (Linux: `32` default or `64`; macOS: `64` only; Windows: `64` default (`32` legacy with MINGW32)) |
 | `JOBS=2 ./build.sh` | limits parallel compiler jobs (default: all cores) |
 
 `./build.sh --help`, `./run.sh --help` and `./clean.sh --help` print the details.

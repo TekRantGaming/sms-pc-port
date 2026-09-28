@@ -35,7 +35,7 @@ static void* thread(void* exit)
 int main()
 {
 	require(sizeof(void*) == 8 && sizeof(long) == 4);
-	require((uintptr_t)&main < 0x100000000ULL);
+	require((uintptr_t)(&main) < 0x100000000ULL);
 	stack = VirtualAlloc((void*)0x10000000, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	require(stack != NULL);
 	require(thread(NULL) == (void*)42);

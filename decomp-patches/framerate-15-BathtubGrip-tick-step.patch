@@ -1,0 +1,33 @@
+Reason: port: with frame_rate = 60 the bathtub grips in the Bowser fight break at their 30 fps speed; control() steps the break animation per 1/120 s tick at a rate scaled by SMSGetAnmFrameRate(), which halves at 60 while the tick rate does not, so the break took longer
+--- a/src/MoveBG/MapObjCorona.cpp
++++ b/src/MoveBG/MapObjCorona.cpp
+@@ -374,6 +374,18 @@ static inline TBathtub* MapObjCoronaBathtub(const TBathtubGrip* p)
+ 	return bathtub;
+ }
+ 
++#ifdef TARGET_PC
++// Port: control() runs on every 1/120 s movement tick (four a frame at 30,
++// two at 60) and steps the grip's break animation with calcAnm at
++// 0.5 * unk250 * SMSGetAnmFrameRate() frames per tick, a per-frame rate. With
++// frame_rate = 60 SMSGetAnmFrameRate() halves while the tick rate does not,
++// so the break (and the kill or reset that waits for its end) took longer
++// than at 30. Take the frame step twice at 60: two half-rate steps are the
++// 30 fps tick's step, and the rate, which the calc-anim pass also uses once
++// per frame, is left alone.
++extern "C" int port_fps60_active;
++#endif
++
+ // TODO: Match the stack frame used by the inlined grip helpers.
+ void TBathtubGrip::control()
+ {
+@@ -383,6 +395,10 @@ void TBathtubGrip::control()
+ 		removeCollisions_();
+ 		return;
+ 	}
++#ifdef TARGET_PC
++	if (port_fps60_active)
++		mMActor->frameUpdate();
++#endif
+ 	mMActor->calcAnm();
+ 	if (unk24B)
+ 		setupCollisions_();

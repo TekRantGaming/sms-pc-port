@@ -1,4 +1,4 @@
-Reason: port: with frame_rate = 60 the plaza gates' calc-anim swirl state (wind timer, close rate) steps once per 1/30 s as at 30; stepping it every frame cancels the per-tick opening rate, so an already-open gate (every re-entry to Bianco Hills, Ricco Harbor, Gelato Beach, ...) never opens
+Reason: port: with frame_rate = 60 the plaza gates' calc-anim swirl state (wind timer, close rate) steps once per 1/30 s as at 30; stepping it every frame cancels the per-tick opening rate, so an already-open gate (every re-entry to Bianco Hills, Ricco Harbor, Gelato Beach, ...) never opens; on the skipped frames the swirl's keep-alive particle requests are still made, since the particle manager kills a type-1 emitter that is not re-requested on its next pass
 --- a/src/MoveBG/ModelGate.cpp
 +++ b/src/MoveBG/ModelGate.cpp
 @@ -29,6 +29,27 @@
@@ -29,12 +29,28 @@ Reason: port: with frame_rate = 60 the plaza gates' calc-anim swirl state (wind 
  /// The gate model and its BTK/BRK share one name per destination.
  static const char* gateMActorNames[] = {
  	"05_gate01", "05_gate02rico", "05_gate03manma", "05_gate04monte",
-@@ -408,6 +429,9 @@
+@@ -413,6 +434,25 @@ void TModelGate::perform(u32 cue, JDrama::TGraphics* graphics)
  	}
  
  	if (cue & CUE_CALC_ANIM) {
 +#ifdef TARGET_PC
-+		if (ModelGatePortCalcStep())
++		// The four swirl emitters are type-1 (keep-alive) requests:
++		// TMarioParticleManager's calc pass kills one that was requested on
++		// the previous pass but not on this one. On the frames the state
++		// step is skipped, request them again so they are not killed and
++		// restarted every other frame.
++		if (!ModelGatePortCalcStep()) {
++			if (mState == STATE_SWIRL && mWindTimeLeft > 0) {
++				gpMarioParticleManager->emitAndBindToMtxPtr(
++				    0x131, unk78->getModel()->getAnmMtx(unk72), 1, this);
++				gpMarioParticleManager->emitAndBindToMtxPtr(
++				    0x132, unk78->getModel()->getAnmMtx(unk72), 1, this);
++				gpMarioParticleManager->emitAndBindToMtxPtr(
++				    0x133, unk78->getModel()->getAnmMtx(unk72), 1, this);
++				gpMarioParticleManager->emitAndBindToMtxPtr(
++				    0x134, unk78->getModel()->getAnmMtx(unk72), 1, this);
++			}
++		} else
 +#endif
  		switch (mState) {
  		case STATE_WAIT_ANIM:

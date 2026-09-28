@@ -1,0 +1,63 @@
+Reason: port: with frame_rate = 60 the Pinna Park Ferris wheel turns at its 30 fps speed; control() advances it per 1/120 s tick by SMSGetAnmFrameRate() / 4, a per-frame rate that halves at 60 while the tick rate does not, so the per-tick half of its turning halved and the wheel and its gondolas turned at three quarters of their speed
+--- a/src/MoveBG/MapObjPinna.cpp
++++ b/src/MoveBG/MapObjPinna.cpp
+@@ -77,12 +77,39 @@ static inline void MapObjPinnaAdvance(TMapObjBase* p, f32 rate)
+ 	MapObjPinnaFrameCtrl(p)->setFrame(rate + MapObjPinnaFrameCtrl(p)->getFrame());
+ }
+ 
++#ifdef TARGET_PC
++// Port: TFerrisWheel::control runs on every 1/120 s movement tick (four a
++// frame at 30, two at 60) and turns the wheel by mAnmRate animation frames
++// per tick. Its idle rate is SMSGetAnmFrameRate() / 4, i.e. one frame's
++// animation step spread over four ticks, which assumes 30 fps: with
++// frame_rate = 60 SMSGetAnmFrameRate() halves while the tick rate does not,
++// so this half of the turning (the calc pass steps the same BCK once a frame)
++// halved: the wheel and the gondolas Mario rides turned at 3/4 speed, and the
++// post-manta slow-down stopped at half the idle rate. Use the 30 fps value.
++extern "C" int port_fps60_active;
++static inline f32 FerrisWheelPortTickAnmRate()
++{
++	f32 rate = SMSGetAnmFrameRate();
++	return port_fps60_active ? 2.0f * rate : rate;
++}
++#endif
++
+ void TFerrisWheel::control()
+ {
+ 	TMapObjBase::control();
+ 
+ 	// State 2 is "slowing down after the manta fight"; once the wheel has
+ 	// coasted back to the idle rate it goes back to state 1 for good.
++#ifdef TARGET_PC
++	if (isState(2) && !isStateTimerEngaged()) {
++		if (mAnmRate > FerrisWheelPortTickAnmRate() / 4.0f)
++			mAnmRate -= 0.015f;
++		else
++			setState(1);
++	}
++
++	if (mAnmRate > FerrisWheelPortTickAnmRate() / 4.0f) {
++#else
+ 	if (isState(2) && !isStateTimerEngaged()) {
+ 		if (mAnmRate > SMSGetAnmFrameRate() / 4.0f)
+ 			mAnmRate -= 0.015f;
+@@ -91,6 +118,7 @@ void TFerrisWheel::control()
+ 	}
+ 
+ 	if (mAnmRate > SMSGetAnmFrameRate() / 4.0f) {
++#endif
+ 		MSound* sound = MapObjPinnaGetMSound();
+ 		sound->startSoundActor(MSD_SE_OBJ_MAHRE_GATE_LIGHT, &mPosition, 0,
+ 		                       &sound->unk80, 0, 4);
+@@ -129,7 +157,11 @@ void TFerrisWheel::initMapObj()
+ 	if (SMSGetMarDirector()->getCurrentStage() == 2)
+ 		mAnmRate = 10.0f;
+ 	else
++#ifdef TARGET_PC
++		mAnmRate = FerrisWheelPortTickAnmRate() / 4.0f;
++#else
+ 		mAnmRate = SMSGetAnmFrameRate() / 4.0f;
++#endif
+ }
+ 
+ TFerrisWheel::TFerrisWheel(const char* name)

@@ -1,0 +1,43 @@
+Reason: port: with frame_rate = 60 the Eely-Mouth boss animates at its 30 fps speed; its body animation is stepped per 1/120 s tick at 0.25 * SMSGetAnmFrameRate(), a per-frame rate that halves at 60 while the tick rate does not, so the whole fight ran at half speed
+--- a/src/Enemy/bosseel.cpp
++++ b/src/Enemy/bosseel.cpp
+@@ -2239,6 +2239,23 @@ void TBossEel::perform(u32 cue, JDrama::TGraphics* graphics)
+ // `!getTime()` (frame lands, spinSpeed 0x68), a named MsRandF result, a named
+ // speed, ratio declared first or passed as the argument, getCurBckAnmPtr, and
+ // `table == nullptr`. Appear, Eat, Die, MouthOpenWait stay 0x18-0x28 short.
++#ifdef TARGET_PC
++// Port: the eel's body animation is stepped only in perform's CUE_MOVE
++// branch (mMActor->calcAnm()), i.e. on every 1/120 s movement tick: four a
++// frame at 30, two at 60. setBckAnm gives it 0.25 * SMSGetAnmFrameRate()
++// frames per tick, one frame's animation step spread over four ticks, which
++// assumes 30 fps. With frame_rate = 60 SMSGetAnmFrameRate() halves while the
++// tick rate does not, so every Eely-Mouth animation, and every nerve that
++// waits for one to end (spins, breath, bites), ran at half speed. Use the
++// 30 fps value.
++extern "C" int port_fps60_active;
++static inline f32 BossEelPortTickAnmRate()
++{
++	f32 rate = SMSGetAnmFrameRate();
++	return port_fps60_active ? 2.0f * rate : rate;
++}
++#endif
++
+ void TBossEel::setBckAnm(int index)
+ {
+ 	mPreviousBckIndex = getMActor()->getCurAnmIdx(ANM_TYPE_BCK);
+@@ -2247,9 +2264,15 @@ void TBossEel::setBckAnm(int index)
+ 	getMActor()->setBckOldMotionBlendAnmPtr(getMActor()->getBckAnm());
+ 	getMActor()->setBckFromIndex(index);
+ 	getMActor()->setMotionBlendRatioForBck(mBckBlendRatio);
++#ifdef TARGET_PC
++	getMActor()
++	    ->getFrameCtrl(ANM_TYPE_BCK)
++	    ->setRate(0.25f * BossEelPortTickAnmRate());
++#else
+ 	getMActor()
+ 	    ->getFrameCtrl(ANM_TYPE_BCK)
+ 	    ->setRate(0.25f * SMSGetAnmFrameRate());
++#endif
+ 	const char** basTable = getBasNameTable();
+ 	const char* basName;
+ 	if (basTable == nullptr)

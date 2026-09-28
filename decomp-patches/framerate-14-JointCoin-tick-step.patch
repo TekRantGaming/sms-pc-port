@@ -1,0 +1,40 @@
+Reason: port: with frame_rate = 60 joint coins (coins carried round by a joint animation) move at their 30 fps speed; control() steps that animation per 1/120 s tick at SMSGetAnmFrameRate() * 0.25, a per-frame rate that halves at 60 while the tick rate does not, so they moved at half to three fifths of their speed
+--- a/src/MoveBG/MapObjEx.cpp
++++ b/src/MoveBG/MapObjEx.cpp
+@@ -53,14 +53,36 @@ TMapObjNail::TMapObjNail(const char* name)
+ {
+ }
+ 
++#ifdef TARGET_PC
++// Port: control() runs on every 1/120 s movement tick (four a frame at 30,
++// two at 60) and steps both joint animations that carry the coins, at
++// SMSGetAnmFrameRate() * 0.25 frames per tick (set in loadAfter), i.e. one
++// frame's animation step spread over four ticks, which assumes 30 fps. With
++// frame_rate = 60 SMSGetAnmFrameRate() halves while the tick rate does not,
++// so the ticks' share of the coins' movement halved (the coins went round at
++// half to three fifths of their speed, depending on whether the calc-anim
++// pass also steps mMActor). Take the step twice at 60: two half-rate steps
++// are the 30 fps tick's step, and the rate itself, which the calc-anim pass
++// may also use once per frame, is left alone.
++extern "C" int port_fps60_active;
++#endif
++
+ void TJointCoin::control()
+ {
+ 	unk138->frameUpdate();
++#ifdef TARGET_PC
++	if (port_fps60_active)
++		unk138->frameUpdate();
++#endif
+ 	unk138->calc();
+ 	MtxPtr mtx = unk138->getModel()->getAnmMtx(0);
+ 	mPosition.set(mtx[0][3], mtx[1][3], mtx[2][3]);
+ 	getModel()->setBaseTRMtx(mtx);
+ 	mMActor->frameUpdate();
++#ifdef TARGET_PC
++	if (port_fps60_active)
++		mMActor->frameUpdate();
++#endif
+ 	mMActor->calc();
+ 
+ 	for (int i = 0; i < getObjNum(); ++i) {

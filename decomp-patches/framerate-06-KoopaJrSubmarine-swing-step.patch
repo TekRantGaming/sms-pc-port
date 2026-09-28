@@ -1,0 +1,38 @@
+Reason: port: with frame_rate = 60 Bowser Jr.'s submarine swing (built by water hits, decaying every pass, stunning him at half amplitude) steps once per 1/30 s as at 30; it stepped on the calc-anim pass, every frame, so it decayed and built up at twice the rate
+--- a/src/Enemy/koopajr.cpp
++++ b/src/Enemy/koopajr.cpp
+@@ -808,11 +808,34 @@ void TKoopaJrSubmarine::resetKoopaJrSubmarine()
+ 	KoopajrBathtubBinder(this)->init(150.0f, 100.0f, 150.0f, 100.0f, bottom);
+ }
+ 
++#ifdef TARGET_PC
++#include <System/MarDirector.hpp>
++
++// Port: with frame_rate = 60, TMarDirector::direct still runs CUE_MOVE in
++// 1/120 s ticks but the calc-anim pass (cue & 2) comes every frame, twice as
++// often per second as at 30. moveSwing steps the submarine's swing there:
++// each water hit adds 0.0628 to the swing amplitude (one hit counted per
++// pass) and every pass takes 0.0094 off, and TKoopaJr stuns Bowser Jr. once
++// the amplitude reaches half its maximum. Stepped every frame, the swing
++// decayed twice as fast and a steady spray built it twice as fast, so the
++// stun no longer took the spraying it takes at 30. Step it once per 1/30 s:
++// on the calc pass of every other frame at 60 (the director counts one
++// unk5C per tick, two a frame).
++extern "C" int port_fps60_active;
++static inline bool KoopaJrSubmarinePortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ void TKoopaJrSubmarine::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & 2) {
+ 		checkKillerLaunch();
+ 		makeCollisionPositions();
++#ifdef TARGET_PC
++		if (KoopaJrSubmarinePortCalcStep())
++#endif
+ 		moveSwing();
+ 	}
+ 	if (cue & 1) {

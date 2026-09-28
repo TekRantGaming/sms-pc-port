@@ -1,0 +1,33 @@
+Reason: port: with frame_rate = 60 the hint balloon (its fade and grow, the typed text and its display timer) steps once per 1/30 s as at 30; it stepped on the HUD's calc-anim pass, which comes every frame, so every balloon (hints, NPC shouts, boss prompts) typed out, stayed up and closed in half its time
+--- a/src/GC2D/GCConsole2.cpp
++++ b/src/GC2D/GCConsole2.cpp
+@@ -4287,9 +4287,29 @@
+ 	}
+ }
+ 
++#ifdef TARGET_PC
++// Port: with frame_rate = 60 the HUD's calc-anim pass (flags & 2, where the
++// balloon is updated) comes every frame, twice as often per second as at 30,
++// while the movement pass keeps its 1/120 s ticks. The balloon's state
++// machine steps on that pass: its fade and grow (0x30 alpha, unk3CC rows a
++// pass), the text typed out two characters a pass, and the display timer
++// (unk3E4, len * 0.7 + 100 counts, 150 for message 0x2C), so every hint
++// balloon typed, stayed up and closed in half its time. Step it once per
++// 1/30 s: on the calc pass of every other frame at 60 (the director counts
++// one unk5C per tick, two a frame). The counters below still run every pass.
++extern "C" int port_fps60_active;
++static inline bool GCConsole2PortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ // fabricated: the flags&2 balloon and counter pass, one inlined callee.
+ static inline void updateBalloon(TGCConsole2* console)
+ {
++#ifdef TARGET_PC
++	if (GCConsole2PortCalcStep())
++#endif
+ 	switch (console->unk10) {
+ 	case 1:
+ 		if (console->processAppearBalloon()) {

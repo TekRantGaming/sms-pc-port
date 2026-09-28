@@ -1,0 +1,36 @@
+Reason: port: with frame_rate = 60 the casino curtain keeps its 20-count pause (input held) before it opens at the 30 fps length; it counted in calcRootMatrix, on the calc-anim pass every frame, so the pause was half as long
+--- a/src/MoveBG/MapObjSirena.cpp
++++ b/src/MoveBG/MapObjSirena.cpp
+@@ -953,6 +953,20 @@ static inline TMarDirector* MapObjSirenaDirector()
+ 	return d;
+ }
+ 
++#ifdef TARGET_PC
++// Port: with frame_rate = 60 calcRootMatrix (called on the calc-anim pass)
++// runs every frame, twice as often per second as at 30. Once both of its
++// switches are hit, the curtain holds Mario's input for 20 counts of unk14C
++// on that pass before it opens; at 60 the pause lasted half as long. Count
++// it once per 1/30 s: on the calc pass of every other frame at 60 (the
++// director counts one unk5C per tick, two a frame).
++extern "C" int port_fps60_active;
++static inline bool DonchouPortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ void TDonchou::calcRootMatrix()
+ {
+ 	J3DModel* model = getModel();
+@@ -967,7 +981,11 @@ void TDonchou::calcRootMatrix()
+ 	if (unk13C != 0) {
+ 		// The curtain only counts down while nobody is talking, and it
+ 		// freezes Mario's stick for as long as it is still counting.
++#ifdef TARGET_PC
++		if (!MapObjSirenaDirector()->isTalkModeNow() && DonchouPortCalcStep())
++#else
+ 		if (!MapObjSirenaDirector()->isTalkModeNow())
++#endif
+ 			unk14C++;
+ 		if (unk14C > 20) {
+ 			if (mMActor->checkCurAnm("donchou", ANM_TYPE_BCK)) {

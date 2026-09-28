@@ -1,0 +1,37 @@
+Reason: port: with frame_rate = 60 the Pinna Park roller coaster runs at its 30 fps speed; control() steps its rail animation per 1/120 s tick at SMSGetAnmFrameRate() / 4, a per-frame rate that halves at 60 while the tick rate does not, so the coaster ran at half speed
+--- a/src/MoveBG/MapObjPinna.cpp
++++ b/src/MoveBG/MapObjPinna.cpp
+@@ -1091,6 +1091,21 @@ void TPinnaCoaster::control()
+ 	mPrevPos.set(mPosition);
+ }
+ 
++#ifdef TARGET_PC
++// Port: TPinnaCoaster::control steps the rail animation that carries the car
++// on every 1/120 s movement tick (four a frame at 30, two at 60), at
++// SMSGetAnmFrameRate() / 4 frames per tick, i.e. one frame's animation step
++// spread over four ticks, which assumes 30 fps. With frame_rate = 60
++// SMSGetAnmFrameRate() halves while the tick rate does not, so the coaster
++// ran at half speed. Use the 30 fps value.
++extern "C" int port_fps60_active;
++static inline f32 PinnaCoasterPortTickAnmRate()
++{
++	f32 rate = SMSGetAnmFrameRate();
++	return port_fps60_active ? 2.0f * rate : rate;
++}
++#endif
++
+ void TPinnaCoaster::initMapObj()
+ {
+ 	TMapObjBase::initMapObj();
+@@ -1103,7 +1118,11 @@ void TPinnaCoaster::initMapObj()
+ 	MsMtxSetXYZRPH(mRail->getModel()->getBaseTRMtx(), mPosition.x, mPosition.y,
+ 	               mPosition.z, mRotation.x, mRotation.y, mRotation.z);
+ 
++#ifdef TARGET_PC
++	mRail->getFrameCtrl(0)->setRate(PinnaCoasterPortTickAnmRate() / 4.0f);
++#else
+ 	mRail->getFrameCtrl(0)->setRate(SMSGetAnmFrameRate() / 4.0f);
++#endif
+ 
+ 	mPrevPos.set(mPosition);
+ }

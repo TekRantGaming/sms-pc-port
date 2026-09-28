@@ -1,0 +1,44 @@
+Reason: port: with frame_rate = 60 Shadow Mario's fruit-kick stun and HP-meter timers count down at the 30 fps rate; perform counts them on every call, and the per-frame calls double at 60, so both ran out 30% sooner
+--- a/src/Enemy/enemyMario.cpp
++++ b/src/Enemy/enemyMario.cpp
+@@ -1851,6 +1851,22 @@ void TEnemyMario::drawHPMeter(MtxPtr viewMtx)
+ 	GXEnd();
+ }
+ 
++#ifdef TARGET_PC
++// Port: perform counts mFreezeTimer (the fruit-kick stun) and mWaterHitTimer
++// (how long the HP meter stays up after a hit) down on every call, whatever
++// the cue. Shadow Mario gets one movement call per 1/120 s tick and three
++// per-frame calls (calc-anim, view/entry, draw): 4 + 3 = 7 per 1/30 s at 30,
++// but 4 + 6 = 10 at 60, so both timers ran out 30% sooner. Keep the tick
++// calls and count the per-frame ones on every other frame at 60 (the
++// director counts one unk5C per tick, two a frame).
++extern "C" int port_fps60_active;
++static inline bool EnemyMarioPortTimerStep(u32 cue)
++{
++	return !port_fps60_active || (cue & CUE_MOVE) != 0
++	    || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ void TEnemyMario::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	MActor* emarioActor   = nullptr;
+@@ -1861,11 +1877,17 @@ void TEnemyMario::perform(u32 cue, JDrama::TGraphics* graphics)
+ 		emarioModel = emarioActor->getModel();
+ 	}
+ 
++#ifdef TARGET_PC
++	if (EnemyMarioPortTimerStep(cue)) {
++#endif
+ 	if (mFreezeTimer > 0)
+ 		--mFreezeTimer;
+ 
+ 	if (mWaterHitTimer > 0)
+ 		--mWaterHitTimer;
++#ifdef TARGET_PC
++	}
++#endif
+ 
+ 	if (cue & CUE_MOVE) {
+ 		if (checkEMFlag(EM_FLAG_FORCE_WATER_HIT)) {

@@ -54,6 +54,10 @@ How the port is put together and where changes go. To build and play, see the [R
 The Linux debugging tools (`gdbrun.sh`, `hangdump.sh`, `run_capture.sh`, `syntax_check.py`) use `build/linux-32/`; set `SMS_ARCH=64` for `build/linux-64/`, or `SMS_BUILD=dir` for any other build folder.
 Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
 
+- **Moving the decomp pin:** `tools/update-decomp.sh [--64] [REF]` fetches the decomp, moves `decomp/` to REF (default `origin/main`), checks that every `decomp-patches/` patch applies in order with no failed hunk and no fuzz, and builds 32-bit (and 64-bit with `--64`).
+  It keeps the new pin, staged for a commit, only when all of that passes; otherwise it restores the old pin and says what failed.
+  The submodule is always pinned to an exact decomp commit.
+
 ## Platform layer
 
 | Module | What it does |

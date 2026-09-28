@@ -1,0 +1,41 @@
+Reason: port: with frame_rate = 60 the plaza gates' calc-anim swirl state (wind timer, close rate) steps once per 1/30 s as at 30; stepping it every frame cancels the per-tick opening rate, so an already-open gate (every re-entry to Bianco Hills, Ricco Harbor, Gelato Beach, ...) never opens
+--- a/src/MoveBG/ModelGate.cpp
++++ b/src/MoveBG/ModelGate.cpp
+@@ -29,6 +29,27 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <System/MarDirector.hpp>
++
++// Port: with frame_rate = 60, TMarDirector::direct still runs CUE_MOVE in
++// 1/120 s ticks (two a frame instead of four) but CUE_CALC_ANIM comes every
++// frame, twice as often per second as at 30. Near an open gate, perform's
++// movement pass adds 0.01 to mOpenRate per tick and, while the wind is out,
++// the calc pass takes mCloseSpeed (0.02) off per call: +0.04 against -0.02
++// per 1/30 s at 30, but +0.02 against -0.02 per frame at 60, so a gate that
++// is already open (every gate after its first use) never swirls up, the wind
++// never starts, and Mario cannot jump in. The swirl's state (wind timer,
++// close rates) is gameplay, so step it once per 1/30 s: on the calc pass of
++// every other frame at 60 (the director counts one unk5C per tick, two a
++// frame). The animation frame is still set on every pass.
++extern "C" int port_fps60_active;
++static inline bool ModelGatePortCalcStep()
++{
++	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++}
++#endif
++
+ /// The gate model and its BTK/BRK share one name per destination.
+ static const char* gateMActorNames[] = {
+ 	"05_gate01", "05_gate02rico", "05_gate03manma", "05_gate04monte",
+@@ -408,6 +429,9 @@
+ 	}
+ 
+ 	if (cue & CUE_CALC_ANIM) {
++#ifdef TARGET_PC
++		if (ModelGatePortCalcStep())
++#endif
+ 		switch (mState) {
+ 		case STATE_WAIT_ANIM:
+ 			if (unk78->getFrameCtrl(2)->checkState(

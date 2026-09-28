@@ -38,6 +38,13 @@ message(STATUS "SMS port: building -m${SMS_ARCH}")
 
 # --- Decomp translation units -----------------------------------------------
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+if(WIN32 AND SMS_ARCH STREQUAL "32" AND "$ENV{SMS_WINDOWS_32_CROSS}" STREQUAL "1")
+  set(_msys_launcher "${Python3_EXECUTABLE};${CMAKE_CURRENT_SOURCE_DIR}/tools/msys_cross_compile.py")
+  set(CMAKE_C_COMPILER_LAUNCHER "${_msys_launcher}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${_msys_launcher}")
+  set(CMAKE_C_LINKER_LAUNCHER "${_msys_launcher}")
+  set(CMAKE_CXX_LINKER_LAUNCHER "${_msys_launcher}")
+endif()
 execute_process(
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sources.py
           ${SMS_DECOMP} ${CMAKE_BINARY_DIR}/decomp_sources.cmake

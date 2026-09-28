@@ -10,7 +10,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario upper-body state hooks (Bet
 +
 +// BetterSunshineEngine's extended animation table (bse/src/player.cpp);
 +// weak, as it exists only with the mod linked in.
-+extern TMarioAnimeData sPlayerAnimeDatas[] __attribute__((weak));
++extern TMarioAnimeData sPlayerAnimeDatas[] SMS_MOD_WEAK_IMPORT;
 +
 +// gMarioAnimeData, or BetterSunshineEngine's table when its patch at
 +// retail 0x802624E8 (isPumpOkCallingExt, an assembly routine that loads

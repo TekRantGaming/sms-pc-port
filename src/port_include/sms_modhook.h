@@ -18,6 +18,11 @@
 #define SMS_MODHOOK_H
 
 #ifdef TARGET_PC
+#if defined(__APPLE__)
+#define SMS_MOD_WEAK_IMPORT __attribute__((weak_import))
+#else
+#define SMS_MOD_WEAK_IMPORT __attribute__((weak))
+#endif
 extern "C" void* sms_mod_target(unsigned int addr);
 extern "C" int sms_mod_word(unsigned int addr, unsigned int* value);
 extern "C" unsigned int sms_mod_generation;

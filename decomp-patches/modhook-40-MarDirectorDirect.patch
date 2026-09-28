@@ -1,0 +1,105 @@
+Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage handler at the moveStage calls (retail 0x80297E40, 0x80299244, 0x8029933C, 0x8029946C), its debug UI cue (0x80299CF0) and Eclipse's nextStateInitialize (0x802995C8)
+--- a/src/System/MarDirectorDirect.cpp
++++ b/src/System/MarDirectorDirect.cpp
+@@ -41,6 +41,18 @@
+ #ifdef TARGET_PC
+ #include <sms_modhook.h>
+ #endif
++#ifdef TARGET_PC
++// BetterSunshineEngine (moveStageHandler, at each moveStage call in
++// changeState and updateGameMode): its registered next-stage handler moves
++// the stage instead.
++#define SMS_MOD_MOVE_STAGE(addr)                                                                   \
++	do {                                                                                           \
++		if (void* sms_mod_t_ = SMS_MOD_SITE(addr))                                                 \
++			((void (*)(TMarDirector*))sms_mod_t_)(this);                                           \
++		else                                                                                       \
++			moveStage();                                                                           \
++	} while (0)
++#endif
+ 
+ extern OSThread gSetupThread;
+ 
+@@ -209,7 +221,19 @@
+ 			    || gpCamera->unk2C8 != -1) {
+ 				mPerformListSilhouette->perform(CUE_ALL, &local_140);
+ 			}
+-			mPerformListGXPost->perform(CUE_ALL, &local_140);
++	#ifdef TARGET_PC
++		{
++			// BetterSunshineEngine's debug mode rewrites the cue this list
++			// gets (`li r4, imm` at retail 0x80299CF0) to hide the 2D UI.
++			unsigned int sms_mod_w_;
++			u32 sms_mod_cue_ = CUE_ALL;
++			if (sms_mod_word(0x80299CF0, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x3880)
++				sms_mod_cue_ = (u32)(s32)(s16)sms_mod_w_;
++			mPerformListGXPost->perform(sms_mod_cue_, &local_140);
++		}
++#else
++		mPerformListGXPost->perform(CUE_ALL, &local_140);
++#endif
+ 			GXInvalidateTexAll();
+ 		}
+ 		desiredAppState = changeState();
+@@ -555,7 +579,11 @@
+ 			decideNextStage();
+ #endif
+ 			offUnk4CFlag(0x100);
++#ifdef TARGET_PC
++			SMS_MOD_MOVE_STAGE(0x80299244);
++#else
+ 			moveStage();
++#endif
+ 			unkE4     = 2;
+ 			nextState = STATE_UNK9;
+ 			break;
+@@ -589,7 +617,11 @@
+ 				} else
+ #endif
+ 				offUnk4CFlag(0x100);
++#ifdef TARGET_PC
++				SMS_MOD_MOVE_STAGE(0x8029933C);
++#else
+ 				moveStage();
++#endif
+ 				gpApplication.mFader->setFadeStatus(
+ 				    TSMSFader::FADE_STATUS_FULLY_FADED_OUT);
+ 				desiredAppState = TApplication::APP_STATE_GAMEPLAY;
+@@ -619,7 +651,11 @@
+ 				TFlagManager::smInstance->setBool(true, 0x30002);
+ 				decideNextStageOfClear();
+ 				offUnk4CFlag(0x100);
++#ifdef TARGET_PC
++				SMS_MOD_MOVE_STAGE(0x8029946C);
++#else
+ 				moveStage();
++#endif
+ 				unkE4 = 0xf;
+ 				gpApplication.mFader->setColor(JUtility::TColor(0, 0, 0, 0xff));
+ 				nextState = STATE_UNK12;
+@@ -667,6 +703,13 @@
+ 	if (nextState != mState) {
+ #endif
+ 		currentStateFinalize(nextState);
++#ifdef TARGET_PC
++		// Eclipse (extendedNextStateInitialize, retail 0x802995C8): its own
++		// start-of-stage camera and music for its extra areas.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802995C8))
++			((void (*)(TMarDirector*, s8))sms_mod_t_)(this, (s8)nextState);
++		else
++#endif
+ 		nextStateInitialize(nextState);
+ 		mState = nextState;
+ 	}
+@@ -1224,7 +1267,11 @@
+ 			}
+ 
+ 			if (checkUnk4CFlag(0x2)) {
++#ifdef TARGET_PC
++				SMS_MOD_MOVE_STAGE(0x80297E40);
++#else
+ 				moveStage();
++#endif
+ 				r29 = STATE_UNK9;
+ 				break;
+ 			}

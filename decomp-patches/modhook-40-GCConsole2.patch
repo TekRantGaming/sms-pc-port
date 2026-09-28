@@ -1,0 +1,31 @@
+Reason: port: code-mod hook (sms_modhook.h): Eclipse's news-list handlers in TGCConsole2::checkChangeTelopArray's switch table (retail 0x803C0360, 0x803C0364)
+--- a/src/GC2D/GCConsole2.cpp
++++ b/src/GC2D/GCConsole2.cpp
+@@ -4229,6 +4229,17 @@
+ 	u32* oldArray = GCConsole2Unk570(this);
+ 
+ 	if (gpMarDirector->mMap == 1) {
++#ifdef TARGET_PC
++		// Eclipse puts its own handlers in the switch table (retail 0x803C0354)
++		// for episodes 3 and 4 (entries at 0x803C0360, 0x803C0364): they set
++		// the news list and continue after the switch.
++		unsigned int sms_mod_w_;
++		if ((gpMarDirector->unk7D == 3 && sms_mod_word(0x803C0360, &sms_mod_w_))
++		    || (gpMarDirector->unk7D == 4 && sms_mod_word(0x803C0364, &sms_mod_w_))) {
++			((void (*)(TGCConsole2*))(uintptr_t)sms_mod_w_)(this);
++			goto sms_mod_after_switch_;
++		}
++#endif
+ 		switch (gpMarDirector->unk7D) {
+ 		case 0:
+ 			unk570 = scDolpicNewsDolpic0;
+@@ -4273,6 +4284,9 @@
+ 			unk570 = nullptr;
+ 			break;
+ 		}
++#ifdef TARGET_PC
++	sms_mod_after_switch_:;
++#endif
+ 	} else {
+ 		unk570 = nullptr;
+ 	}

@@ -1,0 +1,34 @@
+Reason: port: code-mod hooks (sms_modhook.h): SpcTrace forwarded to OSReport (Sunscript logging, BetterSunshineEngine)
+--- a/include/Strategic/spcinterp.hpp
++++ b/include/Strategic/spcinterp.hpp
+@@ -8,7 +8,30 @@
+ // Tracing is compiled out of the release build, so the body is empty. The map
+ // records the symbol as weak in several translation units, which is why it
+ // lives in this header rather than in spcinterp.cpp.
++#ifdef TARGET_PC
++#include <stdarg.h>
++#include <stdio.h>
++#include <dolphin/os.h>
++#include <sms_modhook.h>
++// BetterSunshineEngine rewrites the first word of the one SpcTrace copy every
++// caller links to (retail 0x8003DB3C) into `b OSReport` (0x80344644), which
++// restores Sunscript logging: the arguments go to OSReport unchanged.
++inline void SpcTrace(const char* fmt, ...)
++{
++	unsigned int w;
++	if (!sms_mod_word(0x8003DB3C, &w) || (w & 0xFC000003) != 0x48000000
++	    || 0x8003DB3Cu + (unsigned int)((int)(w << 6) >> 6) != 0x80344644u)
++		return;
++	char buf[1024];
++	va_list ap;
++	va_start(ap, fmt);
++	vsnprintf(buf, sizeof(buf), fmt, ap);
++	va_end(ap);
++	OSReport("%s", buf);
++}
++#else
+ inline void SpcTrace(const char*, ...) { }
++#endif
+ 
+ template <class T> class TSpcStack {
+ public:

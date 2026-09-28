@@ -1,0 +1,32 @@
+Reason: port: code-mod hooks (sms_modhook.h): light sets' draw buffers in TLightWithDBSetManager::makeDrawBuffer (Eclipse)
+--- a/src/MarioUtil/LightUtil.cpp
++++ b/src/MarioUtil/LightUtil.cpp
+@@ -13,6 +13,9 @@
+ #include <Player/MarioAccess.hpp>
+ #include <stdio.h>
+ #include <string.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ JDrama::TAmbAry* TLightCommon::mAmbAry;
+ JDrama::TLightAry* TLightCommon::mLightAry;
+@@ -534,9 +537,18 @@
+ 
+ void TLightWithDBSetManager::makeDrawBuffer()
+ {
++#ifdef TARGET_PC
++	// Eclipse (word 0x60000000 at retail 0x802281F4, a nop over the enabled
++	// test): every light set makes its draw buffer.
++	const bool all = SMS_MOD_WORD(0x802281F4, 0) == 0x60000000;
++	for (int i = LIGHT_TYPE_FIRST; i < LIGHT_TYPE_COUNT; ++i)
++		if (all || mLightSets[i]->isEnabled())
++			mLightSets[i]->makeDrawBuffer();
++#else
+ 	for (int i = LIGHT_TYPE_FIRST; i < LIGHT_TYPE_COUNT; ++i)
+ 		if (mLightSets[i]->isEnabled())
+ 			mLightSets[i]->makeDrawBuffer();
++#endif
+ }
+ 
+ Vec* TLightWithDBSetManager::getLightPos() const

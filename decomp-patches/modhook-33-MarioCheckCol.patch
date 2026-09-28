@@ -1,0 +1,112 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario::checkCollision Yoshi mount, object interactions and NPC grabbing (BetterSunshineEngine, Eclipse)
+--- a/src/Player/MarioCheckCol.cpp
++++ b/src/Player/MarioCheckCol.cpp
+@@ -12,6 +12,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ void TMario::hitNormal(THitActor* actor)
+ {
+ 	if (checkStatusType(MARIO_STATUS_FLAG_JUMPING) && mVel.y < 0.0f
+@@ -123,7 +127,18 @@
+ 
+ 	keepDistance(*actor, 0.0f);
+ 
+-	if (((TLiveActor*)actor)->checkLiveFlag(LIVE_FLAG_UNK100000))
++#ifdef TARGET_PC
++	// BetterSunshineEngine (canGrabAtNPC, retail 0x802815F0, with the word
++	// at 0x802815F4: cmpwi r3, 0): in retail this function is inlined into
++	// checkCollision (its only caller), where the mod calls canGrabAtNPC (it
++	// reads the NPC from r30) in place of the flag test and takes the NPC
++	// when it returns true.
++	void* sms_mod_grab_ = SMS_MOD_SITE(0x802815F0);
++	if (sms_mod_grab_ ? (SMS_MOD_GPR(30, actor), ((bool (*)())sms_mod_grab_)()) :
++#else
++	if (
++#endif
++	    ((TLiveActor*)actor)->checkLiveFlag(LIVE_FLAG_UNK100000))
+ 		wantToTakeActor(actor);
+ }
+ 
+@@ -294,7 +309,44 @@
+ 			f32 dx   = yt.x - mPosition.x;
+ 			f32 dist = std::sqrtf(dx * dx + dz * dz);
+ 
+-			if (checkStatusType(MARIO_STATUS_FLAG_JUMPING) && !isHolding()
++#ifdef TARGET_PC
++			// Code-mod patches of the mount test (the mods read this from r31):
++			// - Eclipse (canMountYoshi, retail 0x802810F8, with the words at
++			//   0x802810FC, 0x80281100, 0x80281104, 0x80281110): its result
++			//   replaces the jumping test;
++			// - BetterSunshineEngine (checkShouldMount, 0x8028113C, with the
++			//   words at 0x80281140, 0x80281144): its result replaces
++			//   mVel.y < 0.0f;
++			// - BetterSunshineEngine and Eclipse (getYoshiYPos, 0x80281148):
++			//   its result replaces the load of the Yoshi's height.
++			// After either of the first two the status tests (retail
++			// 0x80281158..0x80281170) compare r3, which then holds the Yoshi
++			// pointer or checkShouldMount's true, never one of those
++			// statuses: they always pass.
++			void* sms_mod_mount_  = SMS_MOD_SITE(0x802810F8);
++			void* sms_mod_should_ = SMS_MOD_SITE(0x8028113C);
++			void* sms_mod_yoshiy_ = SMS_MOD_SITE(0x80281148);
++			if ((sms_mod_mount_ || sms_mod_should_ || sms_mod_yoshiy_)
++			        ? (SMS_MOD_GPR(31, this),
++			           (sms_mod_mount_ ? ((bool (*)())sms_mod_mount_)()
++			                           : checkStatusType(MARIO_STATUS_FLAG_JUMPING))
++			               && !isHolding()
++			               && (sms_mod_should_ ? ((bool (*)())sms_mod_should_)()
++			                                   : mVel.y < 0.0f)
++			               && (sms_mod_yoshiy_
++			                       ? ((f32 (*)(TYoshi*))sms_mod_yoshiy_)(mYoshi)
++			                       : yt.y)
++			                      < mPosition.y
++			               && ((sms_mod_mount_ || sms_mod_should_)
++			                   || (getStatus() != 0x89C
++			                       && getStatus() != MARIO_STATUS_THROWN_DOWN
++			                       && getStatus() != MARIO_STATUS_BACK_JUMP))
++			               && dist < 180.0f)
++			        :
++#else
++			if (
++#endif
++			    checkStatusType(MARIO_STATUS_FLAG_JUMPING) && !isHolding()
+ 			    && mVel.y < 0.0f && yt.y < mPosition.y && getStatus() != 0x89C
+ 			    && getStatus() != MARIO_STATUS_THROWN_DOWN
+ 			    && getStatus() != MARIO_STATUS_BACK_JUMP && dist < 180.0f) {
+@@ -318,11 +370,31 @@
+ 				return;
+ 			}
+ 
++#ifdef TARGET_PC
++			// BetterSunshineEngine (keepDistanceIsolated, retail 0x80281284):
++			// the mod keeps the distance from mYoshi's translation itself (r4
++			// no longer holds yt once checkShouldMount has run).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80281284))
++				((void (*)(TMario*, f32, f32))sms_mod_t_)(this, 80.0f, 0.0f);
++			else
++#endif
+ 			keepDistance(yt, 80.0f, 0.0f);
+ 		}
+ 	}
+ 
+ 	for (s32 i = 0; i < (s32)getColNum(); i++) {
++#ifdef TARGET_PC
++		// BetterSunshineEngine (objectInteractionHandler, retail 0x80281510):
++		// replaces the load of the collision array at the top of each
++		// iteration; it runs the interaction a mod registered for the actor's
++		// ID (reading this from r31 and the element offset i * 4 from r29) and
++		// returns the same array.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80281510)) {
++			SMS_MOD_GPR(31, this);
++			SMS_MOD_GPR(29, i * 4);
++			((THitActor** (*)())sms_mod_t_)();
++		}
++#endif
+ 		u32 colType = getCollision(i)->getActorType();
+ 		if (getCollision(i)->checkActorType(ACTOR_TYPE_UNK4000000)) {
+ 			hitNpc(getCollision(i));

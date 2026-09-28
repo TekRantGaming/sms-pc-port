@@ -1,0 +1,60 @@
+Reason: port: code-mod hooks (sms_modhook.h): Eclipse ready-go state and BSE scenario name in TConsoleStr
+--- a/src/GC2D/ConsoleStr.cpp
++++ b/src/GC2D/ConsoleStr.cpp
+@@ -15,6 +15,9 @@
+ #include <JSystem/JParticle/JPAEmitter.hpp>
+ #include <JSystem/JUtility/JUTResFont.hpp>
+ #include <dolphin/gx/GXCull.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ #include <stdio.h>
+ 
+ // rogue include needed for matching the .rodata string pool prefix
+@@ -123,10 +126,25 @@
+ 		s16 uVar2 = ConsoleStrGetShineID(uVar1, uVar9);
+ 
+ 		const void* puVar15;
++#ifdef TARGET_PC
++		// BetterSunshineEngine: the word at 0x80172734 (`b 0x801727A0`)
++		// goes straight to the scenario-name call, past the null and id
++		// checks; that call is loadScenarioNameFromBMG at retail 0x801727A0
++		// (r3 = the bmg; it looks the name up itself).
++		unsigned int sms_mod_w_;
++		void* sms_mod_t_ = SMS_MOD_SITE(0x801727A0);
++		if (sms_mod_t_ && sms_mod_word(0x80172734, &sms_mod_w_))
++			puVar15 = ((const char* (*)(void*))sms_mod_t_)(pvVar10);
++		else
++#endif
+ 		if (pvVar10 == nullptr || uVar2 == -1)
+ 			puVar15 = "";
+ 		else
+-			puVar15 = SMSGetMessageData(
++			puVar15 =
++#ifdef TARGET_PC
++			    sms_mod_t_ ? ((const char* (*)(void*))sms_mod_t_)(pvVar10) :
++#endif
++			    SMSGetMessageData(
+ 			    pvVar10, (u16)SMS_getNormalStage(uVar2));
+ 
+ 		snprintf(unk29C[1]->getStringPtr(), 0x80, "%s", puVar15);
+@@ -329,10 +347,19 @@
+ 
+ void TConsoleStr::startAppearReady()
+ {
++#ifdef TARGET_PC
++	// Eclipse (generic.cpp): the `cmpwi r0, 1` word at 0x80171C30 and the
++	// `li r0, 1` word at 0x80171C38 take other immediates.
++	if (unk2B4 == (s16)SMS_MOD_WORD(0x80171C30, 0x2C000001))
++		return;
++
++	unk2B4 = (s16)SMS_MOD_WORD(0x80171C38, 0x38000001);
++#else
+ 	if (unk2B4 == 1)
+ 		return;
+ 
+ 	unk2B4 = 1;
++#endif
+ 	unk18  = 0.0f;
+ 	unk2A5 = 0;
+ 	unk28[0]->unk0->hide();

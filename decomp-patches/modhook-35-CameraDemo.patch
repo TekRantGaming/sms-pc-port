@@ -1,0 +1,31 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE free-fly camera tail of isSimpleDemoCamera
+--- a/src/Camera/CameraDemo.cpp
++++ b/src/Camera/CameraDemo.cpp
+@@ -14,6 +14,9 @@
+ #include <JSystem/JGeometry.hpp>
+ #include <MarioUtil/MathUtil.hpp>
+ #include <stdio.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ extern const char* cCameraBckNameGate;
+ 
+@@ -251,6 +254,17 @@
+ 		if (mCameraDemo->mRemainingFrames > 0 || (mCameraDemo->unkC & 1U))
+ 			result = true;
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (isSimpleCamera, SMS_PATCH_B at retail 0x80032934,
++	// the `mr r3, r4` before the blr): the function tail-calls the mod with
++	// r4 = the result; r3 is still `this` when isBckDemoCamera() held, else
++	// mCameraDemo (loaded over it).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80032934))
++		return ((bool (*)(u32, bool))sms_mod_t_)(
++		    (u32)(uintptr_t)(isBckDemoCamera() ? (const void*)this
++		                                       : (const void*)mCameraDemo),
++		    result);
++#endif
+ 	return result;
+ }
+ 

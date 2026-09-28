@@ -9,11 +9,14 @@ Nothing in this folder is needed to play, and git ignores everything in it but t
 
 ```sh
 python3 tools/mods/get.py textures    # the UHD texture pack, into mods/textures/GMS
+python3 tools/mods/get.py eclipse     # Super Mario Eclipse, patched from your disc, into mods/eclipse
+python3 tools/mods/get.py all
 ```
 
-It needs 7-Zip (`7z`, `7zz` or `7za`) to unpack the downloads, and checks the download against the release it expects.
+It needs 7-Zip (`7z`, `7zz` or `7za`) to unpack the downloads, and checks each against the release it expects.
 The texture pack is about 1 GB to download and 3 GB installed.
-`--keep-download` keeps the downloaded archive in `mods/.downloads/`.
+Eclipse is about 850 MB to download; it is an xdelta patch that turns your own North American ISO (found as `--iso PATH`, `SMS_DISC_IMAGE`, `disc_image` in `settings.txt`, or the image in `rom/`) into a Super Mario Eclipse ISO, which the installer checks against the expected result.
+`--keep-download` keeps the downloaded archives in `mods/.downloads/`.
 
 ## textures/: HD texture packs
 
@@ -40,4 +43,4 @@ Each file there takes the place of the disc's file at the same path, or is added
 The log names each mod and how many files it replaced and added.
 
 This covers mods that only change data.
-Mods that also change the game's code need that code ported too.
+Mods that also change the game's code, such as Super Mario Eclipse, need that code ported too; see [docs/ECLIPSE.md](../docs/ECLIPSE.md).

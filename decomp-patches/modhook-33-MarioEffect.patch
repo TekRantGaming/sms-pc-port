@@ -1,0 +1,50 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarioEffect::perform turbo nozzle cone (BetterSunshineMoveset)
+--- a/src/Player/MarioEffect.cpp
++++ b/src/Player/MarioEffect.cpp
+@@ -19,6 +19,10 @@
+ 
+ #include <Player/MarioDirtyStrings.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ // TODO: init is the last non-exact function: a one-step rotation of the
+ // callee-saved GPRs (retail `this` r31, loop offset r30, `.rodata` base r29;
+ // ours base r31, `this` r30, offset r29) plus one `addi r4, r25, 0` where we
+@@ -229,12 +233,34 @@
+ 		case 0:
+ 			if (PerformMario(this)->checkFlag(MARIO_FLAG_FLUDD_EMITTING)) {
+ 				startDashEffect();
++#ifdef TARGET_PC
++				// BetterSunshineMoveset (turboNozzleConeCondition, retail
++				// 0x80271ACC): the call replaces the store of 1; the mod
++				// stores the state itself (it reads this from r29).
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x80271ACC)) {
++					SMS_MOD_GPR(29, this);
++					((void (*)())sms_mod_t_)();
++				} else
++#endif
+ 				unk7C = 1;
+ 			}
+ 			break;
+ 
+ 		case 1:
+-			if (unk68->checkFlag(MARIO_FLAG_FLUDD_EMITTING) == true) {
++#ifdef TARGET_PC
++			// BetterSunshineMoveset (turboNozzleConeCondition2, retail
++			// 0x80271AD8, with the word at 0x80271ADC: cmpwi r3, 0): the call
++			// (on the Mario, reading this from r29) replaces the flag test;
++			// it returns the Mario or null, and null takes the else branch.
++			if (SMS_MOD_SITE(0x80271AD8)
++			        ? (SMS_MOD_GPR(29, this),
++			           ((TMario* (*)(TMario*))SMS_MOD_SITE(0x80271AD8))(unk68)
++			               != nullptr)
++			        :
++#else
++			if (
++#endif
++			    unk68->checkFlag(MARIO_FLAG_FLUDD_EMITTING) == true) {
+ 				if (PerformGun(this)->getEmitMtx(0) != nullptr) {
+ 					gpMarioParticleManager->emitAndBindToMtxPtr(
+ 					    0xFE, PerformGun(this)->getEmitMtx(0), 1, this);

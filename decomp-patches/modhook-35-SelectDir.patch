@@ -1,0 +1,56 @@
+Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour and character select in TSelectDir::direct
+--- a/src/GC2D/SelectDir.cpp
++++ b/src/GC2D/SelectDir.cpp
+@@ -26,6 +26,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ extern OSThread gSetupThread;
+ extern u8* gpSetupThreadStack;
+@@ -351,11 +354,28 @@
+ 			return TApplication::APP_STATE_DONE;
+ 
+ 		if (unk20->mCloseMenu) {
++#ifdef TARGET_PC
++			// Eclipse (setStageAfterShineSelect at retail 0x80176038, in
++			// place of the load of mSelectedShine; r3 = unk20); the word at
++			// 0x80176044 (a nop) drops the store to mNextArea.unk1.
++			unsigned int sms_mod_w_;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80176038))
++				((void (*)(TSelectMenu*))sms_mod_t_)(unk20);
++			if (!sms_mod_word(0x80176044, &sms_mod_w_))
++#endif
+ 			gpApplication.mNextArea.unk1 = unk20->mSelectedShine;
+ 			TFlagManager::smInstance->setFlag(0x40003, unk20->mSelectedShine);
+ 			gpApplication.mFader->startWipe(0xf, 1.0f, 0.0f);
++#ifdef TARGET_PC
++			// Eclipse (character_select.cpp): the `li r0, 0xff` word at
++			// 0x8017606C gives the fade colour's four bytes.
++			u8 sms_mod_c_ = (u8)SMS_MOD_WORD(0x8017606C, 0x380000FF);
++			gpApplication.mFader->setColor(
++			    JUtility::TColor(sms_mod_c_, sms_mod_c_, sms_mod_c_, sms_mod_c_));
++#else
+ 			gpApplication.mFader->setColor(
+ 			    JUtility::TColor(0xff, 0xff, 0xff, 0xff));
++#endif
+ 			SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec());
+ 		}
+ 		break;
+@@ -373,6 +393,13 @@
+ 		gpMSound->stopAllSound();
+ 		if (unk18->isSomethingPushed())
+ 			return TApplication::APP_STATE_DONE;
++#ifdef TARGET_PC
++		// Eclipse (flagCharacterSelectMenu at retail 0x80176160, in place
++		// of `li r3, 5`): the function registered there (the `#else` one in
++		// character_select.cpp) takes no arguments; its result is returned.
++		else if (void* sms_mod_t_ = SMS_MOD_SITE(0x80176160))
++			return ((int (*)())sms_mod_t_)();
++#endif
+ 		else
+ 			return TApplication::APP_STATE_GAMEPLAY;
+ 	}

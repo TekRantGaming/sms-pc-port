@@ -1,0 +1,30 @@
+Reason: port: code-mod hooks (sms_modhook.h): ferris wheel speed test in TFerrisWheel::initMapObj (BetterSunshineEngine)
+--- a/src/MoveBG/MapObjPinna.cpp
++++ b/src/MoveBG/MapObjPinna.cpp
+@@ -32,6 +32,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // TFerrisWheel
+ 
+@@ -126,7 +129,16 @@
+ 	}
+ 
+ 	// The manta arena wants the wheel running much faster than usual.
++#ifdef TARGET_PC
++	// BetterSunshineEngine (correctPinnaFerrisWheelSpeed, retail 0x801D68F4,
++	// with the word at 0x801D68F8, cmpwi r3, 1): the mod's test picks the
++	// fast wheel.
++	void* sms_mod_t_ = SMS_MOD_SITE(0x801D68F4);
++	if (sms_mod_t_ ? ((bool (*)())sms_mod_t_)() == 1
++	               : SMSGetMarDirector()->getCurrentStage() == 2)
++#else
+ 	if (SMSGetMarDirector()->getCurrentStage() == 2)
++#endif
+ 		mAnmRate = 10.0f;
+ 	else
+ 		mAnmRate = SMSGetAnmFrameRate() / 4.0f;

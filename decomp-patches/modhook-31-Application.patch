@@ -1,0 +1,112 @@
+Reason: port: code-mod hooks (sms_modhook.h): TApplication game loop, state change and mario archive
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -78,6 +78,9 @@
+ #ifdef TARGET_PC
+ extern "C" void sms_mod_start(void);
+ #endif
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ extern "C" void ReInitializeGX();
+ 
+ #ifdef TARGET_PC
+@@ -340,8 +343,22 @@
+ 	while (!gpMSound->checkWaveOnAram(MS_WAVE_UNK210))
+ 		OSYieldThread();
+ 
++#ifdef TARGET_PC
++	// Eclipse (words at retail 0x802A7148, 0x802A71A8): in the inlined
++	// SMSLoadArchive, `beq` after the .szs lookup becomes `b 0x802A71A0`, so
++	// neither archive is loaded and r29 takes the lookup's entry number;
++	// the store of the result to arcBufMario is a nop.
++	unsigned int sms_mod_w_;
++	if (sms_mod_word(0x802A7148, &sms_mod_w_) && sms_mod_w_ == 0x48000058)
++		arc = (void*)(intptr_t)DVDConvertPathToEntrynum("/data/mario.szs");
++	else
++		arc = SMSLoadArchive("/data/mario.arc", nullptr, 0, JKRGetRootHeap());
++	if (SMS_MOD_WORD(0x802A71A8, 0) != 0x60000000)
++		arcBufMario = arc;
++#else
+ 	arc = SMSLoadArchive("/data/mario.arc", nullptr, 0, JKRGetRootHeap());
+ 	arcBufMario = arc;
++#endif
+ 
+ 	arc = SMSLoadArchive("/data/common.arc", nullptr, 0, JKRGetRootHeap());
+ 	arcBufCmn = arc;
+@@ -441,7 +458,17 @@
+ 	// release the backing block; retail vcalls slot 0x10 (free).
+ 	JKRGetRootHeap()->free(spGameHeapBlock);
+ 
++#ifdef TARGET_PC
++	// Eclipse (word at retail 0x802A6C4C): a nop replaces the
++	// JKRMemArchive constructor call; the block is allocated, not built.
++	JKRMemArchive* this_00;
++	if (SMS_MOD_WORD(0x802A6C4C, 0) == 0x60000000)
++		this_00 = (JKRMemArchive*)::operator new(sizeof(JKRMemArchive));
++	else
++		this_00 = new JKRMemArchive(arcBufMario, 0, MBF_0);
++#else
+ 	JKRMemArchive* this_00 = new JKRMemArchive(arcBufMario, 0, MBF_0);
++#endif
+ 	gpCardManager->mIcons
+ 	    = (ResTIMG*)piVar2->getResource("/card/mario_icon.bti") + 1;
+ 	gpCardManager->mBanner
+@@ -676,10 +703,27 @@
+ 				nextState = APP_STATE_QUIT;
+ 			} else if (nextState != APP_STATE_QUIT) {
+ 				nextState = APP_STATE_DONE;
++#ifdef TARGET_PC
++				// BetterSunshineEngine's level select (word at retail
++				// 0x802A6788): `li r30, 4` loads another state.
++				unsigned int sms_mod_w_;
++				if (sms_mod_word(0x802A6788, &sms_mod_w_)
++				    && (sms_mod_w_ >> 16) == 0x3BC0)
++					nextState = (u8)(s16)sms_mod_w_;
++#endif
+ 				gpCardManager->unmount();
+ 			}
+ 		}
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (isLevelSelectAvailable, retail 0x802A6794):
++		// the `stb r30, 0x8(r31)` storing the next state becomes a call; the
++		// mod reads the state from r30 and stores it itself.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A6794)) {
++			SMS_MOD_GPR(30, nextState);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		mAppState = nextState;
+ 		mPrevArea = mCurrArea;
+ 		mCurrArea = mNextArea;
+@@ -762,6 +806,15 @@
+ 				if (sGameInit == 3)
+ 					nextState = APP_STATE_DONE;
+ 			} else {
++#ifdef TARGET_PC
++				// BetterSunshineEngine (gameLoopCallbackHandler, retail
++				// 0x802A616C): the director's virtual direct() call becomes a
++				// call of the mod's handler with the director (r3), which
++				// runs the mod's loop callbacks and calls direct() itself.
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A616C))
++					nextState = ((s32(*)(JDrama::TDirector*))sms_mod_t_)(mDirector);
++				else
++#endif
+ 				nextState = mDirector->direct();
+ 			}
+ 
+@@ -804,6 +857,13 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// Eclipse (flagCharacterSelectMenu, retail 0x802A637C): the final blr
++	// becomes a tail branch to the mod's function, which gets the state
++	// being returned (r3) and returns the one the caller sees.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A637C))
++		return ((int (*)(u8))sms_mod_t_)((u8)nextState);
++#endif
+ 	return nextState;
+ }
+ 

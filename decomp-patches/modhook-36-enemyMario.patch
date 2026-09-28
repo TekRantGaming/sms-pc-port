@@ -1,0 +1,44 @@
+Reason: port: code-mod hooks (sms_modhook.h): Shadow Mario update handler and HP meter in TEnemyMario::perform (BetterSunshineEngine)
+--- a/src/Enemy/enemyMario.cpp
++++ b/src/Enemy/enemyMario.cpp
+@@ -44,6 +44,9 @@
+ #include <Player/MarioDirtyStrings.hpp>
+ 
+ #include <Player/MarioAnimeData.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ static const TEnemyMario::TReplayLink replayLinkMonteMan[6] = {
+ 	{ 1, 0 },       { 1, 1 },       { 1, 2 },
+@@ -1875,6 +1878,14 @@
+ 		}
+ 
+ 		if (mStatus != MARIO_STATUS_RUN || mFreezeTimer == 0) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (shadowMarioUpdateHandler, retail 0x8003F8E8,
++			// the virtual playerControl call): the mod's handler gets this and
++			// graphics and calls playerControl itself.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8003F8E8))
++				((void (*)(TMario*, JDrama::TGraphics*))sms_mod_t_)(this, graphics);
++			else
++#endif
+ 			playerControl(graphics);
+ 			setPositions();
+ 		}
+@@ -2004,7 +2015,15 @@
+ 			unk398->draw();
+ 		}
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (word 0x60000000 at retail 0x8003FD94, a nop
++		// over the EM_FLAG_DISP_HP_METER branch): the meter is drawn whenever
++		// the water-hit timer runs.
++		if ((SMS_MOD_WORD(0x8003FD94, 0) == 0x60000000 || (mEMFlags & EM_FLAG_DISP_HP_METER))
++		    && mWaterHitTimer > 0) {
++#else
+ 		if ((mEMFlags & EM_FLAG_DISP_HP_METER) && mWaterHitTimer > 0) {
++#endif
+ 			drawHPMeter(graphics->getViewMtx());
+ 		}
+ 	}

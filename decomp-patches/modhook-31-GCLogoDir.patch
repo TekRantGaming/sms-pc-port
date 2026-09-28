@@ -1,0 +1,27 @@
+Reason: port: code-mod hooks (sms_modhook.h): TGCLogoDir::direct debug cheat tail call
+--- a/src/System/GCLogoDir.cpp
++++ b/src/System/GCLogoDir.cpp
+@@ -14,6 +14,9 @@
+ #include <MSound/MSoundSE.hpp>
+ #include <GC2D/ScrnFader.hpp>
+ #include <GC2D/ProgSelect.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -167,6 +170,13 @@
+ 		mState        = 0;
+ 	}
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (handleDebugCheat, retail 0x80295B6C): the final
++	// blr becomes a tail branch to the mod's function, which gets the value
++	// being returned (r3) and returns it.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80295B6C))
++		return (int)(intptr_t)((void* (*)(void*))sms_mod_t_)((void*)(intptr_t)desiredAppState);
++#endif
+ 	return desiredAppState;
+ }
+ 

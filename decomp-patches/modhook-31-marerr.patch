@@ -1,0 +1,26 @@
+Reason: port: code-mod hooks (sms_modhook.h): MarErrException pad wait removed
+--- a/src/System/marerr.cpp
++++ b/src/System/marerr.cpp
+@@ -2,6 +2,9 @@
+ #include <JSystem/JUtility/JUTDirectPrint.hpp>
+ #include <JSystem/JUtility/JUTConsole.hpp>
+ #include <JSystem/JUtility/JUTException.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ static void MarErrException(u16, OSContext*, u32, u32);
+ 
+@@ -17,6 +20,12 @@
+ 
+ static void MarErrException(u16, OSContext*, u32, u32)
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word at retail 0x8029D0BC): a nop replaces the
++	// loop's closing `bne`, so the pad-combination wait never runs.
++	if (SMS_MOD_WORD(0x8029D0BC, 0) == 0x60000000)
++		return;
++#endif
+ 	for (int i = 0; cDispExceptionCommand[i] != 0;) {
+ 		JUTException::waitTime(100);
+ 		u32 local_18;

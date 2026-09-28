@@ -1,0 +1,78 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE shine ids in TGuide::resetObjects, moveset map button in linkSelect
+--- a/src/GC2D/Guide.cpp
++++ b/src/GC2D/Guide.cpp
+@@ -21,6 +21,28 @@
+ #include <System/MarDirector.hpp>
+ #include <System/MarioGamePad.hpp>
+ #include <GC2D/ShineTable.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// BetterSunshineEngine replaces this object's copy of SMS_getShineID
++// (SMS_PATCH_B at retail 0x8017CC6C, its first instruction; the mod's
++// returns an s32 whose low half the callers sign-extend). Retail calls it
++// only from resetObjects' SMS_isGetShine expansions, whose getShineFlag
++// argument the words at 0x8017BE78, 0x8017BEF4, 0x8017BF34 and 0x8017BFB4
++// (`clrlwi r4, r3, 16`) mask to 16 bits instead of 8; the port's
++// getShineFlag takes a u8 (as TFlagManager's own hooks keep it), which holds
++// every id Eclipse registers (the highest is 220).
++static inline bool GuideIsGetShine(u32 stage, u32 scenario, bool is_etc_shine)
++{
++	void* sms_mod_t_ = SMS_MOD_SITE(0x8017CC6C);
++	if (!sms_mod_t_)
++		return SMS_isGetShine(stage, scenario, is_etc_shine);
++	s16 shineId = (s16)((s32(*)(u32, u32, bool))sms_mod_t_)(stage, scenario, is_etc_shine);
++	if (shineId == -1)
++		return false;
++	return TFlagManager::getInstance()->getShineFlag(shineId);
++}
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -188,6 +210,9 @@
+ // place in retail (ours: `blt` for the if, an `mr` for a ternary); the first
+ // isGetShine miss returns the zeroed counter (`mr r3, r24`); callee-saved
+ // registers rotate (retail i r31, total r28); frame 0x50 against 0x60.
++#ifdef TARGET_PC
++#define SMS_isGetShine GuideIsGetShine
++#endif
+ void TGuide::resetObjects()
+ {
+ 	int total = 0;
+@@ -267,6 +292,9 @@
+ 	mCursors[0]->getPane()->mVisible = true;
+ 	mCursors[1]->getPane()->mVisible = true;
+ }
++#ifdef TARGET_PC
++#undef SMS_isGetShine
++#endif
+ 
+ // fabricated: retail reads the digit texture before the pane search at these
+ // sites, so the search and the swap were one inline taking the texture.
+@@ -463,9 +491,25 @@
+ void TGuide::linkSelect()
+ {
+ 	mGamePad->onFlag(TMarioGamePad::PAD_FLAG_0x80);
++#ifdef TARGET_PC
++	// Better Sunshine Moveset (main.cpp, map on D-pad down): the word at
++	// 0x8017A830 tests another trigger bit (the mask of its `rlwinm.`).
++	u32 sms_mod_mask_ = 0x10;
++	unsigned int sms_mod_w_;
++	if (sms_mod_word(0x8017A830, &sms_mod_w_) && (sms_mod_w_ >> 26) == 21
++	    && ((sms_mod_w_ >> 11) & 0x1F) == 0) {
++		u32 mb = (sms_mod_w_ >> 6) & 0x1F, me = (sms_mod_w_ >> 1) & 0x1F;
++		sms_mod_mask_ = mb <= me ? (0xFFFFFFFFu >> mb) & (0xFFFFFFFFu << (31 - me))
++		                         : (0xFFFFFFFFu >> mb) | (0xFFFFFFFFu << (31 - me));
++	}
++	if (mGamePad->mEnabledFrameMeaning & TMarioGamePad::MEANING_0x40
++	    || mGamePad->mButton.mTrigger & sms_mod_mask_)
++		mState = STATE_CLOSE;
++#else
+ 	if (mGamePad->mEnabledFrameMeaning & TMarioGamePad::MEANING_0x40
+ 	    || mGamePad->mButton.mTrigger & 0x10)
+ 		mState = STATE_CLOSE;
++#endif
+ 
+ 	J2DPane* cursor = mCursors[0]->getPane();
+ 	int x = cursor->mBounds.x1;

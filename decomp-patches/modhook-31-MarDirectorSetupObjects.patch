@@ -1,0 +1,48 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarDirector::setupObjects stage reset and camera search
+--- a/src/System/MarDirectorSetupObjects.cpp
++++ b/src/System/MarDirectorSetupObjects.cpp
+@@ -34,6 +34,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <System/DummyStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ extern void* gpSceneCmnDat;
+ extern int gpSceneCmnDatSize;
+@@ -154,6 +157,11 @@
+ // cc32: not attempted beyond triage; the function is 8 KB.
+ bool TMarDirector::setupObjects()
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word at retail 0x802B7720): a nop replaces this
++	// call (its initStageCallbacks, which calls setupObjects, resets first).
++	if (SMS_MOD_WORD(0x802B7720, 0) != 0x60000000)
++#endif
+ 	TFlagManager::getInstance()->resetStage();
+ 	TFlagManager::getInstance()->setFlag(0x60003, 1);
+ 	TGameSequence& currArea = gpApplication.mCurrArea;
+@@ -349,8 +357,22 @@
+ 			obj->load(leftoversStream);
+ 		}
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (initCollisionWarpLinks, retail 0x802B8B20):
++		// the search's calcKeyCode call becomes the mod's function, which
++		// gets the name, builds its warp collision lists and returns the key.
++		JDrama::TLookAtCamera* cam;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802B8B20)) {
++			JDrama::TNameRef* root = JDrama::TNameRefGen::getInstance()->getRootNameRef();
++			u16 key                = ((u32(*)(const char*))sms_mod_t_)("camera 1");
++			cam = (JDrama::TLookAtCamera*)root->searchF(key, "camera 1");
++		} else {
++			cam = (JDrama::TLookAtCamera*)JDrama::TNameRefGen::search2("camera 1");
++		}
++#else
+ 		JDrama::TLookAtCamera* cam
+ 		    = (JDrama::TLookAtCamera*)JDrama::TNameRefGen::search2("camera 1");
++#endif
+ 		cam->mAspect = (u16)SMSGetGameVideoWidth() * 0.91346145f
+ 		               / (u16)SMSGetGameVideoHeight();
+ 	}

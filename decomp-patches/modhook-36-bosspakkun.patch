@@ -1,0 +1,33 @@
+Reason: port: code-mod hooks (sms_modhook.h): Firey Petey's fly-mode test in TNerveBPWait (Eclipse)
+--- a/src/Enemy/bosspakkun.cpp
++++ b/src/Enemy/bosspakkun.cpp
+@@ -44,6 +44,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // The .bas table the shared model's BCK slots index into. Slots with no sound
+ // list are null; see the BOSSPAKU_BCK_* enum for the names the .bck files carry.
+@@ -1652,7 +1655,19 @@
+ 			return TRUE;
+ 		}
+ 
++#ifdef TARGET_PC
++		// Eclipse (isFireyPeteyFlyMode, retail 0x80093EE0, with the word it
++		// writes at 0x80093EE4, cmpwi r3, 1): the flying phase runs when the
++		// mod's test of gpMarDirector (r3) returns true, not on episode 4.
++		bool flyMode;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80093EE0))
++			flyMode = ((bool (*)(TMarDirector*))sms_mod_t_)(gpMarDirector) == 1;
++		else
++			flyMode = gpMarDirector->unk7D == 4;
++		if (flyMode) {
++#else
+ 		if (gpMarDirector->unk7D == 4) {
++#endif
+ 			f32 prop = boss->getSaveParam2()->mSLTornadoProp.get();
+ 			if (boss->mTornado->mState != BOSSPAKU_TORNADO_DEAD
+ 			    || MsRandF() < prop) {

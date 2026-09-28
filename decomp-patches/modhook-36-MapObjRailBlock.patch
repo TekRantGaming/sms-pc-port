@@ -1,0 +1,30 @@
+Reason: port: code-mod hooks (sms_modhook.h): collision matrix reset in TRailMapObj::resetPosition (BetterSunshineEngine)
+--- a/src/MoveBG/MapObjRailBlock.cpp
++++ b/src/MoveBG/MapObjRailBlock.cpp
+@@ -17,6 +17,9 @@
+ #include <JSystem/J3D/J3DGraphAnimator/J3DModel.hpp>
+ #include <JSystem/JMath.hpp>
+ #include <math.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TRailMapObj::TRailMapObj(const char* name)
+     : TMapObjBase(name)
+@@ -190,6 +193,16 @@
+ 	unk14A    = 180;
+ 	unk14C    = 1;
+ 	TGraphTracer* tracer = unk138;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (checkResetCollisionMtx, retail 0x801F12A4, the
++	// setTo call): the mod gets (tracer, index) and this object in r30, and
++	// also refreshes the model matrices.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x801F12A4)) {
++		int index = tracer->getGraph()->findNearestNodeIndex(mPosition, 0xffffffff);
++		SMS_MOD_GPR(30, this);
++		((void (*)(TGraphTracer*, int))sms_mod_t_)(tracer, index);
++	} else
++#endif
+ 	tracer->setToNearest(mPosition);
+ 	readRailFlag();
+ }

@@ -1,0 +1,25 @@
+Reason: port: code-mod hooks (sms_modhook.h): SMS_isExMap replacement
+--- a/src/System/StageUtil.cpp
++++ b/src/System/StageUtil.cpp
+@@ -1,5 +1,8 @@
+ #include <System/MarDirector.hpp>
+ #include <System/Application.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // clang-format off
+ 
+@@ -28,6 +31,12 @@
+ 
+ bool SMS_isExMap()
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (isExMap, retail 0x802A8B58): the function's first
++	// instruction branches to the mod's replacement.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A8B58))
++		return ((bool (*)())sms_mod_t_)();
++#endif
+ 	return (gpApplication.mCurrArea.unk0 > 0x14
+ 	        && gpApplication.mCurrArea.unk0 < 0x35);
+ }

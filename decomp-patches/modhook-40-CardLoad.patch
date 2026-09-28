@@ -1,0 +1,17 @@
+Reason: port: code-mod hook (sms_modhook.h): the shine limit BetterSunshineEngine's Game::setMaxShines rewrites at run time (retail 0x8016725C)
+--- a/src/GC2D/CardLoad.cpp
++++ b/src/GC2D/CardLoad.cpp
+@@ -1972,7 +1972,13 @@
+ 					unk2CC[i]->show();
+ 					unk2D8[i]->hide();
+ 				} else {
++#ifdef TARGET_PC
++					// BetterSunshineEngine's Game::setMaxShines rewrites the limit (`cmplwi
++					// r0, imm` at retail 0x8016725C).
++					if (unk40[i].unk1C >= (u16)SMS_MOD_WORD(0x8016725C, 0x28000078))
++#else
+ 					if (unk40[i].unk1C >= 120)
++#endif
+ 						unk32C[i]->show();
+ 
+ 					unk2CC[i]->hide();

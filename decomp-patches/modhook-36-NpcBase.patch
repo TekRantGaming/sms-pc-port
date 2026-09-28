@@ -1,0 +1,33 @@
+Reason: port: code-mod hooks (sms_modhook.h): NPC carry test in TBaseNPC::receiveMessage (BetterSunshineEngine)
+--- a/src/NPC/NpcBase.cpp
++++ b/src/NPC/NpcBase.cpp
+@@ -25,6 +25,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TNpcSaveNormal* TBaseNPC::mPtrSaveNormal = nullptr;
+ s16 TBaseNPC::mAngleYDiffWhenTaken       = 0;
+@@ -448,8 +451,19 @@
+ 		break;
+ 
+ 	default:
++#ifdef TARGET_PC
++		// BetterSunshineEngine (canCarryNPC, retail 0x80207430, with the word
++		// at 0x80207434, cmpwi r3, 0): the mod's test (this in r29) replaces
++		// the LIVE_FLAG_UNK100000 check.
++		void* sms_mod_t_ = param_2 == HIT_MESSAGE_TAKE ? SMS_MOD_SITE(0x80207430) : nullptr;
++		if (param_2 == HIT_MESSAGE_TAKE
++		    && (sms_mod_t_ ? (SMS_MOD_GPR(29, this), ((bool (*)())sms_mod_t_)())
++		                   : checkLiveFlag(LIVE_FLAG_UNK100000))
++		    && mHolder == nullptr) {
++#else
+ 		if (param_2 == HIT_MESSAGE_TAKE && checkLiveFlag(LIVE_FLAG_UNK100000)
+ 		    && mHolder == nullptr) {
++#endif
+ 			behaveToBeTaken_(param_1);
+ 			result = true;
+ 		} else if (param_2 == HIT_MESSAGE_TRAMPLE) {

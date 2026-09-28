@@ -1,0 +1,25 @@
+Reason: port: code-mod hooks (sms_modhook.h): illegal flag of TMapCollisionData's fallback floor (BetterSunshineEngine)
+--- a/src/Map/MapCollisionData.cpp
++++ b/src/Map/MapCollisionData.cpp
+@@ -6,6 +6,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TBGCheckData TMapCollisionData::mIllegalCheckData;
+ TMapCollisionData* gpMapCollisionData;
+@@ -106,6 +109,11 @@
+ 	JGeometry::TVec3<float> v3(32767.0f, -32767.0f, 32767.0f);
+ 	mIllegalCheckData.setVertex(v1, v2, v3);
+ 	mIllegalCheckData.mBGType = 0;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word 0x60000000 at retail 0x8018D08C, a nop over
++	// the `ori`): the out-of-bounds floor is not flagged illegal.
++	if (SMS_MOD_WORD(0x8018D08C, 0) != 0x60000000)
++#endif
+ 	mIllegalCheckData.mFlags |= BG_CHECK_FLAG_ILLEGAL;
+ 	gpMapCollisionData = this;
+ }

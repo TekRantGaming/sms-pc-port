@@ -1,0 +1,28 @@
+Reason: port: code-mod hooks (sms_modhook.h): turbo nozzle door in TTurboNozzleDoor::touchPlayer (BetterSunshineEngine)
+--- a/src/MoveBG/MapObjDolpic.cpp
++++ b/src/MoveBG/MapObjDolpic.cpp
+@@ -27,6 +27,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // TMonumentShine
+ 
+@@ -592,7 +595,14 @@
+ 	if (!SMS_IsMarioDashing())
+ 		return;
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word 0x60000000 at retail 0x801E68A0, a nop over
++	// the branch taken outside Delfino Plaza): the door only animates open.
++	if (SMS_MOD_WORD(0x801E68A0, 0) == 0x60000000
++	    || SMSGetMarDirector()->getCurrentMap() == 1) {
++#else
+ 	if (SMSGetMarDirector()->getCurrentMap() == 1) {
++#endif
+ 		startBck("nozzledoor");
+ 	} else {
+ 		makeObjDead();

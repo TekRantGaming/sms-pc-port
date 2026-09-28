@@ -1,0 +1,130 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario fall, jump-ground and wait physics hooks (BetterSunshineEngine, BetterSunshineMoveset)
+--- a/src/Player/MarioPhysics.cpp
++++ b/src/Player/MarioPhysics.cpp
+@@ -11,6 +11,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ void TMario::playerRefrection(int param_1)
+ {
+ 	if (mWallPlane != nullptr) {
+@@ -225,6 +229,14 @@
+ 	} else {
+ 		mPosition.y = mFloorPosition.y;
+ 	}
++#ifdef TARGET_PC
++	// BetterSunshineEngine (patchYStorage, retail 0x802571F0): the call
++	// replaces li r3, 0 and its result is stored (it reads this from r31).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802571F0)) {
++		SMS_MOD_GPR(31, this);
++		mFaceAngle.x = ((u32 (*)())sms_mod_t_)();
++	} else
++#endif
+ 	mFaceAngle.x    = 0;
+ 	mModelFaceAngle = mFaceAngle.y;
+ 	return walkProcess();
+@@ -391,6 +403,15 @@
+ 			passable = false;
+ 
+ 		if (passable == 0 && pos.y <= mFloorPosition.y) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (normalizeHoverSlopeSpeed, retail
++			// 0x802568F0): the call replaces the store and makes it itself
++			// (it gets the floor height in f1 and reads this from r22).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x802568F0)) {
++				SMS_MOD_GPR(22, this);
++				((void (*)(f32))sms_mod_t_)(mFloorPosition.y);
++			} else
++#endif
+ 			mPosition.y = mFloorPosition.y;
+ 			groundCode  = 1;
+ 		}
+@@ -416,7 +437,23 @@
+ 
+ 				if (param_2 & 0x2) {
+ 					BOOL canHang = (mHeldObject == nullptr && !onYoshi());
++#ifdef TARGET_PC
++					// BetterSunshineEngine (canUnkActionWall, retail
++					// 0x80256A40, with the words at 0x80256A3C: lhz r4, 0(r3),
++					// 0x80256A44, 0x80256A48, 0x80256A4C, 0x80256A50: nops,
++					// 0x80256A54: cmpwi r3, 0): its result (on the roof and
++					// its type; it reads this from r22) replaces isFence().
++					// (The mod's patch sits in an #if 0 block.)
++					if (canHang
++					    && (SMS_MOD_SITE(0x80256A40)
++					            ? (SMS_MOD_GPR(22, this),
++					               ((bool (*)(TBGCheckData*, u16))SMS_MOD_SITE(
++					                   0x80256A40))((TBGCheckData*)mRoofPlane,
++					                                mRoofPlane->mBGType))
++					            : mRoofPlane->isFence()))
++#else
+ 					if (canHang && mRoofPlane->isFence())
++#endif
+ 						roofCode = 4;
+ 					else
+ 						roofCode = 0;
+@@ -480,8 +517,22 @@
+ 	if (mStatus & 0x21000)
+ 		return false;
+ 
++#ifdef TARGET_PC
++	// Retail inlines this into fallProcess (its only caller).
++	// BetterSunshineMoveset (checkQuickFallWhenLongJumping, retail
++	// 0x802565D4, with the word at 0x802565D8: cmpwi r3, 0): its result (it
++	// reads this from r30, which fallProcess's caller jumpProcess holds)
++	// replaces the input bit test.
++	if (!(SMS_MOD_SITE(0x802565D4)
++	          ? (SMS_MOD_GPR(30, this),
++	             ((bool (*)())SMS_MOD_SITE(0x802565D4))())
++	          : (mInput & 0x80) != 0)
++	    && mVel.y > 20.0f)
++		return true;
++#else
+ 	if (!(mInput & 0x80) && mVel.y > 20.0f)
+ 		return true;
++#endif
+ 
+ 	return false;
+ }
+@@ -495,8 +546,19 @@
+ 	} else {
+ 		if (isFallCancel()) {
+ 			mVel.y *= 0.75f;
+-		} else if ((getStatus() == MARIO_STATUS_LEFT_ROTATE_JUMP
+-		            || getStatus() == MARIO_STATUS_RIGHT_ROTATE_JUMP)
++		} else if ((
++#ifdef TARGET_PC
++		               // BetterSunshineMoveset (preserveRegisterCheckQuickFall,
++		               // retail 0x80256618, with the words at 0x8025661C:
++		               // cmpwi r3, 0 and 0x80256620: beq): its result (it
++		               // reads this from r31) replaces the status test.
++		               SMS_MOD_SITE(0x80256618)
++		                   ? (SMS_MOD_GPR(31, this),
++		                      ((bool (*)())SMS_MOD_SITE(0x80256618))())
++		                   :
++#endif
++		                   getStatus() == MARIO_STATUS_LEFT_ROTATE_JUMP
++		                   || getStatus() == MARIO_STATUS_RIGHT_ROTATE_JUMP)
+ 		           && mVel.y < 0.0f) {
+ 			mVel.y -= mJumpParams.mSpinJumpGravity.get();
+ 		} else {
+@@ -506,6 +568,15 @@
+ 			mYoshi->thinkHoldOut();
+ 		}
+ 	}
++#ifdef TARGET_PC
++	// BetterSunshineEngine (checkYSpdForTerminalVelocity, retail 0x80256678,
++	// in place of the bge, with a nop at 0x8025667C over the store): the
++	// mod clamps mVel.y itself (it reads this from r31).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80256678)) {
++		SMS_MOD_GPR(31, this);
++		((void (*)())sms_mod_t_)();
++	} else
++#endif
+ 	if (mVel.y < -75.0f)
+ 		mVel.y = -75.0f;
+ }

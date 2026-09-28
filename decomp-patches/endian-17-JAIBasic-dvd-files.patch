@@ -1,0 +1,37 @@
+Reason: port: endianness: JAudio's direct disc loads (loadDVDFile, loadTmpDVDFile) convert what they read by name, as archive loads do; the retail game only reaches them when a disc carries its own /AudioRes/msound.aaf
+--- a/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
++++ b/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
+@@ -1321,6 +1321,13 @@
+ 		return new (JASDram, 0) JAISound[count];
+ }
+ 
++#ifdef TARGET_PC
++// Files JAudio reads straight from the disc (a mod's /AudioRes/msound.aaf, the
++// JaiInit.bld list) are big-endian like the archived ones: converted by name
++// (platform/endian).
++extern "C" void port_res_to_native_named(void* data, u32 size, const char* name);
++#endif
++
+ void* JAIBasic::loadDVDFile(char* filename)
+ {
+ 	// TODO: the frame is 8 bytes short here; every instruction matches.
+@@ -1330,6 +1337,9 @@
+ 	} else {
+ 		void* result = allocHeap(size);
+ 		JASystem::Dvd::loadFile(filename, result);
++#ifdef TARGET_PC
++		port_res_to_native_named(result, size, filename);
++#endif
+ 		return result;
+ 	}
+ }
+@@ -1342,6 +1352,9 @@
+ 	} else {
+ 		*buffer = (u8*)JASDram->alloc(size, ~0x1F);
+ 		JASystem::Dvd::loadFile(filename, *buffer);
++#ifdef TARGET_PC
++		port_res_to_native_named(*buffer, size, filename);
++#endif
+ 	}
+ }
+ 

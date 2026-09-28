@@ -1,0 +1,62 @@
+Reason: port: code-mod hooks (sms_modhook.h): TModelWaterManager shine shadow and cleaning hooks (Eclipse)
+--- a/src/Player/ModelWaterManager.cpp
++++ b/src/Player/ModelWaterManager.cpp
+@@ -31,6 +31,8 @@
+ #include <System/StageUtil.hpp>
+ 
+ #ifdef TARGET_PC
++#include <sms_modhook.h>
++
+ // Port: the position the shine shadow sphere is drawn at is a constant in
+ // the retail game, which code mods overwrite (retail map name gShineShadowPos).
+ Vec gShineShadowPos = { 0.0f, 3600.0f, -7458.0f };
+@@ -242,6 +244,12 @@
+ 		unk5E0C = fVar1 * 24000.0f + 8000.0f;
+ 	else
+ 		unk5D60 &= ~0x100;
++#ifdef TARGET_PC
++	// Eclipse (initShineShadow, retail 0x80280180): the function's blr
++	// becomes a branch to the mod function, which returns to our caller.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80280180))
++		((void (*)())sms_mod_t_)();
++#endif
+ }
+ 
+ f32 TModelWaterManager::getWPGravity(int i) const
+@@ -345,6 +353,18 @@
+ void TModelWaterManager::splashGround(int i)
+ {
+ 	mParticleLifetimeSOA[i] -= getPlaneVanishSpeed(unk2914[i]);
++#ifdef TARGET_PC
++	// Retail inlines this into move (its only caller). Eclipse
++	// (adjustCleanPower, retail 0x8027F7DC) replaces its
++	// TPollutionManager::clean call.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8027F7DC)) {
++		((void (*)(TPollutionManager*, f32, f32, f32, f32))sms_mod_t_)(
++		    gpPollution, mParticlePositionSOA[i].x, mParticlePositionSOA[i].y,
++		    mParticlePositionSOA[i].z,
++		    mWaterParticleTypes[mParticleTypeSOA[i]]->mCleanSize.get() * 32.0f);
++		return;
++	}
++#endif
+ 	gpPollution->clean(
+ 	    mParticlePositionSOA[i].x, mParticlePositionSOA[i].y,
+ 	    mParticlePositionSOA[i].z,
+@@ -1798,7 +1818,16 @@
+ void TModelWaterManager::drawShineShadowVolume(MtxPtr param_1)
+ {
+ 
+-	if (SMSGetMarDirector()->getCurrentMap() == 1) {
++	if ((
++#ifdef TARGET_PC
++	        // Eclipse (checkIfActive, retail 0x8027C6A4, with the word at
++	        // 0x8027C6A8: cmplwi r3, 1): its result replaces the map test.
++	        SMS_MOD_SITE(0x8027C6A4)
++	            ? (u8)((bool (*)())SMS_MOD_SITE(0x8027C6A4))()
++	            :
++#endif
++	            SMSGetMarDirector()->getCurrentMap())
++	    == 1) {
+ 		static bool initialized = false;
+ 		if (!initialized) {
+ 			sphere_glist_p = tmp_data;

@@ -1,0 +1,32 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE glow scaled to lightness
+--- a/src/Camera/lensglow.cpp
++++ b/src/Camera/lensglow.cpp
+@@ -15,6 +15,9 @@
+ #include <Camera/SunModel.hpp>
+ #include <System/Resolution.hpp>
+ #include <stdio.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ static const char* dummyMactorStringValue1 = "\0\0\0\0\0\0\0\0\0\0\0";
+ static const char* SMS_NO_MEMORY_MESSAGE   = "メモリが足りません\n";
+@@ -148,6 +151,18 @@
+ 		CLBChaseDecrease(&unk48, unk4C, ratio, 0.0f);
+ 
+ 		// target scale based on sun model's dispersion
++#ifdef TARGET_PC
++		// BetterSunshineEngine (scaleGlowToLightness at retail 0x8002DB60,
++		// `bl CLBLinearInbetween<f>`; reads r28 = this): f1, f2, f3 as in the
++		// call, and the `stfs f1` after it stores the float it computes.
++		// The mod declares it `bool`, but on the GameCube the float is still
++		// in f1 when it returns; it must return f32 for this call.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8002DB60)) {
++			SMS_MOD_GPR(28, this);
++			unk64 = ((f32 (*)(f32, f32, f32))sms_mod_t_)(unk6C * 0.002f,
++			                                             unk68 * 0.002f, dispRatio);
++		} else
++#endif
+ 		unk64 = CLBLinearInbetween(unk6C * 0.002f, unk68 * 0.002f, dispRatio);
+ 		CLBChaseDecrease(&unk60, unk64, unk70, 0.0f);
+ 

@@ -1,0 +1,34 @@
+Reason: port: code-mod hooks (sms_modhook.h): enemy kill in TEnemyManager::killChildrenWithin (BetterSunshineEngine)
+--- a/src/Enemy/enemymanager.cpp
++++ b/src/Enemy/enemymanager.cpp
+@@ -17,6 +17,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ bool TEnemyManager::mIsCopyAnmMtx = true;
+ 
+@@ -504,8 +507,19 @@
+ 
+ 	for (int i = 0; i < mObjNum; ++i) {
+ 		TSpineEnemy* enemy = getObj(i);
+-		if (VECSquareDistance((Vec*)&p, (Vec*)&enemy->mPosition) <= r * r)
++		if (VECSquareDistance((Vec*)&p, (Vec*)&enemy->mPosition) <= r * r) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (killEnemyWithinPatch, retail 0x8003DEAC,
++			// with nops at 0x8003DEB0 and 0x8003DEB4 over the flag update): the
++			// mod kills the enemy (r28) itself.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8003DEAC)) {
++				SMS_MOD_GPR(28, enemy);
++				((void (*)())sms_mod_t_)();
++				continue;
++			}
++#endif
+ 			enemy->onLiveFlag(LIVE_FLAG_DEAD | LIVE_FLAG_UNK40);
++		}
+ 	}
+ }
+ 

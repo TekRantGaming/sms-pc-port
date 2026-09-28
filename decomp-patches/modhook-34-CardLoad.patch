@@ -1,0 +1,127 @@
+Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's SMS_getShineID replacement and widened shine ids in TCardLoad, Eclipse's first-boot stage
+--- a/src/GC2D/CardLoad.cpp
++++ b/src/GC2D/CardLoad.cpp
+@@ -26,6 +26,48 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// What `rlwinm` word w computes from v (a mod rewrote a mask instruction).
++static inline u32 sms_mod_rlwinm_(u32 w, u32 v)
++{
++	u32 sh = (w >> 11) & 31, mb = (w >> 6) & 31, me = (w >> 1) & 31;
++	u32 r    = sh ? ((v << sh) | (v >> (32 - sh))) : v;
++	u32 lo   = 0xFFFFFFFFu >> mb, hi = 0xFFFFFFFFu << (31 - me);
++	return r & (mb <= me ? (lo & hi) : (lo | hi));
++}
++
++// BetterSunshineEngine replaces this TU's copy of SMS_getShineID (retail
++// 0x8016FAC0, a `b` to its own SMS_getShineID(u32, u32, bool) returning s32
++// in r3); the header's static copy runs otherwise.
++static s32 sms_mod_getShineID_(u32 stage, u32 scenario, bool is_etc_shine)
++{
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8016FAC0))
++		return ((s32(*)(u32, u32, bool))sms_mod_t_)(stage, scenario, is_etc_shine);
++	return SMS_getShineID(stage, scenario, is_etc_shine);
++}
++
++// SMS_isGetShine as retail inlines it here, at the site whose
++// `clrlwi r4, r3, 24` (the shine id passed to getShineFlag) sits at `addr`:
++// BetterSunshineEngine rewrites that word to `clrlwi r4, r3, 16` (words at
++// 0x8016DD1C, 0x8016DEA8, 0x8016DF1C, 0x8016E204, 0x8016F6DC) so that shine
++// ids above 0xFF reach its widened getShineFlag.
++// TODO: TFlagManager::getShineFlag still takes a u8, so the upper bits of a
++// widened id are dropped at the call until its parameter is widened too.
++static bool sms_mod_isGetShine_(u32 addr, u32 stage, u32 scenario, bool is_etc_shine)
++{
++	unsigned int w;
++	bool masked = sms_mod_word(addr, &w);
++	if (!masked && !SMS_MOD_SITE(0x8016FAC0))
++		return SMS_isGetShine(stage, scenario, is_etc_shine);
++	s32 id = sms_mod_getShineID_(stage, scenario, is_etc_shine);
++	if ((s16)id == -1)
++		return false;
++	return TFlagManager::getInstance()->getShineFlag(
++	    masked ? sms_mod_rlwinm_(w, (u32)id) : (u8)id);
++}
++#endif
+ 
+ TCardLoad* gpCardLoad;
+ 
+@@ -349,7 +391,11 @@
+ 		for (int j = 0; j < 8; ++j) {
+ 			unk584[i].unk10[j] = unk2C->search('sh0a' + i * 0x100 + j);
+ 
++#ifdef TARGET_PC
++			if (!sms_mod_isGetShine_(0x8016F6DC, tmp, j, false))
++#else
+ 			if (!SMS_isGetShine(tmp, j, false))
++#endif
+ 				unk584[i].unk10[j]->hide();
+ 		}
+ 
+@@ -403,7 +449,11 @@
+ 			unk584[i].unk0->hide();
+ 
+ 		for (int j = 0; j < 8; ++j)
++#ifdef TARGET_PC
++			if (sms_mod_isGetShine_(0x8016DD1C, local_90[i], j, false))
++#else
+ 			if (SMS_isGetShine(local_90[i], j, false))
++#endif
+ 				++shineCount;
+ 
+ 		u8 count = shineCount;
+@@ -421,7 +471,11 @@
+ 		}
+ 
+ 		for (int j = 0; j < 2; ++j) {
++#ifdef TARGET_PC
++			if (sms_mod_isGetShine_(0x8016DEA8, local_90[i], j + 1, true)) {
++#else
+ 			if (SMS_isGetShine(local_90[i], j + 1, true)) {
++#endif
+ 				iVar8 += 1;
+ 				unk584[i].unk30[j]->show();
+ 			} else {
+@@ -429,7 +483,11 @@
+ 			}
+ 		}
+ 
++#ifdef TARGET_PC
++		if (sms_mod_isGetShine_(0x8016DF1C, local_90[i], 0, true)) {
++#else
+ 		if (SMS_isGetShine(local_90[i], 0, true)) {
++#endif
+ 			iVar8 += 1;
+ 			unk584[i].unk38->show();
+ 		} else {
+@@ -475,7 +533,11 @@
+ 	else
+ 		unk2C->search('st_7')->hide();
+ 	unk2C->search('st_7')->setAlpha(255);
++#ifdef TARGET_PC
++	if (sms_mod_isGetShine_(0x8016E204, 1, 0, true)) {
++#else
+ 	if (SMS_isGetShine(1, 0, true)) {
++#endif
+ 		unk2C->search('sh7a')->show();
+ 		iVar8 += 1;
+ 	} else {
+@@ -2728,7 +2790,14 @@
+ 
+ 	case PROGRESS_UNK29: {
+ 		if (TFlagManager::getInstance()->getFlag(0x40000) < 1)
++#ifdef TARGET_PC
++			// Eclipse rewrites the `li r4, 0x0` at 0x80164E30 (the stage of a
++			// save with no shines; `li r4, 0x4E01`): its immediate is the stage.
++			gpMarDirector->setNextStage(
++			    (u16)(s16)SMS_MOD_WORD(0x80164E30, 0x38800000), nullptr);
++#else
+ 			gpMarDirector->setNextStage(0, nullptr);
++#endif
+ 		else
+ 			gpMarDirector->setNextStage(1, nullptr);
+ 		gpCardManager->unmount();

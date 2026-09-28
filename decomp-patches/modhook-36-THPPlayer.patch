@@ -1,0 +1,42 @@
+Reason: port: code-mod hooks (sms_modhook.h): movie gamma in THPPlayerPlay and THPPlayerStop (BetterSunshineEngine)
+--- a/src/THPPlayer/THPPlayer.c
++++ b/src/THPPlayer/THPPlayer.c
+@@ -14,6 +14,9 @@
+ 
+ // NOTE: customization of the library by SMS devs
+ #include <JSystem/JAudio/JASystem/JASAiCtrl.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ #pragma opt_strength_reduction off
+ 
+@@ -491,6 +494,13 @@
+ 		ActivePlayer.prevCount   = 0;
+ 		ActivePlayer.curCount    = 0;
+ 		ActivePlayer.retaceCount = -1;
++#ifdef TARGET_PC
++		// BetterSunshineEngine (flagGammaTHPStart, `b` at retail 0x8001F050
++		// in place of the success path's `blr`): the mod gets the result
++		// (r3 = TRUE) and returns it, dimming the display for the movie.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8001F050))
++			return ((bool (*)(bool))sms_mod_t_)(true);
++#endif
+ 		return TRUE;
+ 	}
+ 	return FALSE;
+@@ -498,6 +508,14 @@
+ 
+ void THPPlayerStop()
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (flagGammaTHPEnd, retail 0x8001EF30, with the word
++	// 0x90010004 at 0x8001EF2C moving the LR save up): the mod restores the
++	// display gamma first and returns ActivePlayer@ha, which the port does not
++	// need.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8001EF30))
++		((u32(*)())sms_mod_t_)();
++#endif
+ 	if (ActivePlayer.open && ActivePlayer.state != 0) {
+ 		ActivePlayer.internalState = 0;
+ 		ActivePlayer.state         = 0;

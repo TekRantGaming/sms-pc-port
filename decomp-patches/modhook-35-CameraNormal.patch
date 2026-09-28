@@ -1,0 +1,40 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE inverted C-stick X in ctrlNormalOrTowerCamera_
+--- a/src/Camera/CameraNormal.cpp
++++ b/src/Camera/CameraNormal.cpp
+@@ -7,6 +7,9 @@
+ #include <Player/MarioAccess.hpp>
+ #include <Enemy/FireWanwan.hpp>
+ #include <Camera/camerasave.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ #include <Camera/cameralib.hpp>
+ #include <Camera/CameraKindParam.hpp>
+ #include <Camera/CameraMarioData.hpp>
+@@ -152,8 +155,26 @@
+ 				}
+ 			}
+ 		} else if (isTowerCameraSpecifyMode(mMode)) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (checkInvertCamCStickX at retail
++			// 0x80029E44, the tower branch's `bl rotateY_ByStickX_` inside
++			// ctrlTowerCamera_): r3 = this, f1 = the stick X.
++			void* sms_mod_t_ = SMS_MOD_SITE(0x80029E44);
++			if (sms_mod_t_ && fVar2 != 0.0f) {
++				((void (*)(CPolarSubCamera*, f32))sms_mod_t_)(this, fVar2);
++				execInvalidAutoChase_();
++				unk64 |= CAMERA_FLAG_UNK80;
++			} else
++#endif
+ 			ctrlTowerCamera_(fVar2);
+ 		} else if (fVar2 != 0.0f) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (checkInvertCamCStickX at retail
++			// 0x80029EAC, `bl rotateY_ByStickX_`): r3 = this, f1 = the stick X.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80029EAC))
++				((void (*)(CPolarSubCamera*, f32))sms_mod_t_)(this, fVar2);
++			else
++#endif
+ 			rotateY_ByStickX_(fVar2);
+ 			execInvalidAutoChase_();
+ 		} else if (mMode == CAMERA_MODE_BOSS_GESO) {

@@ -1,0 +1,177 @@
+Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags and save data
+--- a/src/System/FlagManager.cpp
++++ b/src/System/FlagManager.cpp
+@@ -1,6 +1,9 @@
+ #include <System/FlagManager.hpp>
+ #include <System/StageUtil.hpp>
+ #include <dolphin/os.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ #ifdef TARGET_PC
+ // Memory-card data keeps retail's big-endian layout.
+@@ -30,6 +33,31 @@
+ 
+ TFlagManager* TFlagManager::start(JKRHeap* heap)
+ {
++#ifdef TARGET_PC
++	// Eclipse (SME_extendedCorrectFlags, retail 0x802954F4): retail inlines
++	// the constructor (and firstStart, saveSuccess) here, and the mod takes
++	// that inlined correctFlag call; the rest is built as the constructor
++	// does. The expanded copy also keeps the call apart from firstStart's own
++	// correctFlag call (0x80293DE4), which a mod patches separately.
++	if (smInstance == nullptr) {
++		void* sms_mod_t_ = SMS_MOD_SITE(0x802954F4);
++		if (sms_mod_t_ || sms_mod_target(0x80293DE4)) {
++			TFlagManager* mgr = (TFlagManager*)operator new(sizeof(TFlagManager), heap, 0);
++			if (mgr) {
++				mgr->resetCard();
++				mgr->saveSuccess();
++				if (sms_mod_t_)
++					((void (*)(TFlagManager*))sms_mod_t_)(mgr);
++				else
++					mgr->correctFlag();
++				mgr->resetOpt();
++				mgr->correctOptFlag();
++			}
++			smInstance = mgr;
++			return smInstance;
++		}
++	}
++#endif
+ 	if (smInstance == nullptr)
+ 		smInstance = new (heap, 0) TFlagManager;
+ 
+@@ -58,6 +86,24 @@
+ 	mLastSaveTime       = 0;
+ 	mLastSaveTimeBackup = 0;
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (extendResetCard, retail 0x80295470): retail
++	// inlines resetGame here and the mod takes its resetStage call. The
++	// expanded copy also stays itself where a mod replaces resetGame
++	// (0x802950A0).
++	void* sms_mod_t_ = SMS_MOD_SITE(0x80295470);
++	if (sms_mod_t_ || sms_mod_target(0x802950A0)) {
++		for (int i = 0; i < 4; ++i)
++			mGameBools[i] = 0;
++		for (int i = 0; i < 5; ++i)
++			mGameInts[i] = 0;
++		if (sms_mod_t_)
++			((void (*)(TFlagManager*))sms_mod_t_)(this);
++		else
++			resetStage();
++		return;
++	}
++#endif
+ 	resetGame();
+ }
+ 
+@@ -322,18 +368,58 @@
+ 
+ bool TFlagManager::getShineFlag(u8 shine) const
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (words at retail 0x80294730, 0x80294734,
++	// 0x80294744): the clamp tests the low 16 bits against another limit and
++	// the u8 mask before the flag add is a nop; the port's shine is a u8, so
++	// only the limit (the cmplwi immediate) changes anything here.
++	unsigned int sms_mod_w_;
++	u32 sms_mod_limit_ = 120;
++	if (sms_mod_word(0x80294734, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x2800)
++		sms_mod_limit_ = sms_mod_w_ & 0xFFFF;
++	if (shine >= sms_mod_limit_) {
++		shine = 0;
++	}
++#else
+ 	if (shine >= 120) {
+ 		shine = 0;
+ 	}
++#endif
+ 	return getFlag(shine + 0x10000) != 0;
+ }
+ 
+ void TFlagManager::setShineFlag(u8 shine)
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (words at retail 0x802946B4, 0x802946B8): the
++	// clamp tests the low 16 bits against another limit (the cmplwi
++	// immediate; the port's shine is a u8, so the wider mask changes nothing).
++	unsigned int sms_mod_w_;
++	u32 sms_mod_limit_ = 120;
++	if (sms_mod_word(0x802946B8, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x2800)
++		sms_mod_limit_ = sms_mod_w_ & 0xFFFF;
++	if (shine >= sms_mod_limit_) {
++		shine = 0;
++	}
++	// shineSetClamper (retail 0x802946D4) replaces the u8 mask and gets
++	// (this, shine); the word at 0x802946D8 turns `addis r31, r3, 1` into
++	// `addi r31, r3, 0`, so its result is the flag itself.
++	u32 flag;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802946D4)) {
++		flag = ((u32(*)(TFlagManager*, u32))sms_mod_t_)(this, shine);
++		if (!sms_mod_word(0x802946D8, &sms_mod_w_))
++			flag += 0x10000;
++		else if ((sms_mod_w_ >> 16) == 0x3BE3)
++			flag += (s16)sms_mod_w_;
++	} else {
++		flag = 0x10000 + shine;
++	}
++#else
+ 	if (shine >= 120) {
+ 		shine = 0;
+ 	}
+ 	u32 flag = 0x10000 + shine;
++#endif
+ 	if (getFlag(flag) == 0) {
+ 		incFlag(0x40000, 1);
+ 		setFlag(flag, 1);
+@@ -446,6 +532,14 @@
+ #ifdef TARGET_PC
+ 		port_swap_in_place(mCardInts, sizeof(mCardInts), 4);
+ #endif
++#ifdef TARGET_PC
++		// BetterSunshineEngine (extendFlagManagerLoad, retail 0x80294334;
++		// the word at 0x80294338 branches over the skip call): the mod gets
++		// the stream (r3) and reads its own data from the padding.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80294334))
++			((void (*)(JSUMemoryInputStream*))sms_mod_t_)(&in);
++		else
++#endif
+ 		in.skip(0x200 - sizeof(mCardInts));
+ 	}
+ 
+@@ -492,7 +586,17 @@
+ 	setBool(true, 0x1039D);
+ 
+ 	int shines = 0;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word at retail 0x80293AF8): `addi r31, r31,
++	// 0x77` sets another last shine flag for the count.
++	unsigned int sms_mod_w_;
++	u32 sms_mod_last_ = 0x10077;
++	if (sms_mod_word(0x80293AF8, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x3BFF)
++		sms_mod_last_ = 0x10000 + (s16)sms_mod_w_;
++	for (u32 flag = 0x10000; flag <= sms_mod_last_; ++flag) {
++#else
+ 	for (u32 flag = 0x10000; flag <= 0x10077; ++flag) {
++#endif
+ 		if (getFlag(flag) != 0) {
+ 			++shines;
+ 		}
+@@ -566,6 +670,14 @@
+ #else
+ 	out.write(mCardInts, sizeof(mCardInts));
+ #endif
++#ifdef TARGET_PC
++	// BetterSunshineEngine (extendFlagManagerSave, retail 0x802939B8; the
++	// word at 0x802939BC branches over the skip call): the mod gets the
++	// stream (r3) and writes its own data in place of the padding.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802939B8))
++		((void (*)(JSUMemoryOutputStream*))sms_mod_t_)(&out);
++	else
++#endif
+ 	out.skip(0x200 - sizeof(mCardInts), 0);
+ }
+ 

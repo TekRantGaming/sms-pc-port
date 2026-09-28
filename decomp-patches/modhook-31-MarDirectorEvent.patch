@@ -1,0 +1,60 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarDirector shine-get camera and NPC take check
+--- a/src/System/MarDirectorEvent.cpp
++++ b/src/System/MarDirectorEvent.cpp
+@@ -9,6 +9,9 @@
+ #include <NPC/NpcBase.hpp>
+ #include <Player/MarioAccess.hpp>
+ #include <Player/Mario.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -72,8 +75,21 @@
+ 	for (it = unk88.begin(); it != unk88.end(); ++it) {
+ 		TBaseNPC* npc = *it;
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (carryOrTalkNPC, retail 0x8029A87C; retail
++		// expands this function into movement_game): the mod gets the NPC
++		// in place of isNowCanTaken.
++		bool sms_mod_can_;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029A87C))
++			sms_mod_can_ = (u8)((u32(*)(TBaseNPC*))sms_mod_t_)(npc) != 0;
++		else
++			sms_mod_can_ = npc->isNowCanTaken();
++		if (sms_mod_can_ && gpMarioOriginal->isTakeSituation(npc))
++			result = npc;
++#else
+ 		if (npc->isNowCanTaken() && gpMarioOriginal->isTakeSituation(npc))
+ 			result = npc;
++#endif
+ 	}
+ 	return result;
+ }
+@@ -166,6 +182,24 @@
+ 	// non-zero unk190 still selects Inside.
+ 	// The default-constructed flag (its ctor's defaulted argument is one more
+ 	// inline level) puts the temporary at the top of the frame as retail's.
++#ifdef TARGET_PC
++	// BetterSunshineEngine (thinkCloseCamera, retail 0x8029A590, over the
++	// unk190 load; its word at 0x8029A594 is the same `cmplwi r0, 0`): the
++	// mod's function is PowerPC assembly (empty on the port) that loads
++	// unk190 from the shine (r4) and zeroes it unless the shine's type
++	// (0x154) has bit 0x10, the no-boot shines.
++	if (SMS_MOD_SITE(0x8029A590)) {
++		unsigned int sms_mod_w_;
++		u32 sms_mod_r0_ = (shine->unk154 & 0x10) ? shine->unk190 : 0;
++		if (sms_mod_word(0x8029A594, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x2800)
++			sms_mod_r0_ = sms_mod_r0_ != (sms_mod_w_ & 0xFFFF);
++		fireStartDemoCamera(!sms_mod_r0_ ? cCameraBckNameShineGetOutside
++		                                 : cCameraBckNameShineGetInside,
++		                    &gpMarioOriginal->mPosition, -1, v.y, false, nullptr, 0,
++		                    nullptr, JDrama::TFlagT<u16>());
++		return;
++	}
++#endif
+ 	fireStartDemoCamera(!shine->unk190 ? cCameraBckNameShineGetOutside
+ 	                                   : cCameraBckNameShineGetInside,
+ 	                    &gpMarioOriginal->mPosition, -1, v.y, false, nullptr, 0,

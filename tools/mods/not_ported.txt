@@ -1,0 +1,4 @@
+# Code-mod patches the port does not need to port: pattern (fnmatch on the
+# patch's source location) and why.
+bse/src/patches/widescreen.cpp:*  BSE's widescreen: the port renders 16:9 natively (widescreen setting)
+bse/src/patches/fps.cpp:*         BSE's 60 fps: the port runs 60 fps natively (frame_rate setting)

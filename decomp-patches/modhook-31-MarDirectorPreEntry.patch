@@ -1,0 +1,29 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarDirector::preEntry map group push
+--- a/src/System/MarDirectorPreEntry.cpp
++++ b/src/System/MarDirectorPreEntry.cpp
+@@ -12,6 +12,9 @@
+ // rogue include: the pollution-texture pair sits immediately after the
+ // DummyStrings pair in retail's .rodata blob (0x20 and 0x44).
+ #include <Player/MarioDirtyStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // Parked levels for a JDRNameRefGen.hpp item (closure batch 115). The ROM's
+ // `JDrama::TNameRefGen::search<T>` binds its result before returning it -- the
+@@ -121,6 +124,15 @@
+ 	list->push_back("空グループ", CUE_CALC_VIEW | CUE_ENTRY);
+ 	list->push_back("DrawBuf MapOpa", CUE_SET_DRAW_BUFFER | CUE_DRAW_INIT);
+ 	list->push_back("DrawBuf MapXlu", CUE_SET_DRAW_BUFFER | CUE_DRAW_INIT);
++#ifdef TARGET_PC
++	// BetterSunshineEngine (deduplicateObjectsInPerformList, retail
++	// 0x8029C2FC): the mod gets the call's (list, map group, flags) and
++	// pushes a filtered copy of the group.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029C2FC))
++		((void (*)(TPerformList*, JDrama::TViewObj*, u32))sms_mod_t_)(list, mapGroup,
++		                                                             CUE_CALC_VIEW | CUE_ENTRY);
++	else
++#endif
+ 	list->push_back(mapGroup, CUE_CALC_VIEW | CUE_ENTRY);
+ 	list->push_back(mirrorDisplayModelControl, CUE_CALC_VIEW | CUE_ENTRY);
+ 	list->push_back("DrawBuf Map 半透明優先 (opa)",

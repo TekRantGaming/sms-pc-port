@@ -1,0 +1,72 @@
+Reason: port: code-mod hooks (sms_modhook.h): Eclipse sunglass tint outside Delfino
+--- a/src/GC2D/SunGlass.cpp
++++ b/src/GC2D/SunGlass.cpp
+@@ -3,6 +3,17 @@
+ #include <JSystem/JParticle/JPAEmitterManager.hpp>
+ #include <Player/MarioAccess.hpp>
+ #include <System/FlagManager.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// Eclipse (darkness.cpp) replaces the Delfino test of getShineAlpha's
++// expansions in loadAfter and startFade; this is its alpha without the test.
++static inline u8 SunGlassTintAlpha(const TSunGlass* glass)
++{
++	return (u8)((f32)(glass->unk1E - glass->unk1F)
++	            * (1.0f - (f32)SMSGetFlagManager()->getFlag(0x40000) / 120.0f));
++}
++#endif
+ #include <System/MarDirector.hpp>
+ #include <dolphin/gx.h>
+ #include <dolphin/mtx.h>
+@@ -25,12 +36,27 @@
+ 	// TODO: dead in the shipped build; presumably fed a removed debug print.
+ 	s32 shineCount = SunGlassGetFlagManager()->getFlag(0x40000);
+ 
++#ifdef TARGET_PC
++	// Eclipse (darkness.cpp): the words at 0x8017D5C0 and 0x8017D654
++	// (nops) drop the Delfino test of the two getShineAlpha expansions.
++	unsigned int sms_mod_w_;
++#endif
+ 	if (type == 2) {
++#ifdef TARGET_PC
++		unk1D = sms_mod_word(0x8017D5C0, &sms_mod_w_) ? SunGlassTintAlpha(this)
++		                                              : getShineAlpha();
++#else
+ 		unk1D = getShineAlpha();
++#endif
+ 		unk1C = 100;
+ 	} else {
+ 		unk1D = 100;
++#ifdef TARGET_PC
++		unk1C = sms_mod_word(0x8017D654, &sms_mod_w_) ? SunGlassTintAlpha(this)
++		                                              : getShineAlpha();
++#else
+ 		unk1C = getShineAlpha();
++#endif
+ 	}
+ 
+ 	unk26 = arg1;
+@@ -126,7 +152,22 @@
+ 	return alpha;
+ }
+ 
++#ifdef TARGET_PC
++void TSunGlass::loadAfter()
++{
++	// Eclipse (checkIfValidStateForSunGlassTint at retail 0x8017D1D0, in
++	// place of `li r3, 0`; with the words at 0x8017D1D4 (`cmplwi r3, 1`),
++	// 0x8017D1D8 (`li r3, 0`), 0x8017D1DC (`bne 0x8017D24C`) and 0x8017D1E0
++	// (a nop)): its result replaces getShineAlpha's Delfino test.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8017D1D0)) {
++		unk14.a = ((bool (*)())sms_mod_t_)() ? SunGlassTintAlpha(this) : 0;
++		return;
++	}
++	unk14.a = getShineAlpha();
++}
++#else
+ void TSunGlass::loadAfter() { unk14.a = getShineAlpha(); }
++#endif
+ 
+ void TSunGlass::load(JSUMemoryInputStream& stream)
+ {

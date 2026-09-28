@@ -1,0 +1,72 @@
+Reason: port: code-mod hooks (sms_modhook.h): leaf count of TMapObjTree::initEach (BetterSunshineEngine)
+--- a/src/MoveBG/MapObjTree.cpp
++++ b/src/MoveBG/MapObjTree.cpp
+@@ -26,6 +26,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ static int sWaitTime                      = 1;
+ f32 TMapObjTreeScale::mScaleMin           = 0.1f;
+@@ -130,6 +133,14 @@
+ 		mLeafHipDropImpulse = 0.006f;
+ 		mLeafStiffness      = 0.01f;
+ 		mLeafDamping        = 0.97f;
++#ifdef TARGET_PC
++		// BetterSunshineEngine (getLeafCount, `b` at retail 0x801F6AE4,
++		// 0x801F6B20, 0x801F6B5C, 0x801F6B98 and 0x801F6BD4, each case's
++		// `blr`): each case ends in a tail call of the mod's function on this,
++		// which trims mLeafNum to the leaf collision files present.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801F6AE4))
++			((TMapObjTree * (*)(TMapObjTree*)) sms_mod_t_)(this);
++#endif
+ 		return;
+ 	case 0x40000035:
+ 		mMinCanopyRadius    = 20.0f;
+@@ -139,6 +150,10 @@
+ 		mLeafHipDropImpulse = 0.006f;
+ 		mLeafStiffness      = 0.01f;
+ 		mLeafDamping        = 0.97f;
++#ifdef TARGET_PC
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801F6B20))
++			((TMapObjTree * (*)(TMapObjTree*)) sms_mod_t_)(this);
++#endif
+ 		return;
+ 	case 0x40000036:
+ 		mMinCanopyRadius    = 50.0f;
+@@ -148,6 +163,10 @@
+ 		mLeafHipDropImpulse = 0.006f;
+ 		mLeafStiffness      = 0.01f;
+ 		mLeafDamping        = 0.97f;
++#ifdef TARGET_PC
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801F6B5C))
++			((TMapObjTree * (*)(TMapObjTree*)) sms_mod_t_)(this);
++#endif
+ 		return;
+ 	case 0x40000037:
+ 		mMinCanopyRadius    = 95.0f;
+@@ -157,6 +176,10 @@
+ 		mLeafHipDropImpulse = 0.006f;
+ 		mLeafStiffness      = 0.01f;
+ 		mLeafDamping        = 0.97f;
++#ifdef TARGET_PC
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801F6B98))
++			((TMapObjTree * (*)(TMapObjTree*)) sms_mod_t_)(this);
++#endif
+ 		return;
+ 	case 0x40000039:
+ 		mMinCanopyRadius    = 70.0f;
+@@ -166,6 +189,10 @@
+ 		mLeafHipDropImpulse = 0.008f;
+ 		mLeafStiffness      = 0.03f;
+ 		mLeafDamping        = 0.9f;
++#ifdef TARGET_PC
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801F6BD4))
++			((TMapObjTree * (*)(TMapObjTree*)) sms_mod_t_)(this);
++#endif
+ 		return;
+ 	}
+ 	return;

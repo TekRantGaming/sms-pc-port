@@ -1,0 +1,29 @@
+Reason: port: code-mod hooks (sms_modhook.h): fire-extinguish counter in TEffectObjBase::behaveToWater (Eclipse)
+--- a/src/Enemy/effectObj.cpp
++++ b/src/Enemy/effectObj.cpp
+@@ -14,6 +14,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TEffectObjManager* gpEffectObjManager;
+ 
+@@ -175,6 +178,15 @@
+ 		return;
+ 	}
+ 
++#ifdef TARGET_PC
++	// Eclipse (checkForFireIncrement, retail 0x80037F04, in place of the
++	// gpMSound load): the mod's function runs first and the MSound it returns
++	// plays the sound.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80037F04))
++		((MSound * (*)())sms_mod_t_)()->startSoundActor(
++		    MSD_SE_BS_WANWAN_TO_COOL, &mPosition, 0, nullptr, 0, 4);
++	else
++#endif
+ 	SMSGetMSound()->startSoundActor(MSD_SE_BS_WANWAN_TO_COOL, &mPosition, 0,
+ 	                                nullptr, 0, 4);
+ 	unk68 = 3;

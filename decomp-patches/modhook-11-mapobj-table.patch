@@ -1,0 +1,48 @@
+Reason: port: code-mod hook (sms_modhook.h): BetterSunshineEngine replaces the map-object table TMapObjManager::initKeyCode and TMapObjBase::initActorData read by rewriting the instructions that load its address at run time; the port reads the address it wrote from the patch registry
+--- a/src/MoveBG/MapObjInit.cpp
++++ b/src/MoveBG/MapObjInit.cpp
+@@ -25,6 +25,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <Map/MapCollisionManager.hpp>
+ #include <Map/MapCollisionEntry.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TMapObjSoundData TMapObjGeneral::mDefaultSound = {
+ 	{ 0xFFFFFFFF, MSD_SE_IT_COMMON_APPEAR, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+@@ -11171,6 +11174,11 @@
+ 
+ void TMapObjBase::initActorData()
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine points this function's table at its own, extended
++	// one by rewriting the lis/addi pair that loads it (retail 0x801B1AF0).
++	TMapObjData** sObjDataTable = SMS_MOD_HILO(0x801B1AF2, 0x801B1AFA, ::sObjDataTable);
++#endif
+ 	int i    = 0;
+ 	u32 code = JDrama::TNameRef::calcKeyCode(unkF4);
+ 	for (; sObjDataTable[i]->unk4; ++i) {
+@@ -11182,7 +11190,11 @@
+ 	if (strcmp(mName, "地形オブジェ") == 0)
+ 		mName = unkF4;
+ 
++#ifdef TARGET_PC
++	mMapObjData = sObjDataTable[i];
++#else
+ 	mMapObjData = MapObjDataAt(i);
++#endif
+ 	unkF8       = mMapObjData->unk34;
+ 
+ 	mManager = MapObjSearchManager(mMapObjData->unk8);
+@@ -11243,6 +11255,10 @@
+ 
+ void TMapObjManager::initKeyCode()
+ {
++#ifdef TARGET_PC
++	// as in TMapObjBase::initActorData (retail 0x801B1770)
++	TMapObjData** sObjDataTable = SMS_MOD_HILO(0x801B1772, 0x801B178A, ::sObjDataTable);
++#endif
+ 	for (int i = 0; sObjDataTable[i]->unk4 != 0; ++i)
+ 		sObjDataTable[i]->unk38
+ 		    = JDrama::TNameRef::calcKeyCode(sObjDataTable[i]->unk0);

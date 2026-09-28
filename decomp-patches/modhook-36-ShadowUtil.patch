@@ -1,0 +1,62 @@
+Reason: port: code-mod hooks (sms_modhook.h): shadow ground test in TMBindShadowBody::entryDrawShadow and childless joints in TMBindShadowParts (BetterSunshineEngine)
+--- a/src/MarioUtil/ShadowUtil.cpp
++++ b/src/MarioUtil/ShadowUtil.cpp
+@@ -26,6 +26,9 @@
+ // rogue include: the 12 zero bytes and the Shift-JIS memory-error string are
+ // the object's first two .rodata entries (@1490/@1809).
+ #include <System/DummyStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TMBindShadowParts::TMBindShadowParts(J3DModel* param_1, u8 param_2,
+                                      TMBindShadowBody* param_3, f32 param_4)
+@@ -44,6 +47,15 @@
+ 	(void)0;
+ 	mJointName = param_1->getModelData()->getJointName()->getName(param_2);
+ 	mJointMtx  = param_1->getAnmMtx(param_2);
++#ifdef TARGET_PC
++	// BetterSunshineEngine (shadowCrashPatch and fixShadowPartsCrash, both
++	// at retail 0x802320E0 over the child's joint-number load): a joint with
++	// no child takes joint number 0 instead of reading through null.
++	if (SMS_MOD_SITE(0x802320E0)
++	    && !param_1->getModelData()->getJointNodePointer(param_2)->getChild())
++		mChildMtx = param_1->getAnmMtx(0);
++	else
++#endif
+ 	mChildMtx  = param_1->getAnmMtx(((J3DJoint*)param_1->getModelData()
+                                         ->getJointNodePointer(param_2)
+                                         ->getChild())
+@@ -263,6 +275,32 @@
+ 	if (gpMarioPos->epsilonEquals(mActor->getPosition(), eps)) {
+ 		if (!gpBindShadowManager->unk65) {
+ 			gpBindShadowManager->unk65 = true;
++#ifdef TARGET_PC
++			// BetterSunshineEngine (considerShadowGround, retail 0x80231878,
++			// the first checkGround of the calc() copy inlined here, and the
++			// word 0x48000030 at 0x80231884, a branch over the water-surface
++			// retry): the mod's ground test, without the retry.
++			void* sms_mod_t_ = SMS_MOD_SITE(0x80231878);
++			const bool skipWater = SMS_MOD_WORD(0x80231884, 0) == 0x48000030;
++			if (sms_mod_t_ || skipWater) {
++				JGeometry::TVec3<f32> pos = mActor->getPosition();
++				const TBGCheckData* ground;
++				f32 groundY;
++				if (sms_mod_t_)
++					groundY = ((f32(*)(TMap*, f32, f32, f32, const TBGCheckData**))
++					               sms_mod_t_)(gpMap, pos.x,
++					                           pos.y + gpBindShadowManager->unk60,
++					                           pos.z, &ground);
++				else
++					groundY = gpMap->checkGround(
++					    pos.x, pos.y + gpBindShadowManager->unk60, pos.z, &ground);
++				if (!skipWater && ground->isWaterSurface())
++					groundY = gpMap->checkGround(pos.x, pos.y - 50.0f, pos.z, &ground);
++				if (!ground->isIllegalData())
++					for (int i = 0; i < mPartsNum; i++)
++						mParts[i]->calc(groundY);
++			} else
++#endif
+ 			calc();
+ 		}
+ 	} else {

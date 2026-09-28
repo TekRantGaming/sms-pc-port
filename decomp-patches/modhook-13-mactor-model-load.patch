@@ -1,0 +1,35 @@
+Reason: port: code-mod hook (sms_modhook.h): BetterSunshineEngine redirects the model load TMActorKeeper::createMActor inlines (retail 0x8021CD34) to fall back to /common/mapobj
+--- a/src/Strategic/ObjModel.cpp
++++ b/src/Strategic/ObjModel.cpp
+@@ -8,6 +8,9 @@
+ #include <M3DUtil/SDLModel.hpp>
+ #include <stdio.h>
+ #include <types.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ bool TModelDataNode::isSameName(const char* name, u16 key) const
+ {
+@@ -152,7 +155,21 @@
+ 	int index = keeper->getIndex(model_data_name);
+ 
+ 	if (index < 0) {
++#ifdef TARGET_PC
++		// keepModelData, with the model load it inlines here (retail
++		// 0x8021CD34) open to code mods: BetterSunshineEngine falls back to
++		// /common/mapobj for a model the scene lacks.
++		TModelDataNode* node = &keeper->mHead;
++		while (node->getNext())
++			node = node->getNext();
++		SDLModelData* data = SMS_MOD_CALLF_R(
++		    0x8021CD34, TModelDataKeeper::loadModelData,
++		    TModelDataKeeper::loadModelData(model_data_name, getModelLoaderFlags(), keeper->getFolder()),
++		    model_data_name, getModelLoaderFlags(), keeper->getFolder());
++		node->registerDataAndJoinNewNode(data, model_data_name);
++#else
+ 		keeper->keepModelData(model_data_name, getModelLoaderFlags());
++#endif
+ 		index = keeper->getIndex(model_data_name);
+ 	}
+ 

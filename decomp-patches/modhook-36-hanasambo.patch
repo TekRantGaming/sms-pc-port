@@ -1,0 +1,43 @@
+Reason: port: code-mod hooks (sms_modhook.h): flower counter in TSamboFlower::receiveMessage (Eclipse)
+--- a/src/Enemy/hanasambo.cpp
++++ b/src/Enemy/hanasambo.cpp
+@@ -34,6 +34,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ static const char* sambo_bastable[] = {
+ 	"/scene/sambo/bas/sambo_down.bas",
+@@ -497,8 +500,28 @@
+ BOOL TSamboFlower::receiveMessage(THitActor* sender, u32 message)
+ {
+ 	if (message == HIT_MESSAGE_SPRAYED_BY_WATER) {
+-		if (!mIsBloomed)
++		if (!mIsBloomed) {
++#ifdef TARGET_PC
++			// Eclipse (checkForSamboFlowerIncrement, retail 0x800E4174, the
++			// setBck call of the bloom() copy inlined here only): the mod sets
++			// the anim itself and counts the flower.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x800E4174)) {
++				mIsBloomed  = true;
++				mBloomTimer = 0;
++				gpMarioParticleManager->emit(0xB2, &mPosition, 0, nullptr);
++				((void (*)(MActor*, const char*))sms_mod_t_)(getMActor(), "flower_hit");
++				if (mCanClose && mBloomCounter) {
++					--*mBloomCounter;
++					u32 sound = *mBloomCounter + 0x89B9;
++					if (gpMSound->gateCheck(sound))
++						MSoundSESystem::MSoundSE::startSoundActor(sound, &mPosition, 0,
++						                                          nullptr, 0, 4);
++				}
++				return TRUE;
++			}
++#endif
+ 			SamboFlowerSelf(this)->bloom();
++		}
+ 		return TRUE;
+ 	}
+ 	return FALSE;

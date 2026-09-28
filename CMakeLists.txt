@@ -71,15 +71,12 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECT
   list(APPEND SMS_GAME_FLAGS -msse2 -mfpmath=sse)
 endif()
 # String literals are Shift-JIS on disc and in the MWCC build (sjiswrap).
-# GCC: -fexec-charset=CP932. Apple Clang rejects CP932, so on macOS without
-# that flag we mirror sources as CP932 (tools/darwin_cp932_mirror.py).
+# GCC normally uses -fexec-charset=CP932. Some portable compiler builds lack
+# iconv, and Apple Clang rejects CP932; both use the source mirror below.
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-fexec-charset=CP932" SMS_HAVE_CP932)
 if(SMS_HAVE_CP932)
   list(APPEND SMS_GAME_FLAGS -finput-charset=UTF-8 -fexec-charset=CP932)
-elseif(NOT APPLE)
-  message(FATAL_ERROR
-    "This compiler lacks -fexec-charset=CP932 (needed for Shift-JIS game string literals).")
 endif()
 check_cxx_compiler_flag("-fno-unreachable-traps" SMS_HAVE_NO_UNREACHABLE_TRAPS)
 if(SMS_HAVE_NO_UNREACHABLE_TRAPS)
@@ -107,7 +104,7 @@ if(APPLE)
 endif()
 
 set(SMS_GAME_INCLUDE_DIR ${SMS_DECOMP}/include)
-if(APPLE AND NOT SMS_HAVE_CP932)
+if(NOT SMS_HAVE_CP932)
   set(SMS_CP932_ROOT ${CMAKE_BINARY_DIR}/cp932)
   execute_process(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/darwin_cp932_mirror.py
@@ -135,7 +132,7 @@ if(APPLE AND NOT SMS_HAVE_CP932)
     endforeach()
     set(${lst} ${_retargeted})
   endforeach()
-  message(STATUS "SMS port: compiling game sources from CP932 mirror (Apple Clang)")
+  message(STATUS "SMS port: compiling game sources from CP932 mirror")
 endif()
 
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} PROPERTIES LANGUAGE CXX)
@@ -252,6 +249,8 @@ file(GLOB_RECURSE SMS_PLATFORM_SOURCES CONFIGURE_DEPENDS
 # platform/gx/CMakeLists.txt defining a library target `sms_gx`, it is linked
 # in and its strong GX* definitions replace the weak stubs.
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/gx/")
+# platform/mods/eclipse is built by cmake/eclipse.cmake, and only with SMS_ECLIPSE.
+list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/mods/eclipse/")
 if(WIN32 OR APPLE)
   list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/trace/trace\\.cpp$")
 endif()
@@ -263,7 +262,7 @@ if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
   set_target_properties(sms PROPERTIES BUILD_RPATH "@executable_path;@executable_path/../Frameworks")
 endif()
 target_include_directories(sms PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/platform ${SMS_PORT_SRC}
+  ${CMAKE_CURRENT_SOURCE_DIR}/platform ${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/include ${SMS_PORT_SRC}
   ${SMS_PORT_SRC}/port_include ${SMS_DECOMP}/include)
 target_compile_definitions(sms PRIVATE ${SMS_COMMON_DEFS} SMS_AUDIO_DSP_HLE=1)
 target_compile_options(sms PRIVATE -fno-strict-aliasing -Wno-unused-parameter -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
@@ -312,6 +311,11 @@ else()
   if(TARGET sms_gx)
     target_link_libraries(sms PRIVATE -Wl,--whole-archive sms_gx -Wl,--no-whole-archive)
   endif()
+endif()
+
+option(SMS_ECLIPSE "Build Super Mario Eclipse in (32-bit; fetches its sources, see docs/ECLIPSE.md)" OFF)
+if(SMS_ECLIPSE)
+  include(cmake/eclipse.cmake)
 endif()
 
 # --- Standalone executable ------------------------------------------------------

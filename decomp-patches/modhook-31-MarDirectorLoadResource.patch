@@ -1,0 +1,84 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarDirector::loadParticleMario particle loads
+--- a/src/System/MarDirectorLoadResource.cpp
++++ b/src/System/MarDirectorLoadResource.cpp
+@@ -13,6 +13,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ extern void* gpSceneCmnDat;
+ extern int gpSceneCmnDatSize;
+@@ -298,6 +301,22 @@
+ 	getLoadHeap()->freeTail();
+ }
+ 
++#ifdef TARGET_PC
++// SMS_LoadParticle whose load call a code mod redirects at retail `addr`;
++// the mod's function gets the load's arguments (manager, path, id) as the
++// type `fnType` it declares.
++#define SMS_MOD_LOAD_PARTICLE(addr, fnType, path, id)                                             \
++	do {                                                                                           \
++		if (!gParticleFlagLoaded[id]) {                                                            \
++			if (void* sms_mod_t_ = SMS_MOD_SITE(addr))                                             \
++				((fnType)sms_mod_t_)(gpResourceManager, path, id);                                 \
++			else                                                                                   \
++				gpResourceManager->load(path, id);                                                 \
++			gParticleFlagLoaded[id] = true;                                                        \
++		}                                                                                          \
++	} while (0)
++#endif
++
+ void TMarDirector::loadParticleMario()
+ {
+ 	SMS_LoadParticle("ms_m_rocket_a.jpa", 1);
+@@ -349,8 +368,18 @@
+ 	SMS_LoadParticle("ms_coinget_a.jpa", 0x37);
+ 	SMS_LoadParticle("ms_coinget_b.jpa", 0x38);
+ 	SMS_LoadParticle("ms_m_amiattack.jpa", 0x39);
++#ifdef TARGET_PC
++	// Eclipse (loadIceStageWalkSandA, retail 0x802B3ED0): snow instead of sand on its ice stages.
++	SMS_MOD_LOAD_PARTICLE(0x802B3ED0, void (*)(JPAResourceManager*, const char*, u16), "ms_m_walksand_a.jpa", 0x3a);
++#else
+ 	SMS_LoadParticle("ms_m_walksand_a.jpa", 0x3a);
++#endif
++#ifdef TARGET_PC
++	// Eclipse (loadIceStageWalkSandA, retail 0x802B3EF8): snow instead of sand on its ice stages.
++	SMS_MOD_LOAD_PARTICLE(0x802B3EF8, void (*)(JPAResourceManager*, const char*, u16), "ms_m_walksand_b.jpa", 0x3b);
++#else
+ 	SMS_LoadParticle("ms_m_walksand_b.jpa", 0x3b);
++#endif
+ 	SMS_LoadParticle("ms_yos_nomu_a.jpa", 0x3d);
+ 	SMS_LoadParticle("ms_yos_nomu_b.jpa", 0x3e);
+ 	SMS_LoadParticle("ms_yos_warp.jpa", 0x3f);
+@@ -384,11 +413,28 @@
+ 	SMS_LoadParticle("ms_m_awa.jpa", 0x10c);
+ 	SMS_LoadParticle("ms_nozzlesmoke.jpa", 0x10d);
+ 	SMS_LoadParticle("ms_m_blur1.jpa", 0x10e);
++#ifdef TARGET_PC
++	// Eclipse (loadIceStageWalkSandA, retail 0x802B4448): snow instead of sand on its ice stages.
++	SMS_MOD_LOAD_PARTICLE(0x802B4448, void (*)(JPAResourceManager*, const char*, u16), "ms_m_slidesand_a.jpa", 0x10f);
++#else
+ 	SMS_LoadParticle("ms_m_slidesand_a.jpa", 0x10f);
++#endif
++#ifdef TARGET_PC
++	// Eclipse (loadIceStageWalkSandA, retail 0x802B4470): snow instead of sand on its ice stages.
++	SMS_MOD_LOAD_PARTICLE(0x802B4470, void (*)(JPAResourceManager*, const char*, u16), "ms_m_slidesand_b.jpa", 0x110);
++#else
+ 	SMS_LoadParticle("ms_m_slidesand_b.jpa", 0x110);
++#endif
+ 	SMS_LoadParticle("ms_m_awa_s.jpa", 0x111);
+ 	SMS_LoadParticle("ms_m_watslide_b.jpa", 0x112);
++#ifdef TARGET_PC
++	// Eclipse (smParticleInit, retail 0x802B44E8): also loads its own particles.
++	// The mod declares the id a u8, so it gets 0x13 here as on any
++	// caller of its declared type.
++	SMS_MOD_LOAD_PARTICLE(0x802B44E8, void (*)(JPAResourceManager*, const char*, u8), "ms_m_watslide_c.jpa", 0x113);
++#else
+ 	SMS_LoadParticle("ms_m_watslide_c.jpa", 0x113);
++#endif
+ 	SMS_LoadParticle("ms_m_spinshot_a.jpa", 0x114);
+ 	SMS_LoadParticle("ms_m_spinshot_b.jpa", 0x115);
+ 	SMS_LoadParticle("ms_m_biri_a.jpa", 0x116);

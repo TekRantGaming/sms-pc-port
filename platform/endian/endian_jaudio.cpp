@@ -309,8 +309,17 @@ extern "C" int port_endian_aaf(void* data, uint32_t size)
 	if (!f.has(0, 4) || be32(f.at(0)) == 0 || be32(f.at(0)) > 8)
 		return 0;
 	u32 i = 0; // word index
+	// The command stream ends before the first payload. Not every AAF ends it
+	// with a 0 (Super Mario Eclipse's runs straight into its sound table,
+	// which the game then skips over as an unknown command): stop there
+	// rather than swapping the payload as command words.
+	u32 payload = f.size;
+	auto note = [&](u32 off) {
+		if (off && off < payload)
+			payload = off;
+	};
 	for (;;) {
-		if (!f.has(i * 4, 4))
+		if (!f.has(i * 4, 4) || 4 * i >= payload)
 			break;
 		u32 cmd = f.sw32(4 * i++);
 		if (cmd == 0)
@@ -322,6 +331,7 @@ extern "C" int port_endian_aaf(void* data, uint32_t size)
 			for (int t = 0; t < ntab; t++) {
 				u32 off = f.sw32(4 * i++);
 				u32 sz  = f.sw32(4 * i++);
+				note(off);
 				if (off && f.has(off, sz))
 					sound_table(f.sub(off, sz));
 			}
@@ -336,6 +346,7 @@ extern "C" int port_endian_aaf(void* data, uint32_t size)
 				f.sw32(4 * (i + 1));
 				f.sw32(4 * (i + 2));
 				i += 3;
+				note(off);
 				u32 sz = embedded_size(f, off);
 				if (cmd == 2)
 					port_endian_ibnk(f.at(off), sz);
@@ -354,6 +365,7 @@ extern "C" int port_endian_aaf(void* data, uint32_t size)
 			u32 sz  = f.sw32(4 * (i + 1));
 			f.sw32(4 * (i + 2));
 			i += 3;
+			note(off);
 			if (!off || !f.has(off, 4))
 				break;
 			Buf p = f.sub(off, sz);
@@ -370,7 +382,7 @@ extern "C" int port_endian_aaf(void* data, uint32_t size)
 			break;
 		}
 		default: // unknown: words up to a 0
-			while (f.has(4 * i, 4) && f.sw32(4 * i++) != 0)
+			while (f.has(4 * i, 4) && 4 * i < payload && f.sw32(4 * i++) != 0)
 				;
 			break;
 		}

@@ -1,0 +1,97 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE free-fly camera and draw distance, Eclipse camera code in CPolarSubCamera::perform
+--- a/src/Camera/cameragc.cpp
++++ b/src/Camera/cameragc.cpp
+@@ -17,6 +17,9 @@
+ #include <Map/MapData.hpp>
+ #include <macros.h>
+ #include <stdio.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ #include <System/StageUtil.hpp>
+ 
+@@ -1039,6 +1042,14 @@
+ 	    && !(unk64 & (CAMERA_FLAG_JET_COASTER_SCENE | CAMERA_FLAG_GATE_DEMO)))
+ 		mFovy = mCurrentParams->mFovy;
+ 	mNear = mCurrentParams->mNearClip;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (cameraScaleRenderDistance at retail 0x80023824,
++	// in place of the `stfs` of 300000.0f to mFar): r3 = this; the mod sets
++	// mFar itself and returns the camera (r3 for isNormalDeadDemo).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80023824))
++		((CPolarSubCamera* (*)(CPolarSubCamera*))sms_mod_t_)(this);
++	else
++#endif
+ 	mFar  = 300000.0f;
+ 
+ 	if (isNormalDeadDemo()) {
+@@ -1082,7 +1093,13 @@
+ 	if (SMS_isOptionMap())
+ 		ctrlOptionCamera_();
+ 	else
++#ifdef TARGET_PC
++		// Eclipse (controlCameraByCodeExt at retail 0x80023148, perform's
++		// `bl ctrlGameCamera_`): r3 = this.
++		SMS_MOD_CALL(0x80023148, void (*)(CPolarSubCamera*), ctrlGameCamera_(), this);
++#else
+ 		ctrlGameCamera_();
++#endif
+ 	calcFinalPosAndAt_();
+ 
+ 	calcExternalData_();
+@@ -1091,6 +1108,34 @@
+ void CPolarSubCamera::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & CUE_MOVE) {
++#ifdef TARGET_PC
++		// BetterSunshineEngine free-fly camera: shouldDebugPassThroughCameraPerform
++		// at retail 0x80023034 (in place of the `lhz` of graphics->unk0; it
++		// reads r31 = graphics) with `cmpwi r3, 0` at 0x80023038 decides
++		// whether the previous-frame copy runs; its MTXCopy at 0x800230F8
++		// becomes shouldDebugControlCameraPerform(unk1EC, unk21C) (reads
++		// r29 = this; copies, and sets mUp to (0, 1, 0) itself when it
++		// returns false). The words at 0x800230FC (`cmpwi r3, 1`) and
++		// 0x80023100 (`beq 0x800232F8`) jump, when it returns true, straight
++		// into the view/projection block below, past its cue test; the
++		// words at 0x80023108, 0x8002310C, 0x80023110, 0x80023114 and
++		// 0x80023118 (nops) drop the mUp.set(CLBConstUpVec).
++		void* sms_mod_pass_ = SMS_MOD_SITE(0x80023034);
++		void* sms_mod_ctrl_ = SMS_MOD_SITE(0x800230F8);
++		if (sms_mod_pass_ && sms_mod_ctrl_) {
++			SMS_MOD_GPR(31, graphics);
++			if (((bool (*)())sms_mod_pass_)()) {
++				unk13C.set(unk124);
++				unk160.set(unk148);
++				for (int i = 0; i < 4; ++i)
++					for (int j = 0; j < 4; ++j)
++						unk1AC[i][j] = unk16C[i][j];
++				SMS_MOD_GPR(29, this);
++				if (((bool (*)(const Mtx, Mtx))sms_mod_ctrl_)(unk1EC, unk21C))
++					goto sms_mod_view_;
++			}
++		} else {
++#endif
+ 		if (graphics->unk0 & 1) {
+ 			unk13C.set(unk124);
+ 			unk160.set(unk148);
+@@ -1100,6 +1145,9 @@
+ 			MTXCopy(unk1EC, unk21C);
+ 		}
+ 		mUp.set(CLBConstUpVec);
++#ifdef TARGET_PC
++		}
++#endif
+ 		unk254 = 0;
+ 		if (mMode != CAMERA_MODE_REPRODUCE_DEMO) {
+ 			ctrlCamera_();
+@@ -1132,6 +1180,9 @@
+ 	}
+ 
+ 	if (cue & (CUE_CALC_VIEW | CUE_SET_PROJECTION)) {
++#ifdef TARGET_PC
++	sms_mod_view_: // retail 0x800232F8, the target of the word at 0x80023100
++#endif
+ 		for (int i = 0; i < 4; ++i)
+ 			for (int j = 0; j < 4; ++j)
+ 				graphics->mProjMtx.mMtx[i][j] = unk16C[i][j];

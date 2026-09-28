@@ -1,0 +1,28 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMenuDirector level-select shine reset
+--- a/src/System/MenuDir.cpp
++++ b/src/System/MenuDir.cpp
+@@ -22,6 +22,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <System/DummyStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TMenuDirector::TMenuDirector()
+     : unk18(0)
+@@ -209,6 +212,14 @@
+ 		if (unk40->checkFlag(0x1)) {
+ 			if (!(unk2C->getButton() & JUTGamePad::X)) {
+ 				TFlagManager::getInstance()->firstStart();
++#ifdef TARGET_PC
++				// BetterSunshineEngine (extendLevelSelectReset, retail
++				// 0x802A2EDC): a call replaces the loop's `blt`, so the body
++				// never runs and the mod sets every shine flag itself.
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A2EDC))
++					((void (*)())sms_mod_t_)();
++				else
++#endif
+ 				for (u8 i = 0; i < 120; ++i)
+ 					TFlagManager::getInstance()->setShineFlag(i);
+ 				for (u32 i = 0x10366; i < 0x103B4; ++i)

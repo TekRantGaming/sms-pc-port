@@ -1,0 +1,24 @@
+Reason: port: code mods: textures a mod builds into its code (BetterSunshineEngine's icons) are converted to host byte order when first stored
+--- a/src/JSystem/JUtility/JUTTexture.cpp
++++ b/src/JSystem/JUtility/JUTTexture.cpp
+@@ -50,9 +50,20 @@
+ 		delete mEmbPalette;
+ }
+ 
++#ifdef TARGET_PC
++extern "C" int sms_mod_active(void);
++extern "C" int port_endian_bti_embedded(void* p);
++#endif
++
+ void JUTTexture::storeTIMG(ResTIMG const* param_0)
+ {
+ 	if (param_0) {
++#ifdef TARGET_PC
++		// A code mod's own textures, built into its code, arrive in their
++		// on-disc byte order (BetterSunshineEngine's icons).
++		if (sms_mod_active())
++			port_endian_bti_embedded(const_cast<ResTIMG*>(param_0));
++#endif
+ 		mTexInfo = param_0;
+ 		mTexData = (void*)((u32)mTexInfo + mTexInfo->imageDataOffset);
+ 

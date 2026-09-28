@@ -1,0 +1,30 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE glyph culling in J2DPrint::parse
+--- a/src/JSystem/J2D/J2DPrint.cpp
++++ b/src/JSystem/J2D/J2DPrint.cpp
+@@ -1,6 +1,9 @@
+ #include <JSystem/J2D/J2DPrint.hpp>
+ #include <JSystem/JKernel/JKRHeap.hpp>
+ #include <dolphin/gx.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ #include <printf.h>
+ #include <stdlib.h>
+ 
+@@ -384,6 +387,16 @@
+ 						mFont->drawChar_scale(mCursorH + (f32)(s16)param_4[r21],
+ 						                      mCursorV, unk34, unk38, r27, r19);
+ 					} else {
++#ifdef TARGET_PC
++						// BetterSunshineEngine (maybePrintChar at retail
++						// 0x802CEC2C, this virtual drawChar_scale call;
++						// compiled out, `#if 0`, in its j2dprint.cpp).
++						if (void* sms_mod_t_ = SMS_MOD_SITE(0x802CEC2C))
++							((void (*)(JUTFont*, f32, f32, f32, f32, int, bool))
++							     sms_mod_t_)(mFont, mCursorH, mCursorV, unk34,
++							                 unk38, r27, r19);
++						else
++#endif
+ 						mFont->drawChar_scale(mCursorH, mCursorV, unk34, unk38,
+ 						                      r27, r19);
+ 					}

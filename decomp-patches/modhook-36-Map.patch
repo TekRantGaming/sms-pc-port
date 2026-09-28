@@ -1,0 +1,76 @@
+Reason: port: code-mod hooks (sms_modhook.h): exotic wall check in TMap::isTouchedOneWall and the sea tests of initStageCommon (BetterSunshineEngine)
+--- a/src/Map/Map.cpp
++++ b/src/Map/Map.cpp
+@@ -27,6 +27,9 @@
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <Map/MapCollisionEntry.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TMap* gpMap;
+ 
+@@ -185,6 +188,44 @@
+ 	JDrama::TNameRefGen::search<JDrama::TViewObjPtrListT<JDrama::TViewObj> >(
+ 	    "マップグループ");
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (isSeaBMDPresent, retail 0x8018A064, with the
++	// words at 0x8018A068 (cmpwi r3, 0), 0x8018A06C (beq 0x8018A0D0) and
++	// 0x8018A070 (b 0x8018A0A8); isSeaIndirectBMDPresent, retail 0x8018A0D0,
++	// in place of the sea's init call, with the words at 0x8018A0D4 (cmpwi
++	// r3, 0) and 0x8018A0D8 (beq 0x8018A228), in place of the second `new`):
++	// the mod decides whether the sea exists; its second function inits the
++	// sea (when there is one) and returns the memory the indirect sea is
++	// built in, or null to skip every water object.
++	void* sms_mod_sea_ = SMS_MOD_SITE(0x8018A064);
++	void* sms_mod_ind_ = SMS_MOD_SITE(0x8018A0D0);
++	if (sms_mod_sea_ && sms_mod_ind_) {
++#if !defined(__LP64__)
++		// (code mods run on the 32-bit build, where the object is retail's size)
++		(void)sizeof(char[sizeof(TMapStaticObj) <= 0x80 ? 1 : -1]);
++#endif
++		TMapStaticObj* obj = nullptr;
++		if (((bool (*)(TMarDirector*))sms_mod_sea_)(gpMarDirector))
++			obj = new TMapStaticObj("波（遠景）");
++		void* mem = ((void* (*)(THitActor*, const char*))sms_mod_ind_)(
++		    obj, obj ? "sea" : nullptr);
++		if (mem) {
++			obj = new (mem) TMapStaticObj("インダイレクト波");
++			obj->init("SeaIndirect");
++			group->getChildren().push_back(obj);
++
++			TMapObjWaterFilter* filter
++			    = new TMapObjWaterFilter("水中カメラフィルタ");
++			filter->init();
++			group->getChildren().push_back(filter);
++
++			TMapObjSeaIndirect* sceneIndirect
++			    = new TMapObjSeaIndirect("水中カメラインダイレクト");
++			sceneIndirect->init();
++			group->getChildren().push_back(sceneIndirect);
++		}
++	} else
++#endif
+ 	if (SMSGetMarDirector()->getCurrentMap() == 4
+ 	    || SMSGetMarDirector()->getCurrentMap() == 3
+ 	    || SMSGetMarDirector()->getCurrentMap() == 0xD
+@@ -360,6 +401,17 @@
+ // forwarding helper costs 14% of match.
+ bool TMap::isTouchedOneWall(f32 x, f32 y, f32 z, f32 radius) const
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (checkWallsExotic, retail 0x80189B04: the
++	// checkWalls call of this function's own copy of the wall test, which
++	// the source shares with isTouchedOneWallAndMoveXZ).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80189B04)) {
++		TBGWallCheckRecord record(x, y, z, radius, 1, 0);
++		return (int)((size_t(*)(TMapCollisionData*, TBGWallCheckRecord*))sms_mod_t_)(
++		           mCollisionData, &record)
++		       != 0;
++	}
++#endif
+ 	return isTouchedOneWallAndMoveXZ(&x, y, &z, radius);
+ }
+ 

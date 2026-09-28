@@ -1,0 +1,66 @@
+Reason: port: code-mod hooks (sms_modhook.h): Eclipse exit-area option and BSE scenario name in TPauseMenu2::load
+--- a/src/GC2D/PauseMenu2.cpp
++++ b/src/GC2D/PauseMenu2.cpp
+@@ -1,4 +1,7 @@
+ #include <GC2D/CardSave.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ #include <GC2D/GCConsole2.hpp>
+ #include <GC2D/MessageUtil.hpp>
+ #include <GC2D/PauseMenu2.hpp>
+@@ -95,7 +98,23 @@
+ 	mScreen          = new J2DSetScreen("pause_1.blo", arch);
+ 	mScreen->setCullBack(GX_CULL_BACK);
+ 
+-	if (gpApplication.mCurrArea.unk0 <= 1) {
++#ifdef TARGET_PC
++	// Eclipse (assignExitAreaStages at retail 0x80156B70, in place of the
++	// load of gpApplication.mCurrArea.unk0; r3 = &gpApplication, and it
++	// reads r29 = this and sets mNumItems itself); the word at 0x80156B80
++	// (a nop) drops the store below.
++	unsigned int sms_mod_w_;
++	void* sms_mod_t_ = SMS_MOD_SITE(0x80156B70);
++	if (sms_mod_t_) {
++		SMS_MOD_GPR(29, this);
++		((void (*)(TApplication*))sms_mod_t_)(&gpApplication);
++	}
++	if (!sms_mod_t_ && gpApplication.mCurrArea.unk0 <= 1
++	    && !sms_mod_word(0x80156B80, &sms_mod_w_))
++#else
++	if (gpApplication.mCurrArea.unk0 <= 1)
++#endif
++	{
+ 		// Hide "Exit Area" option in Delfino Plaza.
+ 		mNumItems = 2;
+ 	}
+@@ -136,12 +155,28 @@
+ 		    = JKRFileLoader::getGlbResource("/common/2d/scenarioname.bmg");
+ 		s16 shineID = SMS_getShineID(shineStage, flag, false);
+ 		const char* scenarioName;
++#ifdef TARGET_PC
++		// BetterSunshineEngine: the word at 0x80156D5C (`b 0x80156E04`) goes
++		// straight to the scenario-name call, past the checks and the pane
++		// moves; that call is loadScenarioNameFromBMGAfterStubStub at retail
++		// 0x80156E04 (r3 = the bmg; it reads r29 = this).
++		void* sms_mod_n_ = SMS_MOD_SITE(0x80156E04);
++		if (sms_mod_n_ && sms_mod_word(0x80156D5C, &sms_mod_w_)) {
++			SMS_MOD_GPR(29, this);
++			scenarioName = ((const char* (*)(void*))sms_mod_n_)(scenarioBmg);
++		} else
++#endif
+ 		if (scenarioBmg == nullptr || shineID == -1 || shineStage == 0) {
+ 			scenarioName = "";
+ 			mStageName->add(0, 0xF);
+ 			mMenuPane->add(0, 0x1E);
+ 		} else {
+-			scenarioName = SMSGetMessageData(
++			scenarioName =
++#ifdef TARGET_PC
++			    sms_mod_n_ ? (SMS_MOD_GPR(29, this),
++			                  ((const char* (*)(void*))sms_mod_n_)(scenarioBmg)) :
++#endif
++			    SMSGetMessageData(
+ 			    scenarioBmg, (u16)SMS_getNormalStage(shineID));
+ 		}
+ 		snprintf(mScenarioName->getStringPtr(), 0x80, "%s", scenarioName);

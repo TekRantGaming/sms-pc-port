@@ -1,0 +1,95 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario swimming hooks (BetterSunshineEngine, Eclipse)
+--- a/src/Player/MarioSwim.cpp
++++ b/src/Player/MarioSwim.cpp
+@@ -8,6 +8,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ // UNUSED (0x1c in the map): a status predicate. No live caller inlines it
+ // (MarioSwim is instruction-exact throughout without it), so only the map
+ // size constrains the body.
+@@ -25,7 +29,21 @@
+ 		return;
+ 	}
+ 
+-	if (mFloorPosition.y + mSwimParams.mEndDepth.get() > mFloorPosition.z) {
++	if ((
++#ifdef TARGET_PC
++	        // BetterSunshineEngine (enhanceWaterSurfaceRiding, retail
++	        // 0x80272FB0, with the word at 0x80272FB4: lfs f0, 0xf0(r31)): the
++	        // call (the end depth in f1, the floor height in f2; it reads this
++	        // from r31) returns the height compared with the water surface,
++	        // loaded after it.
++	        SMS_MOD_SITE(0x80272FB0)
++	            ? (SMS_MOD_GPR(31, this),
++	               ((f32 (*)(f32, f32))SMS_MOD_SITE(0x80272FB0))(
++	                   mSwimParams.mEndDepth.get(), mFloorPosition.y))
++	            :
++#endif
++	            mFloorPosition.y + mSwimParams.mEndDepth.get())
++	    > mFloorPosition.z) {
+ 		changePlayerStatus(MARIO_STATUS_WAIT, 0, false);
+ 		return;
+ 	}
+@@ -95,6 +113,12 @@
+ 		                                            &mFootprintPos, 1, this);
+ 	}
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine writes a nop over this store (retail 0x802732DC).
++	unsigned int sms_mod_w_;
++	if (sms_mod_word(0x802732DC, &sms_mod_w_) && sms_mod_w_ == 0x60000000)
++		return;
++#endif
+ 	if (mPosition.y < mFloorPosition.y + 35.0f)
+ 		mPosition.y = mFloorPosition.y + 35.0f;
+ }
+@@ -134,7 +158,22 @@
+ BOOL TMario::checkSwimToHangFence()
+ {
+ 	if (getIntendedMag() > 0.0f && mWallPlane != nullptr
+-	    && mWallPlane->isFence()) {
++	    && (
++#ifdef TARGET_PC
++	        // Retail inlines this into swimMain (its only caller). The mods'
++	        // canClimbUnderwater (retail 0x80272660, with the words at
++	        // 0x80272664: cmpwi r4, 0 and 0x80272668: beq) replaces the fence
++	        // test: it gets the wall (and reads this from r31) and returns
++	        // its verdict in r4. (Both BetterSunshineEngine's and Eclipse's
++	        // copies sit in #if 0 blocks.)
++	        SMS_MOD_SITE(0x80272660)
++	            ? (SMS_MOD_GPR(31, this),
++	               ((TBGCheckData* (*)(TBGCheckData*))SMS_MOD_SITE(0x80272660))(
++	                   (TBGCheckData*)mWallPlane),
++	               sms_mod_gpr[4] != 0)
++	            :
++#endif
++	            mWallPlane->isFence())) {
+ 		s16 wallAng
+ 		    = matan(mWallPlane->getNormal().z, mWallPlane->getNormal().x);
+ 		s16 diff = mFaceAngle.y - wallAng;
+@@ -353,7 +392,20 @@
+ 	f32 floatHeight = mSwimParams.mFloatHeight.get();
+ 	f32 limit       = mFloorPosition.z - floatHeight;
+ 	if (getPosition().y >= limit)
++#ifdef TARGET_PC
++	{
++		// BetterSunshineEngine (patchWaterDownWarp, retail 0x80272710): the
++		// call replaces the store (it gets the height in f1 and reads this
++		// from r31).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80272710)) {
++			SMS_MOD_GPR(31, this);
++			((void (*)(f32))sms_mod_t_)(limit);
++		} else
++			mPosition.y = limit;
++	}
++#else
+ 		mPosition.y = limit;
++#endif
+ 
+ 	unk2A8.y = mFloorPosition.z;
+ 

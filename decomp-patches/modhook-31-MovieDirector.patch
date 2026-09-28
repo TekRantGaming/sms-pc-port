@@ -1,0 +1,53 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMovieDirector movie name and ending shine count
+--- a/src/System/MovieDirector.cpp
++++ b/src/System/MovieDirector.cpp
+@@ -25,6 +25,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <System/DummyStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ class TEndingString : public JDrama::TViewObj {
+ public:
+@@ -232,7 +235,19 @@
+ 	const char* movie = "EX128x144_q0.thp";
+ 
+ 	{
++#ifdef TARGET_PC
++		// BetterSunshineEngine (_getTHP, retail 0x802B6864, over the table
++		// address; the words at 0x802B6858 (`b 0x802B6864` over the bound
++		// check), 0x802B6868 (`mr r26, r3`) and 0x802B686C (`b 0x802B6878`
++		// over the table load)): the mod's function names the movie.
++		const char* movieName;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802B6864))
++			movieName = ((const char* (*)())sms_mod_t_)();
++		else
++			movieName = getStreamMovieName(gpApplication.getMovie());
++#else
+ 		const char* movieName = getStreamMovieName(gpApplication.getMovie());
++#endif
+ 		if (movieName != nullptr)
+ 			if (DVDConvertPathToEntrynum((char*)movieName) != -1)
+ 				movie = movieName;
+@@ -379,8 +394,19 @@
+ 		gpApplication.setMovie(15);
+ 		nextMode = 6;
+ 	} else if (gpApplication.getMovie() == 15) {
++#ifdef TARGET_PC
++		// Eclipse (word at retail 0x802B6524: `cmpwi r3, ...` with another
++		// shine count).
++		unsigned int sms_mod_w_;
++		s32 sms_mod_need_ = 120;
++		if (sms_mod_word(0x802B6524, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x2C03)
++			sms_mod_need_ = (s16)sms_mod_w_;
++		u8 movie
++		    = MovieFlags()->getFlag(0x40000) < sms_mod_need_ ? 16 : 17;
++#else
+ 		u8 movie
+ 		    = MovieFlags()->getFlag(0x40000) < 120 ? 16 : 17;
++#endif
+ 		gpApplication.setMovie(movie);
+ 
+ 		nextMode = 6;

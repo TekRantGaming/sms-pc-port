@@ -1,0 +1,16 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario::load (BetterSunshineEngine's nop at 0x80276C90, covered by the call hook)
+--- a/src/Player/MarioInit.cpp
++++ b/src/Player/MarioInit.cpp
+@@ -328,6 +328,12 @@
+ 	stream >> unk298;
+ 	u32 local_20;
+ 	stream >> local_20;
++#ifdef TARGET_PC
++	// BetterSunshineEngine rewrites retail 0x80276C90 (the mtlr r12 before
++	// the initValues() virtual call below) to a nop together with its bl at
++	// 0x80276C94 (the generated hook on that call): the bl sets the link
++	// register itself, so the nop changes nothing more.
++#endif
+ 	mFlag = 0;
+ 	if (local_20 & 1)
+ 		offFlag(MARIO_FLAG_HAS_FLUDD);

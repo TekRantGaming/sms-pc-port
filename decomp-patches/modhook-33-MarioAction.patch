@@ -1,0 +1,39 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario::taking grab frame (BetterSunshineMoveset)
+--- a/src/Player/MarioAction.cpp
++++ b/src/Player/MarioAction.cpp
+@@ -5,6 +5,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ BOOL TMario::taking()
+ {
+ 	if ((mInput & 4) != 0) {
+@@ -12,7 +16,23 @@
+ 	}
+ 
+ 	setAnimation(ANIM_RAISE, 1.0f);
+-	if (unk384 != nullptr && mModel->getFrameCtrl(0).checkPass(11.0f)) {
++	if (unk384 != nullptr && mModel->getFrameCtrl(0).checkPass(
++#ifdef TARGET_PC
++	        // BetterSunshineMoveset (chooseGrabDistancing, retail 0x8023F964):
++	        // the call replaces the load of the frame (11.0f) and returns it in
++	        // f1 (it reads this from r31 and gives mModel back in r3).
++	        ({
++		        f32 sms_frame_ = 11.0f;
++		        if (void* sms_mod_t_ = SMS_MOD_SITE(0x8023F964)) {
++			        SMS_MOD_GPR(31, this);
++			        sms_frame_ = ((f32 (*)(M3UModelMario*))sms_mod_t_)(mModel);
++		        }
++		        sms_frame_;
++	        })
++#else
++	        11.0f
++#endif
++	            )) {
+ 		if (unk384->receiveMessage(this, HIT_MESSAGE_TAKE) == true) {
+ 			startVoice(MSD_SE_MV15_EXERT_INST_01);
+ 			mHeldObject = (TTakeActor*)unk384;

@@ -1,0 +1,37 @@
+Reason: port: code-mod hooks (sms_modhook.h): hit-actor list perform
+--- a/src/System/MarNameRefGen.cpp
++++ b/src/System/MarNameRefGen.cpp
+@@ -66,6 +66,9 @@
+ #include <JSystem/JDrama/JDRViewObjPtrList.tpp>
+ #include <Strategic/NameRefPtrAry.tpp>
+ #include <Strategic/NameRefAry.tpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // The order is the map's, read off the .text layout and reversed (the TU is
+ // -inline deferred, so emission is reverse source order): retail emits the
+@@ -95,6 +98,23 @@
+ template class TNameRefAryT<TCameraMapTool>;
+ 
+ namespace JDrama {
++#ifdef TARGET_PC
++// BetterSunshineEngine (addToHitActorCount, retail 0x802A0450): the
++// testPerform call of this instantiation (the only one of this perform)
++// goes to the mod's function with the call's (object, cue, graphics).
++template <>
++void TViewObjPtrListT<THitActor, TViewObj>::perform(u32 cue, TGraphics* graphics)
++{
++	typedef JGadget::TList_pointer<THitActor*>::iterator I;
++
++	for (I it = getChildren().begin(); it != getChildren().end(); ++it) {
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A0450))
++			((void (*)(TViewObj*, u32, TGraphics*))sms_mod_t_)(*it, cue, graphics);
++		else
++			(*it)->testPerform(cue, graphics);
++	}
++}
++#endif
+ template class TViewObjPtrListT<THitActor, TViewObj>;
+ }
+ 

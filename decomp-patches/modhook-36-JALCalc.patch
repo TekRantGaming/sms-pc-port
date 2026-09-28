@@ -1,0 +1,49 @@
+Reason: port: code-mod hooks (sms_modhook.h): seed of JALCalc::getRandom_0_1 (BetterSunshineEngine)
+--- a/src/JSystem/JAudio/JALibrary/JALCalc.cpp
++++ b/src/JSystem/JAudio/JALibrary/JALCalc.cpp
+@@ -1,6 +1,33 @@
+ #include <JSystem/JAudio/JALibrary/JALCalc.hpp>
+ #include <JSystem/JMath.hpp>
+ #include <math.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// MSL rand()'s seed (`next`, retail .sdata 0x8040CE30): an accessor the
++// platform's rand (platform/misc/msl_rand.c) may provide; weak so that this
++// builds without it.
++extern "C" unsigned int sms_msl_rand_seed(void) __attribute__((weak));
++
++// BetterSunshineEngine ("Restore Chao Seed") rewrites the seed load of
++// getRandom_0_1's generator at retail 0x802FD1A0, `li r4, 0`: decoded here, a
++// `li r4, imm` seeds with imm and `lwz r4, d(r13)` with the word at
++// _SDA_BASE_ (0x804141C0) + d, of which rand()'s seed is the one known.
++static u32 JALCalcRandomSeed()
++{
++	unsigned int w;
++	if (!sms_mod_word(0x802FD1A0, &w))
++		return 0;
++	if ((w & 0xFFFF0000) == 0x38800000) // li r4, imm
++		return (u32)(s32)(s16)(w & 0xFFFF);
++	if ((w & 0xFFFF0000) == 0x808D0000) { // lwz r4, d(r13)
++		u32 addr = 0x804141C0u + (s32)(s16)(w & 0xFFFF);
++		if (addr == 0x8040CE30u && sms_msl_rand_seed)
++			return sms_msl_rand_seed();
++	}
++	return 0;
++}
++#endif
+ namespace JALCalc {
+ 
+ const f32 cEqualCSlope = 1.0f;
+@@ -62,7 +89,11 @@
+ 
+ f32 getRandom_0_1()
+ {
++#ifdef TARGET_PC
++	static JMath::TRandom_fast_ oRandom(JALCalcRandomSeed());
++#else
+ 	static JMath::TRandom_fast_ oRandom(0);
++#endif
+ 	return oRandom.get_ufloat_1();
+ }
+ 

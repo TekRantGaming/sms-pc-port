@@ -1,0 +1,221 @@
+Reason: port: code-mod hooks (sms_modhook.h): MarioSpecial inline patches (fenceJumpCatch in specMain, fenceMove, barClimb, barWait)
+--- a/src/Player/MarioSpecial.cpp
++++ b/src/Player/MarioSpecial.cpp
+@@ -11,6 +11,36 @@
+ #include <JSystem/J3D/J3DGraphBase/J3DTransform.hpp>
+ #include <dolphin/mtx.h>
+ #include <stdlib.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// A 3-float vector passed by value the way a mod function declared with
++// SunshineHeaderInterface's TVec3f (trivially copyable) takes it; the decomp's
++// TVec3 has a user-provided copy constructor, so it would go by reference.
++struct SmsModVec3 {
++	f32 x, y, z;
++};
++
++// fenceFootCheck as retail inlines it into fenceJumpCatch (specMain), with its
++// checkWallPlane call at retail 0x8025DD84 going to what a mod registered
++// there (`site`): BetterSunshineEngine's and Eclipse's checkClimbingWallPlane
++// take (player, pos by value, width, height).
++static void smsFenceFootCheckAt(TMario* mario, void* site)
++{
++	JGeometry::TVec3<f32> front = mario->mPosition;
++	front.x += 0.8f * (50.0f * JMASSin(mario->mFaceAngle.y));
++	front.z += 0.8f * (50.0f * JMASCos(mario->mFaceAngle.y));
++	SmsModVec3 pos = { front.x, front.y, front.z };
++	if (((TBGCheckData* (*)(TMario*, SmsModVec3, f32, f32))site)(mario, pos,
++	                                                            20.0f, 50.0f)
++	    == nullptr) {
++		mario->mFaceAngle.y += 0x8000;
++		mario->setPlayerVelocity(0.0f);
++		mario->mVel.y = 0.0f;
++		mario->changePlayerStatus(MARIO_STATUS_LAND_SAFE_DOWN, 0, false);
++	}
++}
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -35,7 +65,25 @@
+ 	mPosition.y = hy + mHolderHeightDiff;
+ 	mPosition.z = getHolder()->mPosition.z;
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine getTreeWaitParameters, retail 0x80261C3C (with
++	// 0x80261C40 `lfs f2, 0x38c(r31)` and 0x80261C44 `fcmpo cr0, f2, f1`):
++	// when mInput & 0x8000 is clear, the call (reading r31 = this) returns
++	// the height that replaces 100.0f, and mHolderHeightDiff is read after it.
++	bool sms_drop_;
++	if (mInput & 0x8000) {
++		sms_drop_ = true;
++	} else if (void* sms_mod_t_ = SMS_MOD_SITE(0x80261C3C)) {
++		SMS_MOD_GPR(31, this);
++		f32 sms_min_ = ((f32 (*)())sms_mod_t_)();
++		sms_drop_    = mHolderHeightDiff <= sms_min_;
++	} else {
++		sms_drop_ = mHolderHeightDiff <= 100.0f;
++	}
++	if (sms_drop_) {
++#else
+ 	if ((mInput & 0x8000) || mHolderHeightDiff <= 100.0f) {
++#endif
+ 		setPlayerVelocity(-2.0f);
+ 		mPosition.x -= 200.0f * JMASSin(mFaceAngle.y);
+ 		mPosition.z -= 200.0f * JMASCos(mFaceAngle.y);
+@@ -45,6 +93,17 @@
+ 	if (unk108->mStickV > 16.0f)
+ 		return changePlayerStatus(MARIO_STATUS_BAR_CLIMB, 0, false);
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine scaleTreeSlideSpeed, retail 0x80261CF4 (with
++	// 0x80261CF8 `cmpwi r3, 0` and 0x80261CFC `beq .L_80261D6C`). It is
++	// PowerPC assembly, which compiles to nothing on the port, so what it
++	// does is written out here: it returns 1 when the stick (f2) is below
++	// -16.0f, the slide below then runs as before; otherwise it stores 0 to
++	// mVel.y and returns 0, skipping the slide. (Its other loads, of f3 from
++	// r3 + 0x5C and of f4 from r31 + 0xB18, are unused.)
++	if (SMS_MOD_SITE(0x80261CF4) && !(unk108->mStickV < -16.0f))
++		mVel.y = 0.0f;
++#endif
+ 	if (unk108->mStickV < -16.0f) {
+ 		mVel.y += unk108->mStickV / 512.0f;
+ 		mPosition.y += mVel.y;
+@@ -133,7 +192,23 @@
+ 	mPosition.y += unk108->mStickV * mBarParams.mClimbSp.get();
+ 	mHolderHeightDiff = mPosition.y - getHolder()->mPosition.y;
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine getTreeClimbParameters, retail 0x802619CC (with
++	// 0x802619D0 `cmpwi r3, 0`, 0x802619D4 `beq .L_80261A10` and the nops at
++	// 0x802619D8, 0x802619DC, 0x802619E0): called with r3 = mHolder (the
++	// tree), reading r31 = this; its result replaces the top-of-tree test.
++	bool sms_top_;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802619CC)) {
++		SMS_MOD_GPR(31, this);
++		sms_top_ = ((bool (*)(TTakeActor*))sms_mod_t_)(mHolder);
++	} else {
++		sms_top_
++		    = mPosition.y > mHolder->mPosition.y + mHolder->getDamageHeight();
++	}
++	if (sms_top_) {
++#else
+ 	if (mPosition.y > mHolder->mPosition.y + mHolder->getDamageHeight()) {
++#endif
+ 		setPlayerVelocity(0.0f);
+ 		changePlayerStatus(MARIO_STATUS_JUMP, 0, false);
+ 		unk78 &= ~0x100;
+@@ -1376,6 +1451,13 @@
+ BOOL TMario::fenceJumpCatch()
+ {
+ 	setAnimation(ANIM_FENCE_JCATCH, 1.0f);
++#ifdef TARGET_PC
++	// checkClimbingWallPlane at retail 0x8025DD84 (this copy only; the one
++	// inlined into fenceCatch, 0x8025DC40, is not patched).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025DD84))
++		smsFenceFootCheckAt(this, sms_mod_t_);
++	else
++#endif
+ 	fenceFootCheck();
+ 
+ 	if (isLast1AnimeFrame())
+@@ -1396,7 +1478,20 @@
+ 			JGeometry::TVec3<f32> newPos = mPosition;
+ 			f32 fenceSp = mJumpParams.mFenceSpeed.get();
+ 			TMarioControllerWork* work = unk108;
++#ifdef TARGET_PC
++			// BetterSunshineEngine scaleClimbSpeed, retail 0x8025E19C (with
++			// 0x8025E1A0 and 0x8025E1A4, which redo the loads it displaced,
++			// and 0x8025E1C4 `lfs f2, 0x14(r4)`): its result (reading
++			// r30 = this) replaces the 0.015625f scale on the stick.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025E19C)) {
++				SMS_MOD_GPR(30, this);
++				f32 sms_scale_ = ((f32 (*)(f32))sms_mod_t_)(0.015625f);
++				newPos.y += work->mStickV * sms_scale_ * fenceSp;
++			} else
++				newPos.y += 0.015625f * work->mStickV * fenceSp;
++#else
+ 			newPos.y += 0.015625f * work->mStickV * fenceSp;
++#endif
+ 
+ 			s16 camDelta = mFaceAngle.y - SMSGetCamera()->unk258;
+ 			f32 normX, normZ;
+@@ -1408,7 +1503,18 @@
+ 				normX = wall->mNormal.z;
+ 			}
+ 
++#ifdef TARGET_PC
++			// scaleClimbSpeed again, retail 0x8025E218 (0x8025E21C `mr r3,
++			// r30` redoes the move it displaced), for the sideways scale.
++			f32 stickH;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025E218)) {
++				SMS_MOD_GPR(30, this);
++				stickH = ((f32 (*)(f32))sms_mod_t_)(0.015625f) * work->mStickH;
++			} else
++				stickH = 0.015625f * work->mStickH;
++#else
+ 			f32 stickH = 0.015625f * work->mStickH;
++#endif
+ 			newPos.x += normX * stickH * fenceSp;
+ 			newPos.z += normZ * stickH * fenceSp;
+ 
+@@ -1421,8 +1527,58 @@
+ 			TBGCheckData* sideWall1 = checkWallPlane(&sideFront, 20.0f, 50.0f);
+ 			TBGCheckData* sideWall2
+ 			    = checkWallPlane(&sideFront2, 140.0f, 50.0f);
++#ifdef TARGET_PC
++			// BetterSunshineEngine canRunClingWall at retail 0x8025E2F8 (with
++			// 0x8025E2F4 `lhz r4, 0(r3)`, 0x8025E2FC `cmpwi r3, 0` and the nops
++			// at 0x8025E300, 0x8025E304, 0x8025E308, 0x8025E30C) replaces
++			// sideWall1's fence test: it gets r3 = sideWall2 and its type, and
++			// reads r31, which holds `wall` here. Its result stays in r3 for
++			// the null test that follows. canMoveOnWall2 at retail 0x8025E31C
++			// (with 0x8025E320 `cmpwi r4, 0` and 0x8025E324 `beq`) replaces
++			// the second fence test: it gets that r3 and r4 and reads r30 =
++			// this, and r4 is tested afterwards, which the call has clobbered
++			// on the GameCube; it is taken to still hold the wall type.
++			bool sms_fences_;
++			void* sms_cling_   = SMS_MOD_SITE(0x8025E2F8);
++			void* sms_move_    = SMS_MOD_SITE(0x8025E31C);
++			if (sms_cling_ != nullptr || sms_move_ != nullptr) {
++				u16 sms_r4_       = sideWall2 != nullptr ? sideWall2->mBGType : 0;
++				uintptr_t sms_r3_ = (uintptr_t)sideWall2;
++				if (sideWall1 == nullptr) {
++					sms_fences_ = false;
++				} else if (sms_cling_ != nullptr) {
++					SMS_MOD_GPR(31, wall);
++					sms_r3_ = ((bool (*)(TBGCheckData*, u16))sms_cling_)(
++					    sideWall2, sms_r4_);
++					sms_fences_ = sms_r3_ != 0;
++				} else {
++					sms_fences_ = sideWall1->isFence();
++				}
++				if (sms_fences_ && sms_r3_ == 0)
++					sms_fences_ = false;
++				if (sms_fences_) {
++					if (sms_move_ != nullptr) {
++						SMS_MOD_GPR(30, this);
++						((bool (*)(TBGCheckData*, u16))sms_move_)(
++						    (TBGCheckData*)sms_r3_, sms_r4_);
++						sms_fences_ = sms_r4_ != 0;
++					} else if (sms_cling_ != nullptr) {
++						// r3 holds canRunClingWall's 1, not a plane.
++						sms_fences_ = false;
++					} else {
++						sms_fences_ = sideWall2->isFence();
++					}
++				}
++			} else {
++				sms_fences_ = sideWall1 != nullptr && (sideWall1->isFence())
++				              && sideWall2 != nullptr
++				              && (sideWall2->isFence());
++			}
++			if (sms_fences_) {
++#else
+ 			if (sideWall1 != nullptr && (sideWall1->isFence())
+ 			    && sideWall2 != nullptr && (sideWall2->isFence())) {
++#endif
+ 				if (mStatus == MARIO_STATUS_FENCE_MOVE)
+ 					changePlayerStatus(0x30000569, 0, false);
+ 				mPosition = newPos;

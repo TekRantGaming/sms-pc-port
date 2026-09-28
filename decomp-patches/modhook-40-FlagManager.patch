@@ -1,0 +1,63 @@
+Reason: port: code-mod hooks (sms_modhook.h): the flag-type handlers mods put in setFlag's and getFlag's switch tables, and BetterSunshineEngine's shine count
+--- a/src/System/FlagManager.cpp
++++ b/src/System/FlagManager.cpp
+@@ -133,6 +133,19 @@
+ 
+ s32 TFlagManager::getFlag(u32 flag) const
+ {
++#ifdef TARGET_PC
++	// Code mods replace entries of getFlag's switch table (retail 0x803DEE64,
++	// one per flag type): Eclipse's handler for type 2 (entry at 0x803DEE6C)
++	// and BetterSunshineEngine's for type 6 (entry at 0x803DEE7C). The switch
++	// jumps to them with this and the flag as it got them.
++	{
++		unsigned int sms_mod_w_;
++		u32 sms_mod_type_ = flag >> 16;
++		if ((sms_mod_type_ == 2 && sms_mod_word(0x803DEE6C, &sms_mod_w_))
++		    || (sms_mod_type_ == 6 && sms_mod_word(0x803DEE7C, &sms_mod_w_)))
++			return ((s32(*)(const TFlagManager*, u32))(uintptr_t)sms_mod_w_)(this, flag);
++	}
++#endif
+ 	u32 low = flag & 0xFFFF;
+ 	switch (flag >> 16) {
+ 	case 1:
+@@ -191,6 +204,20 @@
+ 
+ void TFlagManager::setFlag(u32 flag, s32 value)
+ {
++#ifdef TARGET_PC
++	// As in getFlag, for setFlag's switch table (retail 0x803DEE38): Eclipse's
++	// type-2 handler (entry at 0x803DEE40), BetterSunshineEngine's type-6 one
++	// (entry at 0x803DEE50).
++	{
++		unsigned int sms_mod_w_;
++		u32 sms_mod_type_ = flag >> 16;
++		if ((sms_mod_type_ == 2 && sms_mod_word(0x803DEE40, &sms_mod_w_))
++		    || (sms_mod_type_ == 6 && sms_mod_word(0x803DEE50, &sms_mod_w_))) {
++			((void (*)(TFlagManager*, u32, s32))(uintptr_t)sms_mod_w_)(this, flag, value);
++			return;
++		}
++	}
++#endif
+ 	u32 low = flag & 0xFFFF;
+ 	switch (flag >> 16) {
+ 	case 1:
+@@ -597,7 +624,18 @@
+ #else
+ 	for (u32 flag = 0x10000; flag <= 0x10077; ++flag) {
+ #endif
++#ifdef TARGET_PC
++		// BetterSunshineEngine (extendShineCounterIDLogic, retail 0x80293B10):
++		// the count reads its extended shine ids.
++		bool sms_mod_has_;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80293B10))
++			sms_mod_has_ = ((bool (*)(TFlagManager*, u32))sms_mod_t_)(this, flag);
++		else
++			sms_mod_has_ = getFlag(flag) != 0;
++		if (sms_mod_has_) {
++#else
+ 		if (getFlag(flag) != 0) {
++#endif
+ 			++shines;
+ 		}
+ 	}

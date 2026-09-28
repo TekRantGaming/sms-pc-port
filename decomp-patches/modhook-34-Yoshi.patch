@@ -1,0 +1,216 @@
+Reason: port: code-mod hooks (sms_modhook.h): Eclipse's green Yoshi (juice, colour, death and animation checks) and BetterSunshineEngine's fruit fix in TYoshi
+--- a/src/Player/Yoshi.cpp
++++ b/src/Player/Yoshi.cpp
+@@ -36,6 +36,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ 
+ #include <Player/MarioDirtyStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ #ifdef TARGET_PC
+ // Writable: code mods recolour Yoshi through it (retail map name bodyColor).
+@@ -113,7 +116,12 @@
+ 	unk2   = unk6;
+ 	unk4   = 7200;
+ 	unk6   = 7200;
++#ifdef TARGET_PC
++	// Eclipse rewrites the `li r4, 0x5334` at 0x80270B3C (the juice supply).
++	unk8 = (s16)SMS_MOD_WORD(0x80270B3C, 0x38805334);
++#else
+ 	unk8   = 21300;
++#endif
+ 	unkC   = unk8;
+ 	mTranslation.set(0.0f, 0.0f, 0.0f);
+ 	unk2C        = 0.0f;
+@@ -545,6 +553,14 @@
+ 		MSBgm::setStageBgmYoshiPercussion(false);
+ 	}
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (checkYoshiFruitFix, retail 0x802703CC over this
++	// store; it reads r30 = this and stores the tongue's state itself).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802703CC)) {
++		SMS_MOD_GPR(30, this);
++		((void (*)())sms_mod_t_)();
++	} else
++#endif
+ 	mTongue->mState = TYoshiTongue::STATE_IDLE;
+ }
+ 
+@@ -635,7 +651,15 @@
+ 			}
+ 		} else {
+ 		walking:
++#ifdef TARGET_PC
++			// Eclipse (isYoshiShineGet, retail 0x80270040 over the status
++			// read) supplies the status tested here.
++			void* sms_mod_t_ = SMS_MOD_SITE(0x80270040);
++			u32 act          = sms_mod_t_ ? ((u32 (*)(TMario*))sms_mod_t_)(mMario)
++			                              : mMario->mStatus;
++#else
+ 			u32 act = mMario->mStatus;
++#endif
+ 			if (act == 0x80023C)
+ 				newIdx = 6;
+ 			else if (act == MARIO_STATUS_WIN_DEMO)
+@@ -647,6 +671,16 @@
+ 
+ 	if (curIdx == 24)
+ 		curIdx = 15;
++#ifdef TARGET_PC
++	// Eclipse (isYoshiWaterFlutter, retail 0x80270078, reading r29 = this and
++	// r30 = newIdx; `mr r30, r3` at 0x8027007C and nops at 0x80270080 and
++	// 0x80270084 replace the 24 -> 15 test): the animation is its result.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80270078)) {
++		SMS_MOD_GPR(29, this);
++		SMS_MOD_GPR(30, (u32)newIdx);
++		newIdx = ((u32 (*)())sms_mod_t_)();
++	} else
++#endif
+ 	if (newIdx == 24)
+ 		newIdx = 15;
+ 
+@@ -903,6 +937,28 @@
+ 	return *out_y;
+ }
+ 
++#ifdef TARGET_PC
++// TYoshi::disappear as retail inlines it into movement, with Eclipse's
++// isYoshiDie(mMario) (function t) called over the `lwz r0, 0x118(r3)` flag
++// read and `cmpwi r3, 0x0` / `beq` written after it: a Yoshi that dies always
++// drowns, and one that lives (2) leaves by that `beq` without its state
++// changed. 0 when not hatched, 1 when it disappeared.
++static inline int sms_mod_yoshiDisappear_(TYoshi* yoshi, void* t)
++{
++	if (!YoshiIsHatched(yoshi))
++		return 0;
++	if (yoshi->mState == TYoshi::STATE_MOUNTED)
++		yoshi->mMario->getOffYoshi(true);
++	if (!((bool (*)(TMario*))t)(yoshi->mMario))
++		return 2;
++	yoshi->mState = TYoshi::STATE_DROWNING;
++	yoshi->changeAnimation(MSD_SE_PO_SPREAD);
++	yoshi->mType = 0;
++	yoshi->unk2  = 30;
++	return 1;
++}
++#endif
++
+ // TODO: frame 0x1a8 against retail's 0x240. After doSearch() retail loads
+ // mMario into r3 before the `unkC <= 0` test (mState then in r4); the other
+ // three inlined disappear() sites match, so this one reads mMario earlier.
+@@ -911,6 +967,14 @@
+ 	if (!gpMarDirector->isDemoMode3() && !gpMarDirector->isDemoMode4()
+ 	    && !gpMarDirector->isTalkModeNow()) {
+ 		if (!mMario->checkStatusType(MARIO_STATUS_FLAG_UNK1000) && unkC > 0) {
++#ifdef TARGET_PC
++			// Eclipse (fixYoshiJuiceDecrement, retail 0x8026E810 over the
++			// store of unkC - 1; it reads r30 = this).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8026E810)) {
++				SMS_MOD_GPR(30, this);
++				((void (*)())sms_mod_t_)();
++			} else
++#endif
+ 			unkC -= 1;
+ 		}
+ 	}
+@@ -943,6 +1007,13 @@
+ 		if (groundY > mTranslation.y) {
+ 			if (ground->isIllegalData() || ground->isWaterSurface()
+ 			    || ground->isDeathPlane()) {
++#ifdef TARGET_PC
++				// Eclipse (isYoshiDie, retail 0x8026EB00; words at 0x8026EB04,
++				// 0x8026EB08: its `beq` leaves for 0x8026F020, past the switch).
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x8026EB00))
++					sms_mod_yoshiDisappear_(this, sms_mod_t_);
++				else
++#endif
+ 				disappear();
+ 				break;
+ 			} else {
+@@ -952,7 +1023,18 @@
+ 		}
+ 		doSearch();
+ 		if (unkC <= 0)
++#ifdef TARGET_PC
++		{
++			// Eclipse (isYoshiDie, retail 0x8026EBFC; words at 0x8026EC00,
++			// 0x8026EC04: its `beq` leaves for 0x8026F020, past the switch).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8026EBFC))
++				sms_mod_yoshiDisappear_(this, sms_mod_t_);
++			else
++#endif
+ 			disappear();
++#ifdef TARGET_PC
++		}
++#endif
+ 		break;
+ 	}
+ 
+@@ -970,7 +1052,13 @@
+ 		if (mMario->mGamePad->checkFrameMeaning(0x100)) {
+ 			emitTongue();
+ 		}
++#ifdef TARGET_PC
++		// Eclipse turns the `bgt` at 0x8026EE14 into a `b` past the switch:
++		// a mounted Yoshi never starves.
++		if (unkC <= 0 && (SMS_MOD_WORD(0x8026EE14, 0) >> 26) != 18)
++#else
+ 		if (unkC <= 0)
++#endif
+ 			disappear();
+ 		break;
+ 	}
+@@ -1023,6 +1111,15 @@
+ 
+ 		if (mState == STATE_UNMOUNTED && groundY > mTranslation.y) {
+ 			if (ground->isWaterSurface()) {
++#ifdef TARGET_PC
++				// Eclipse (isYoshiDie, retail 0x8026F218; words at 0x8026F21C,
++				// 0x8026F220): its `beq` for a Yoshi that lives goes to
++				// 0x8026F384, the not-hatched branch below.
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x8026F218)) {
++					if (sms_mod_yoshiDisappear_(this, sms_mod_t_) == 2)
++						goto sms_mod_unhatched_;
++				} else
++#endif
+ 				disappear();
+ 			} else {
+ 				mTranslation.y = groundY;
+@@ -1034,6 +1131,9 @@
+ 		mMirrorModels[0]->getModelData()->offFlag1OnAllShapes();
+ 		mMirrorModels[1]->getModelData()->offFlag1OnAllShapes();
+ 	} else {
++#ifdef TARGET_PC
++	sms_mod_unhatched_:
++#endif
+ 		mActor->getModel()->getModelData()->onFlag1OnAllShapes();
+ 		mMirrorModels[0]->getModelData()->onFlag1OnAllShapes();
+ 		mMirrorModels[1]->getModelData()->onFlag1OnAllShapes();
+@@ -1170,13 +1270,24 @@
+ 	    || gpMarDirector->isTalkModeNow())
+ 		bVar1 = true;
+ 
++#ifdef TARGET_PC
++	// Eclipse rewrites the `cmpwi r0, 0x258` at 0x8026E068 (Yoshi turns
++	// green only when out of juice) and writes a nop over the `bne` at
++	// 0x8026E0A0 below (no flickering).
++	if (unkC < (s16)SMS_MOD_WORD(0x8026E068, 0x2C000258))
++#else
+ 	if (unkC < 600)
++#endif
+ 		mType = 0;
+ 
+ 	if (!isHatched())
+ 		return;
+ 
++#ifdef TARGET_PC
++	if (bVar1 != true && SMS_MOD_WORD(0x8026E0A0, 0) != 0x60000000)
++#else
+ 	if (bVar1 != true)
++#endif
+ 		return;
+ 
+ 	// TODO: the frame is 0x10 too tall: ours leaves 0x20 between the shadow

@@ -1,0 +1,30 @@
+Reason: port: code-mod hooks (sms_modhook.h): shine jingle in MSBgm::startBGM (BetterSunshineEngine)
+--- a/src/MSound/MSoundBGM.cpp
++++ b/src/MSound/MSoundBGM.cpp
+@@ -3,6 +3,9 @@
+ #include <MSound/MSound.hpp>
+ #include <JSystem/JAudio/JALibrary/JALModSe.hpp>
+ #include <JSystem/JAudio/JAInterface/JAIParameters.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ MSBgm* MSBgm::smBgmInTrack[3];
+ f32 MSBgm::smMainVolume = 0.75f;
+@@ -130,8 +133,16 @@
+ {
+ 	MSBgm* iVar1 = JALListS<MSBgm, u32>::search(param & JAISoundID_IndexMask);
+ 	if (iVar1) {
++#ifdef TARGET_PC
++		// BetterSunshineEngine (word 0x60000000 at retail 0x800169B0, a nop
++		// over the MSD_BGM_GET_SHINE branch): the shine jingle no longer
++		// stops the other tracks.
++		if ((param == MSD_BGM_GET_SHINE && SMS_MOD_WORD(0x800169B0, 0) != 0x60000000)
++		    || (param == MSD_BGM_MISS) || (param == MSD_BGM_GAMEOVER)) {
++#else
+ 		if ((param == MSD_BGM_GET_SHINE) || (param == MSD_BGM_MISS)
+ 		    || (param == MSD_BGM_GAMEOVER)) {
++#endif
+ 			stopTrackBGMs(3, 0);
+ 			MSGMSound->demoModeIn(0x16f, false);
+ 		}

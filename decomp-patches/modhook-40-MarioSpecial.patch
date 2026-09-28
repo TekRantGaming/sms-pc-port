@@ -1,0 +1,20 @@
+Reason: port: code-mod hook (sms_modhook.h): BetterSunshineEngine's velocity reset at the top of a tree (retail 0x802619E8)
+--- a/src/Player/MarioSpecial.cpp
++++ b/src/Player/MarioSpecial.cpp
+@@ -209,7 +209,16 @@
+ #else
+ 	if (mPosition.y > mHolder->mPosition.y + mHolder->getDamageHeight()) {
+ #endif
++#ifdef TARGET_PC
++		// BetterSunshineEngine (wrapVelocityReset, retail 0x802619E8): the same
++		// reset, through the mod.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802619E8))
++			((void (*)(TMario*))sms_mod_t_)(this);
++		else
++			setPlayerVelocity(0.0f);
++#else
+ 		setPlayerVelocity(0.0f);
++#endif
+ 		changePlayerStatus(MARIO_STATUS_JUMP, 0, false);
+ 		unk78 &= ~0x100;
+ 	}

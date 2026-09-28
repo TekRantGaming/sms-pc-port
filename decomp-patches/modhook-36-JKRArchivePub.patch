@@ -1,0 +1,39 @@
+Reason: port: code-mod hooks (sms_modhook.h): heap of JKRArchive::getFirstFile's finder (Eclipse)
+--- a/src/JSystem/JKernel/JKRArchivePub.cpp
++++ b/src/JSystem/JKernel/JKRArchivePub.cpp
+@@ -7,6 +7,9 @@
+ #include <JSystem/JKernel/JKRMemArchive.hpp>
+ #include <JSystem/JUtility/JUTAssert.hpp>
+ #include <dolphin/dvd.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ JKRArchive* JKRArchive::check_mount_already(s32 entryNum)
+ {
+@@ -396,8 +399,25 @@
+ 	}
+ 
+ 	if (dirEntry) {
++#ifdef TARGET_PC
++		// Eclipse rewrites the heap load at retail 0x802BF47C (`lwz r4,
++		// sSystemHeap@sda21`): decoded as `lwz r4, d(r13)`, the finder comes
++		// from the JKRHeap global at _SDA_BASE_ (0x804141C0) + d.
++		JKRHeap* heap = JKRHeap::sSystemHeap;
++		unsigned int w;
++		if (sms_mod_word(0x802BF47C, &w) && (w & 0xFFFF0000) == 0x808D0000) {
++			switch (0x804141C0u + (s32)(s16)(w & 0xFFFF)) {
++			case 0x8040E290u: heap = JKRHeap::sSystemHeap; break;
++			case 0x8040E294u: heap = JKRHeap::sCurrentHeap; break;
++			case 0x8040E298u: heap = JKRHeap::sRootHeap; break;
++			}
++		}
++		return new (heap, 0) JKRArcFinder(
++		    (JKRArchive*)this, dirEntry->mFirstIdx, dirEntry->mNum);
++#else
+ 		return new (JKRHeap::sSystemHeap, 0) JKRArcFinder(
+ 		    (JKRArchive*)this, dirEntry->mFirstIdx, dirEntry->mNum);
++#endif
+ 	}
+ 
+ 	return nullptr;

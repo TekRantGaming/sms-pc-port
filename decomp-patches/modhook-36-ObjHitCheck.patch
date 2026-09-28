@@ -1,0 +1,34 @@
+Reason: port: code-mod hooks (sms_modhook.h): hit check list size in TObjHitCheck's constructor (Eclipse)
+--- a/src/Strategic/ObjHitCheck.cpp
++++ b/src/Strategic/ObjHitCheck.cpp
+@@ -4,6 +4,9 @@
+ #include <Player/ModelWaterManager.hpp>
+ #include <Player/MarioAccess.hpp>
+ #include <macros.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TObjHitCheck* gpObjHitCheck;
+ 
+@@ -318,7 +321,20 @@
+ 
+ TObjHitCheck::TObjHitCheck()
+ {
++#ifdef TARGET_PC
++	// Eclipse (words at retail 0x8021B340, the byte size `ori r3, r3,
++	// 0x8004`, and 0x8021B354, the count `li r7, imm`): a larger list. The
++	// count is decoded; new[] sizes the block from it.
++	{
++		unsigned int w;
++		u32 count = 7000;
++		if (sms_mod_word(0x8021B354, &w) && (w & 0xFFFF0000) == 0x38E00000)
++			count = (u32)(s32)(s16)(w & 0xFFFF);
++		unk800 = new TObjCheckList[count];
++	}
++#else
+ 	unk800 = new TObjCheckList[7000];
++#endif
+ 	unk804 = 0;
+ 	initTable();
+ 	gpObjHitCheck = this;

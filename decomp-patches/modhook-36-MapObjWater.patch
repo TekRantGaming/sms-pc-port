@@ -1,0 +1,28 @@
+Reason: port: code-mod hooks (sms_modhook.h): camera height test of TMapObjWaterFilter::perform (BetterSunshineEngine)
+--- a/src/MoveBG/MapObjWater.cpp
++++ b/src/MoveBG/MapObjWater.cpp
+@@ -17,6 +17,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ static void dummy(Vec* v)
+ {
+@@ -59,7 +62,14 @@
+ 	// same `||` is also what keeps the `bne`/`b` pair at 0x284 (a separate
+ 	// `if (...) return;` collapses to one branch straight to the epilogue).
+ 	if (gpCamera->isDemoCamera()
++#ifdef TARGET_PC
++	    // BetterSunshineEngine (nops at retail 0x801EA8E0 and 0x801EA8E4
++	    // over the camera-above-zero test): only the wave height decides.
++	    || ((SMS_MOD_WORD(0x801EA8E4, 0) == 0x60000000
++	         || gpCamera->getUnk124().y > 0.0f)
++#else
+ 	    || (gpCamera->getUnk124().y > 0.0f
++#endif
+ 	        && gpCamera->getUnk124().y
+ 	            >= gpMapObjWave->getHeight(gpCamera->getUnk124().x,
+ 	                gpCamera->getUnk124().y, gpCamera->getUnk124().z)))

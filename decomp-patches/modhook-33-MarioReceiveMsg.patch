@@ -1,0 +1,93 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario::receiveMessage nozzle pickups (BetterSunshineEngine)
+--- a/src/Player/MarioReceiveMsg.cpp
++++ b/src/Player/MarioReceiveMsg.cpp
+@@ -16,6 +16,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ bool TMario::getNozzle(THitActor* sender, TWaterGun::TNozzleType type)
+ {
+ 	if (onYoshi())
+@@ -34,6 +38,39 @@
+ 	return TRUE;
+ }
+ 
++#ifdef TARGET_PC
++// getNozzle as retail inlines it into receiveMessage, for the pickup sites a
++// code mod patches: onYoshiFn (bool (*)(TMario*)) replaces its onYoshi()
++// call, or noYoshiTest drops that test; changeNozzleFn
++// (void (*)(TWaterGun*, int, bool)) replaces its changeNozzle call.
++static bool MarioGetNozzleModded(TMario* mario, THitActor* sender,
++                                 TWaterGun::TNozzleType type, void* onYoshiFn,
++                                 bool noYoshiTest, void* changeNozzleFn)
++{
++	if (!noYoshiTest
++	    && (onYoshiFn ? ((bool (*)(TMario*))onYoshiFn)(mario)
++	                  : (bool)mario->onYoshi()))
++		return FALSE;
++	mario->onFlag(MARIO_FLAG_HAS_FLUDD);
++	if (mario->checkFlag(MARIO_FLAG_HAS_FLUDD)) {
++		if (changeNozzleFn)
++			((void (*)(TWaterGun*, int, bool))changeNozzleFn)(mario->mWaterGun,
++			                                                  type, true);
++		else
++			mario->mWaterGun->changeNozzle(type, true);
++	}
++
++	mario->unk144 = 3600;
++	mario->resetNozzle();
++	mario->unk148 = sender;
++	if (mario->checkFlag(MARIO_FLAG_HAS_FLUDD))
++		mario->mWaterGun->resetWaterToFull();
++
++	mario->emitGetEffect();
++	return TRUE;
++}
++#endif
++
+ void TMario::getGesso(THitActor* param_1)
+ {
+ 	if (getStatus() != 0x10000) {
+@@ -237,6 +274,14 @@
+ 			break;
+ 
+ 		case 0x20000022: // pickup rocket nozzle
++#ifdef TARGET_PC
++			// Retail inlines getNozzle here. BetterSunshineEngine
++			// (canCollectFluddItem, retail 0x80283058) replaces its onYoshi()
++			// call.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80283058))
++				return MarioGetNozzleModded(this, sender, TWaterGun::Rocket,
++				                            sms_mod_t_, false, nullptr);
++#endif
+ 			return getNozzle(sender, TWaterGun::Rocket);
+ 		case 0x20000026: // pickup hover nozzle
+ 			return getNozzle(sender, TWaterGun::Hover);
+@@ -246,6 +291,23 @@
+ 			changePlayerStatus(MARIO_STATUS_DIVE, 0, false);
+ 			return getNozzle(sender, TWaterGun::Underwater);
+ 		case 0x2000001F: // pickup spray nozzle
++#ifdef TARGET_PC
++		{
++			// Retail inlines getNozzle here. BetterSunshineEngine writes a nop
++			// over the branch that returns when on Yoshi (retail 0x80283334),
++			// and replaces its changeNozzle call with checkForYoshiGrabFludd
++			// (retail 0x80283370).
++			unsigned int sms_mod_w_;
++			bool sms_mod_noyoshi_ = sms_mod_word(0x80283334, &sms_mod_w_)
++			                        && sms_mod_w_ == 0x60000000;
++			void* sms_mod_change_ = SMS_MOD_SITE(0x80283370);
++			if (sms_mod_noyoshi_ || sms_mod_change_) {
++				MarioGetNozzleModded(this, sender, TWaterGun::Spray, nullptr,
++				                     sms_mod_noyoshi_, sms_mod_change_);
++				return TRUE;
++			}
++		}
++#endif
+ 			getNozzle(sender, TWaterGun::Spray);
+ 			return TRUE;
+ 

@@ -1,0 +1,29 @@
+Reason: port: code-mod hooks (sms_modhook.h): rotation clamp in TLiveActor::perform (BetterSunshineEngine)
+--- a/src/Strategic/liveactor.cpp
++++ b/src/Strategic/liveactor.cpp
+@@ -23,6 +23,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ f32 TLiveActor::mVelocityMinY = -40.0f;
+ 
+@@ -360,6 +363,15 @@
+ 
+ void TLiveActor::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (clampRotation, retail 0x80217EDC, with the word
++	// at 0x80217EE0, andi. r0, r3, 0x201): the mod gets this, wraps the
++	// rotation and returns the live flags that are tested.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80217EDC)) {
++		if (((u32(*)(TLiveActor*))sms_mod_t_)(this) & (LIVE_FLAG_UNK200 | LIVE_FLAG_DEAD))
++			return;
++	} else
++#endif
+ 	if (mLiveFlag & (LIVE_FLAG_UNK200 | LIVE_FLAG_DEAD))
+ 		return;
+ 

@@ -1,0 +1,46 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE print position and matrix capture in J2DTextBox::draw
+--- a/src/JSystem/J2D/J2DTextBox.cpp
++++ b/src/JSystem/J2D/J2DTextBox.cpp
+@@ -4,6 +4,9 @@
+ #include <JSystem/JUtility/JUTResource.hpp>
+ #include <JSystem/JSupport/JSURandomInputStream.hpp>
+ #include <dolphin/gx.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ J2DTextBox::J2DTextBox(const ResFONT* font, const char* str)
+     : J2DPane()
+@@ -190,10 +193,32 @@
+ 	print.setFontSize(mFontSizeX, mFontSizeY);
+ 	print.setSomeColors(mBlack, mWhite);
+ 	print.initiate();
++#ifdef TARGET_PC
++	// BetterSunshineEngine (bse/src/patches/j2dprint.cpp): _capturePrintPos
++	// at retail 0x802D0BEC (the virtual makeMatrix call),
++	// captureTextboxDrawMtx at 0x802D0BF8 (the first GXLoadPosMtxImm) and
++	// cullJ2DPrint at 0x802D0C20 (print). The mod compiles all three out
++	// (`#if 0`), so nothing registers here today.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802D0BEC))
++		((void (*)(J2DPane*, int, int))sms_mod_t_)(this, x, y);
++	else
++		makeMatrix(x, y);
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802D0BF8))
++		((void (*)(f32(*)[4], u8))sms_mod_t_)(mPositionMtx, GX_PNMTX0);
++	else
++		GXLoadPosMtxImm(mPositionMtx, GX_PNMTX0);
++	GXSetCurrentMtx(GX_PNMTX0);
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802D0C20))
++		((void (*)(J2DPrint*, int, int, u8, const char*, ...))sms_mod_t_)(
++		    &print, 0, 0, mColorAlpha, "%s", mText);
++	else
++		print.print(0, 0, mColorAlpha, "%s", mText);
++#else
+ 	makeMatrix(x, y);
+ 	GXLoadPosMtxImm(mPositionMtx, GX_PNMTX0);
+ 	GXSetCurrentMtx(GX_PNMTX0);
+ 	print.print(0, 0, mColorAlpha, "%s", mText);
++#endif
+ 	Mtx mtx;
+ 	MTXIdentity(mtx);
+ 	GXLoadPosMtxImm(mtx, GX_PNMTX0);

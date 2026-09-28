@@ -1,0 +1,57 @@
+Reason: port: code mods (Super Mario Eclipse) reach these file-local tables by their retail map names (sObjDataTable, marioAnimeFiles, bodyColor), so they are exported under them; bodyColor becomes writable, as the retail constant effectively was
+--- a/src/MoveBG/MapObjInit.cpp
++++ b/src/MoveBG/MapObjInit.cpp
+@@ -10807,6 +10807,10 @@
+ 	&no_data,
+ 	&end_data,
+ };
++#ifdef TARGET_PC
++// Code mods (sms_mod/modhooks.h) name this by its retail map name.
++extern TMapObjData* portExport_sObjDataTable[] __asm__("sObjDataTable") __attribute__((alias("_ZL13sObjDataTable")));
++#endif
+ 
+ void TMapObjBase::setMatTable(J3DMaterialTable* table)
+ {
+--- a/src/Player/MarioDraw.cpp
++++ b/src/Player/MarioDraw.cpp
+@@ -34,6 +34,11 @@
+ 
+ #include <Player/MarioDirtyStrings.hpp>
+ 
++#ifdef TARGET_PC
++// Code mods (sms_mod/modhooks.h) name this by its retail map name.
++extern unkTMarioAnimeFilesStruct portExport_marioAnimeFiles[] __asm__("marioAnimeFiles") __attribute__((alias("_ZL15marioAnimeFiles")));
++#endif
++
+ // clang-format off
+ TMarioAnimeData gMarioAnimeData[336] = {
+ 	/* 0x00 */ { 0x00, 0x00C8, 0x00, 0x01, 0x04, 0x16 }, // hgup
+--- a/src/Player/Yoshi.cpp
++++ b/src/Player/Yoshi.cpp
+@@ -37,12 +37,26 @@
+ 
+ #include <Player/MarioDirtyStrings.hpp>
+ 
++#ifdef TARGET_PC
++// Writable: code mods recolour Yoshi through it (retail map name bodyColor).
++static GXColor bodyColor[4] = {
++	{ 0x40, 0xA1, 0x24, 0xFF },
++	{ 0xFF, 0x8C, 0x1C, 0xFF },
++	{ 0xAA, 0x4C, 0xFF, 0xFF },
++	{ 0xFF, 0xA0, 0xBE, 0xFF },
++};
++#else
+ static const GXColor bodyColor[4] = {
+ 	{ 0x40, 0xA1, 0x24, 0xFF },
+ 	{ 0xFF, 0x8C, 0x1C, 0xFF },
+ 	{ 0xAA, 0x4C, 0xFF, 0xFF },
+ 	{ 0xFF, 0xA0, 0xBE, 0xFF },
+ };
++#endif
++#ifdef TARGET_PC
++// Code mods (sms_mod/modhooks.h) name this by its retail map name.
++extern GXColor portExport_bodyColor[] __asm__("bodyColor") __attribute__((alias("_ZL9bodyColor")));
++#endif
+ 
+ void TYoshi::startVoice(u32 param_1) { }
+ 

@@ -1,0 +1,18 @@
+Reason: port: code mods: TResetFruit::mFruitLivingTime, which Eclipse rewrites in place (retail 0x8040C918)
+--- a/src/MoveBG/MapObjBall.cpp
++++ b/src/MoveBG/MapObjBall.cpp
+@@ -811,6 +811,14 @@
+ }
+ 
+ u32 TResetFruit::mFruitLivingTime       = 14400;
++#ifdef TARGET_PC
++// Eclipse makes fruit never time out by rewriting this variable (retail
++// 0x8040C918); the port stores the word it wrote when the mods start.
++extern "C" void sms_mod_bind_data(unsigned int addr, void* var, int size);
++static struct SmsModBindFruitLivingTime {
++	SmsModBindFruitLivingTime() { sms_mod_bind_data(0x8040C918, &TResetFruit::mFruitLivingTime, 4); }
++} sSmsModBindFruitLivingTime;
++#endif
+ f32 TResetFruit::mScaleUpSpeed          = 1.05f;
+ // UNUSED in the map; the value is not recoverable from the binary.
+ f32 TResetFruit::mRottingScaleSpeed     = 0.99f;

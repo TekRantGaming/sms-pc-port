@@ -1,0 +1,322 @@
+Reason: port: code-mod hooks (sms_modhook.h): TEggYoshi free-egg cards, TShine type bits and vanish, TCoin 100-coin shine (Eclipse, BetterSunshineEngine)
+--- a/src/MoveBG/Item.cpp
++++ b/src/MoveBG/Item.cpp
+@@ -36,6 +36,9 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ f32 TItem::mAppearedScaleSpeed = 0.01f;
+ 
+@@ -217,7 +220,14 @@
+ 	if (mContainer)
+ 		mContainer->receiveMessage(this, HIT_MESSAGE_UNK8);
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word 0x4800004C at retail 0x801BED44, `b` over
++	// the 100-coin test): the 100-coin shine never appears here.
++	if (SMS_MOD_WORD(0x801BED44, 0) != 0x4800004C
++	    && TFlagManager::smInstance->getFlag(0x40002) == 100) {
++#else
+ 	if (TFlagManager::smInstance->getFlag(0x40002) == 100) {
++#endif
+ 		TShine* shine = JDrama::TNameRefGen::search<TShine>(
+ 		    "シャイン（１００枚コイン用）");
+ 
+@@ -600,7 +610,18 @@
+ void TShine::movingUp()
+ {
+ 	mPosition.y += mUpSpeed;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (isAppearSimpleShine, retail 0x801BD7D4 and
++	// 0x801BD820 in the copy of this function inlined into control(), its
++	// only caller, with the words at 0x801BD7D8 and 0x801BD824, cmplwi r3,
++	// 3): both tests read the shine type through the mod (this in r30),
++	// which masks off the extra bits it keeps there.
++	void* sms_mod_t1_ = SMS_MOD_SITE(0x801BD7D4);
++	if (sms_mod_t1_ ? (SMS_MOD_GPR(30, this), ((u32(*)())sms_mod_t1_)() == 3)
++	                : unk154 == 3) {
++#else
+ 	if (unk154 == 3) {
++#endif
+ 		mRotation.y += 7.0f;
+ 		// Huh? Result discarded?
+ 		MsWrap(mRotation.y, 0.0f, 360.0f);
+@@ -608,7 +629,13 @@
+ 	if (isStateTimerEngaged())
+ 		return;
+ 
++#ifdef TARGET_PC
++	void* sms_mod_t2_ = SMS_MOD_SITE(0x801BD820);
++	if (sms_mod_t2_ ? (SMS_MOD_GPR(30, this), ((u32(*)())sms_mod_t2_)() == 3)
++	                : unk154 == 3) {
++#else
+ 	if (unk154 == 3) {
++#endif
+ 		mStateTimer = unk170;
+ 		mState      = STATE_MOVING_DOWN;
+ 	} else {
+@@ -643,6 +670,16 @@
+ 		TMapObjGeneral::control();
+ 
+ 	if (isState(0x10)) {
++#ifdef TARGET_PC
++		// BetterSunshineEngine (manageShineVanish, retail 0x801BD664, with
++		// the word 0x48000568 at 0x801BD668 branching to the end): the mod
++		// gets gpMarioPos (r3) and this shine (r30) and moves it itself.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BD664)) {
++			SMS_MOD_GPR(30, this);
++			((void (*)(JGeometry::TVec3<f32>*))sms_mod_t_)(gpMarioPos);
++			return;
++		}
++#endif
+ 		mPosition.set(SMS_GetMarioPos());
+ 		return;
+ 	}
+@@ -846,10 +883,31 @@
+ 	TItem::appear();
+ 	TShineAppearSimpleGetFlagManager(this)->setBool(true, 0x50000);
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (maintainBootFlagOnAppearSimple, retail
++	// 0x801BD000 in place of `li r3, 60`, with a nop at 0x801BD018 over the
++	// type store): the mod (this in r31) sets the type keeping its extra bit
++	// and returns the timer.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BD000)) {
++		SMS_MOD_GPR(31, this);
++		u32 timer = ((u32(*)())sms_mod_t_)();
++		unk174    = timer;
++		unk170    = param_1;
++		unk178    = timer;
++		if (SMS_MOD_WORD(0x801BD018, 0) != 0x60000000)
++			unk154 = 3;
++	} else {
++		unk174 = 60;
++		unk170 = param_1;
++		unk178 = 60;
++		unk154 = 3;
++	}
++#else
+ 	unk174   = 60;
+ 	unk170   = param_1;
+ 	unk178   = 60;
+ 	unk154   = 3;
++#endif
+ 	unk158   = 0.0f;
+ 	unk15C   = 0.0f;
+ 	unk160   = 0.0f;
+@@ -879,6 +937,15 @@
+ void TShine::kill()
+ {
+ 	TMapObjGeneral::kill();
++#ifdef TARGET_PC
++	// BetterSunshineEngine (setKillState, retail 0x801BCEEC in place of the
++	// type store): the mod (this in r31) sets the type keeping its extra bit.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BCEEC)) {
++		SMS_MOD_GPR(31, this);
++		((void (*)())sms_mod_t_)();
++		return;
++	}
++#endif
+ 	unk154 = 1;
+ }
+ 
+@@ -897,8 +964,18 @@
+ 	                                   | J3DMLF_UseUniqueMaterials
+ 	                                   | (2 << J3DMLF_TevStageNumShift);
+ 	MActor* result;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (word 0x5404043E at retail 0x801BCE30, `clrlwi
++	// r4, r0, 16`): the shine id is masked to 16 bits instead of 8. The
++	// port's getShineFlag still takes a u8, so ids above 0xFF cannot reach it.
++	u32 sms_mod_id_ = SMS_MOD_WORD(0x801BCE30, 0) == 0x5404043E ? mEventId & 0xFFFF
++	                                                            : mEventId & 0xFF;
++	if (TFlagManager::smInstance->getShineFlag(sms_mod_id_)
++	    && strcmp("シャイン（マニ屋用）", ItemGetName(this)) != 0) {
++#else
+ 	if (TFlagManager::smInstance->getShineFlag(mEventId)
+ 	    && strcmp("シャイン（マニ屋用）", ItemGetName(this)) != 0) {
++#endif
+ 		result = initMActor("shine_empty.bmd", nullptr, getSDLModelFlag());
+ 		unk1B4 = 1;
+ 	} else {
+@@ -920,12 +997,30 @@
+ void TShine::loadAfter()
+ {
+ 	TMapObjGeneral::loadAfter();
++#ifdef TARGET_PC
++	// BetterSunshineEngine (loadAfterMaskState, retail 0x801BCD20, with the
++	// words at 0x801BCD24 (cmplwi r3, 2) and 0x801BCD40 (cmplwi r3, 1)):
++	// both tests read the type through the mod (this in r31), which masks
++	// off the extra bits it keeps there.
++	u32 type = unk154;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BCD20)) {
++		SMS_MOD_GPR(31, this);
++		type = ((u32(*)())sms_mod_t_)();
++	}
++	if (type == 2) {
++		mStateTimer = 240;
++		mState      = STATE_UNK12;
++	} else if (type == 1) {
++		makeObjDead();
++	}
++#else
+ 	if (unk154 == 2) {
+ 		mStateTimer = 240;
+ 		mState      = STATE_UNK12;
+ 	} else if (unk154 == 1) {
+ 		makeObjDead();
+ 	}
++#endif
+ }
+ 
+ static inline u8 ShineLoadNo(s32 v) { return v + 1; }
+@@ -950,6 +1045,23 @@
+ 		unk154 = 1;
+ 
+ 	s32 eventId;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (shineObjectStringMod, retail 0x801BCC98, the
++	// read of the event id): the mod gets (stream, &eventId, 4) and this
++	// shine in r30, and reads the name retail keeps on the stack right after
++	// eventId (dst + 4); it reads the id raw, which is big-endian here.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BCC98)) {
++		struct {
++			s32 id;
++			char name[0x20];
++		} buf;
++		memcpy(buf.name, name, sizeof(buf.name));
++		SMS_MOD_GPR(30, this);
++		((void (*)(JSUInputStream*, u8*, u32))sms_mod_t_)(&stream, (u8*)&buf, 4);
++		u8* b   = (u8*)&buf.id;
++		eventId = (s32)(((u32)b[0] << 24) | ((u32)b[1] << 16) | ((u32)b[2] << 8) | b[3]);
++	} else
++#endif
+ 	stream >> eventId;
+ 	if (eventId == -1)
+ 		eventId = 120;
+@@ -1053,10 +1165,36 @@
+ 
+ void TEggYoshi::touchFruit(THitActor* fruit)
+ {
++#ifdef TARGET_PC
++	// Eclipse (isYoshiEggFree, retail 0x801BC8B4, with the words at
++	// 0x801BC8B8 (lhz r0, 0xfc(r30)), 0x801BC8BC (cmpwi r0, 0xb), 0x801BC8C0
++	// (beq to the refusal), 0x801BC8C4 (cmpwi r3, 1), 0x801BC8C8 (beq to the
++	// acceptance), 0x801BC8CC (bgt to the refusal) and 0x801BC8D0 (b to the
++	// end)): the mod gets (this, fruit) and answers 0 ignore, 1 accept or 2
++	// refuse; an egg already hatching (state 0xb) refuses.
++	bool accept;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BC8B4)) {
++		u8 answer = ((u8(*)(TEggYoshi*, THitActor*))sms_mod_t_)(this, fruit);
++		if (mState == 0xB)
++			accept = false;
++		else if (answer == 1)
++			accept = true;
++		else if (answer > 1)
++			accept = false;
++		else
++			return;
++	} else {
++		if (isState(0xE) || isState(STATE_HOLDING))
++			return;
++		accept = unk14C == (u32)fruit->mActorType;
++	}
++	if (accept) {
++#else
+ 	if (isState(0xE) || isState(STATE_HOLDING))
+ 		return;
+ 
+ 	if (unk14C == (u32)fruit->mActorType) {
++#endif
+ 		startAnim(1);
+ 		unk148->getFrameCtrl(ANM_TYPE_BTP)->setFrame(11.0f);
+ 		f32 dx = fruit->getPosition().x - getPosition().x;
+@@ -1115,6 +1253,17 @@
+ 		if (animIsFinished()) {
+ 			startAnim(0);
+ 			startBalloonAnim();
++#ifdef TARGET_PC
++			// Eclipse (updateFreeEggCard, retail 0x801BC6B8 in place of `li
++			// r0, 1`, with the word at 0x801BC6BC, `sth r3`): the mod gets the
++			// card's frame control and its result is the new state.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BC6B8)) {
++				u32 state = ((u32(*)(J3DFrameCtrl*))sms_mod_t_)(
++				    unk148->getFrameCtrl(ANM_TYPE_BTP));
++				mState = SMS_MOD_WORD(0x801BC6BC, 0) == 0xB07F00FC ? state
++				                                                  : STATE_NORMAL;
++			} else
++#endif
+ 			mState = STATE_NORMAL;
+ 		}
+ 		break;
+@@ -1226,11 +1375,52 @@
+ 		decideRandomLoveFruit();
+ 		startBalloonAnim();
+ 		mState = STATE_NORMAL;
++#ifdef TARGET_PC
++		// Eclipse (checkFreeEggCardA, retail 0x801BC2A0 in place of `li r3,
++		// 1`): the mod gets the card's frame control (r3, left by the inlined
++		// startBalloonAnim) and its result is returned.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BC2A0))
++			return ((u32(*)(J3DFrameCtrl*))sms_mod_t_)(
++			    unk148->getFrameCtrl(ANM_TYPE_BTP));
++#endif
+ 		return TRUE;
+ 	}
+ 
+ 	if (message == HIT_MESSAGE_PUT) {
+ 		makeObjAppeared();
++#ifdef TARGET_PC
++		// Eclipse (checkFreeEggCardB, retail 0x801BC2C8 in place of
++		// decideRandomLoveFruit, with the words at 0x801BC2CC (mr r0, r3) and
++		// 0x801BC2D4 (nop)): the inlined startBalloonAnim's switch compares
++		// the wanted fruit against the mod's result R (and R + 0x394, R +
++		// 0x390) instead of 0x40000392 (0x40000394, 0x40000390).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801BC2C8)) {
++			u32 r = ((u32(*)(TEggYoshi*))sms_mod_t_)(this);
++			if (SMS_MOD_WORD(0x801BC2CC, 0) == 0x7C601B78
++			    && SMS_MOD_WORD(0x801BC2D4, 0) == 0x60000000) {
++				s32 want            = (s32)unk14C;
++				J3DFrameCtrl* ctrl  = unk148->getFrameCtrl(ANM_TYPE_BTP);
++				if (want == (s32)r) {
++					ctrl->setFrame(7.0f);
++				} else if (want > (s32)r) {
++					s32 c = (s32)(r + 0x394);
++					if (want == c)
++						ctrl->setFrame(1.0f);
++					else if (want < c)
++						ctrl->setFrame(3.0f);
++				} else {
++					s32 c = (s32)(r + 0x390);
++					if (want == c)
++						ctrl->setFrame(9.0f);
++					else if (want > c)
++						ctrl->setFrame(5.0f);
++				}
++			} else {
++				startBalloonAnim();
++			}
++			return FALSE;
++		}
++#endif
+ 		decideRandomLoveFruit();
+ 		startBalloonAnim();
+ 	}
+@@ -1283,6 +1473,13 @@
+ 
+ 	decideRandomLoveFruit();
+ 
++#ifdef TARGET_PC
++	// Eclipse (branch at retail 0x801BC040 to 0x801BC114, the end, right
++	// after the decideRandomLoveFruit call it redirects to initFreeEggCard):
++	// the mod's function sets the card itself.
++	if (SMS_MOD_SITE(0x801BC040))
++		return;
++#endif
+ 	if (!isState(0xE))
+ 		startBalloonAnim();
+ }

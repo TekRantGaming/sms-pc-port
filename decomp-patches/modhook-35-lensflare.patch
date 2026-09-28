@@ -1,0 +1,29 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE flare scaled to lightness
+--- a/src/Camera/lensflare.cpp
++++ b/src/Camera/lensflare.cpp
+@@ -13,6 +13,9 @@
+ #include <Camera/cameralib.hpp>
+ #include <Camera/SunModel.hpp>
+ #include <stdio.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // fabricated. Retail calls JMASCos, JMASSin and TVec3<f32>::set(const Vec&)
+ // out of line from the calc-anim block below, which only happens if the
+@@ -131,6 +134,15 @@
+ 			}
+ 			f32 hiddenRatio = hiddenCount * (1.0f / 17.0f);
+ 
++#ifdef TARGET_PC
++			// BetterSunshineEngine (scaleFlareToLightness at retail
++			// 0x8002D358, `bl CLBEaseOutInbetween<f>`): f1, f2, f3 as in the
++			// call; the result (f1) is stored.
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8002D358))
++				unk28 = ((f32 (*)(f32, f32, f32))sms_mod_t_)(
++				    unk48 * (1.0f - hiddenRatio), 255.0f, gpSunModel->getUnk194());
++			else
++#endif
+ 			unk28 = CLBEaseOutInbetween<f32>(unk48 * (1.0f - hiddenRatio),
+ 			                                 255.0f, gpSunModel->getUnk194());
+ 		}

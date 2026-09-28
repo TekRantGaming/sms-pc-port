@@ -1,0 +1,37 @@
+Reason: port: code-mod hook (sms_modhook.h): Shadow Mario's hitbox constants BetterSunshineEngine rewrites (retail 0x8040FAA4, 0x8040FAA8)
+--- a/src/Enemy/enemyMario.cpp
++++ b/src/Enemy/enemyMario.cpp
+@@ -46,6 +46,17 @@
+ #include <Player/MarioAnimeData.hpp>
+ #ifdef TARGET_PC
+ #include <sms_modhook.h>
++
++// A float constant a code mod rewrote in place, else the original.
++static inline f32 sms_mod_float(unsigned int addr, f32 original)
++{
++	unsigned int w;
++	if (!sms_mod_word(addr, &w))
++		return original;
++	f32 f;
++	__builtin_memcpy(&f, &w, sizeof f);
++	return f;
++}
+ #endif
+ 
+ static const TEnemyMario::TReplayLink replayLinkMonteMan[6] = {
+@@ -1935,8 +1946,15 @@
+ 
+ 		mAttackRadius = 800.0f;
+ 		mAttackHeight = 150.0f;
++#ifdef TARGET_PC
++		// BetterSunshineEngine rewrites these two constants (retail
++		// 0x8040FAA4 and 0x8040FAA8) to give Shadow Mario Mario's hitbox.
++		mDamageRadius = sms_mod_float(0x8040FAA4, 60.0f);
++		mDamageHeight = sms_mod_float(0x8040FAA8, 40.0f);
++#else
+ 		mDamageRadius = 60.0f;
+ 		mDamageHeight = 40.0f;
++#endif
+ 		calcEntryRadius();
+ 		if (mWaterEffectTimer > 0) {
+ 			--mWaterEffectTimer;

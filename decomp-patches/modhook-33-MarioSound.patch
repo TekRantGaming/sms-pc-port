@@ -1,0 +1,38 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario::startVoiceIfNoVoice voices (Eclipse)
+--- a/src/Player/MarioSound.cpp
++++ b/src/Player/MarioSound.cpp
+@@ -10,6 +10,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ void TMario::startVoiceYoshi(u32 param_1) { }
+ 
+ // TODO: fake!! use a real inline!
+@@ -756,8 +760,22 @@
+ 
+ u32 TMario::startVoiceIfNoVoice(u32 param_1)
+ {
+-	if (SMSGetMSound()->getMarioVoiceID(0) == -1)
++	if (SMSGetMSound()->getMarioVoiceID(0) == -1) {
++#ifdef TARGET_PC
++		// Retail inlines startVoice here. Eclipse (r29PlayerVoices, retail
++		// 0x80285354) replaces its startMarioVoice call (it reads this from
++		// r29).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80285354)) {
++			if (onYoshi())
++				return 0;
++			u8 sms_mod_status_ = getVoiceStatus();
++			SMS_MOD_GPR(29, this);
++			return ((u32 (*)(MSound*, u32, s16, u8))sms_mod_t_)(
++			    MarioSoundGetMSound(), param_1, mHealth, sms_mod_status_);
++		}
++#endif
+ 		return startVoice(param_1);
++	}
+ 
+ 	return 0;
+ }

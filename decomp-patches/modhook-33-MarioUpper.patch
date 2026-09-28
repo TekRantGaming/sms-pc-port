@@ -1,0 +1,99 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario upper-body state hooks (BetterSunshineEngine, BetterSunshineMoveset)
+--- a/src/Player/MarioUpper.cpp
++++ b/src/Player/MarioUpper.cpp
+@@ -6,6 +6,25 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// BetterSunshineEngine's extended animation table (bse/src/player.cpp);
++// weak, as it exists only with the mod linked in.
++extern TMarioAnimeData sPlayerAnimeDatas[] __attribute__((weak));
++
++// gMarioAnimeData, or BetterSunshineEngine's table when its patch at
++// retail 0x802624E8 (isPumpOkCallingExt, an assembly routine that loads
++// r0 = sPlayerAnimeDatas in place of the addi of gMarioAnimeData's low
++// half; an empty stub on the port) is registered and the table linked in.
++static inline TMarioAnimeData* MarioUpperAnimeDatas()
++{
++	const void* ext = sPlayerAnimeDatas;
++	return SMS_MOD_SITE(0x802624E8) && ext != nullptr ? sPlayerAnimeDatas
++	                                                  : gMarioAnimeData;
++}
++#endif
++
+ void TMario::checkPumping()
+ {
+ 	if (unk108->mAnalogR > 0.0f && mUpperState != UPPER_STATE_PUMPING) {
+@@ -43,14 +62,28 @@
+ BOOL TMario::checkPumpEnable()
+ {
+ 	if ((getFludd() != nullptr) && checkFlag(MARIO_FLAG_HAS_FLUDD)
++#ifdef TARGET_PC
++	    && MarioUpperAnimeDatas()[mAnimationId].isPumpOK() && !onYoshi()
++#else
+ 	    && gMarioAnimeData[mAnimationId].isPumpOK() && !onYoshi()
++#endif
+ 	    && (!isSinking()
+ 	        || !((mSinkTimer / (float)mGraffitoParams.mSinkTime.get()
+ 	              > mGraffitoParams.mSinkPumpLimit.get())))
+ 	    && mUpperState != UPPER_STATE_FIXED_ANIMATION
+ 	    && mUpperState != UPPER_STATE_UNK3
+ 	    && mUpperState != UPPER_STATE_HOLDING_OBJECT
++#ifdef TARGET_PC
++	    // BetterSunshineEngine (checkAirNozzle, retail 0x80262580, with the
++	    // word at 0x80262584: cmpwi r3, 0): its result (it reads this from
++	    // r31) replaces the status test.
++	    && ((SMS_MOD_SITE(0x80262580)
++	             ? (SMS_MOD_GPR(31, this),
++	                ((bool (*)())SMS_MOD_SITE(0x80262580))())
++	             : mStatus != MARIO_STATUS_ROCKET_LANDING)
++#else
+ 	    && (mStatus != MARIO_STATUS_ROCKET_LANDING
++#endif
+ 	        || !getFludd()->checkCurrentNozzleRocketType(
+ 	            TWaterGun::Rocket))
+ 	    && (!getFludd()->checkCurrentNozzleKind(TWaterGun::Rocket)
+@@ -75,7 +108,19 @@
+ 			mModel->getFrameCtrl(1).setFrame(0.0f);
+ 			mUpperState = UPPER_STATE_IDLE;
+ 		}
+-		if (unk108->mAnalogR == 0.0f) {
++		if ((
++#ifdef TARGET_PC
++		        // BetterSunshineMoveset (getMarioControllerWorkForKeepHover,
++		        // retail 0x8026231C): the call replaces the load of the
++		        // controller work and returns it (it reads this from r31).
++		        SMS_MOD_SITE(0x8026231C)
++		            ? (SMS_MOD_GPR(31, this),
++		               ((TMarioControllerWork* (*)())SMS_MOD_SITE(0x8026231C))())
++		            :
++#endif
++		            unk108)
++		        ->mAnalogR
++		    == 0.0f) {
+ 			mUpperState   = UPPER_STATE_HOLDING_PUMP;
+ 			mPumpCooldown = mUpperBodyParams.mPumpWaitTime.get();
+ 		}
+@@ -103,7 +148,19 @@
+ 		if (getStatus() == MARIO_STATUS_PUTTING)
+ 			mUpperState = UPPER_STATE_IDLE;
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (objGrabHandler, retail 0x80262400, with the
++		// word at 0x80262404: cmpwi r3, 0): the call runs the grab callback a
++		// mod registered for the held object and returns it (it reads this
++		// from r31).
++		if ((SMS_MOD_SITE(0x80262400)
++		         ? (SMS_MOD_GPR(31, this),
++		            ((THitActor* (*)())SMS_MOD_SITE(0x80262400))())
++		         : (THitActor*)mHeldObject)
++		    == nullptr)
++#else
+ 		if (mHeldObject == nullptr)
++#endif
+ 			mUpperState = UPPER_STATE_IDLE;
+ 
+ 		if (getStatus() == MARIO_STATUS_RUN && mForwardVel > 20.0f)

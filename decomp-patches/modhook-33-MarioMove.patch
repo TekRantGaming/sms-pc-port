@@ -1,0 +1,296 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state machine and collision hooks (BetterSunshineEngine, BetterSunshineMoveset, Eclipse)
+--- a/src/Player/MarioMove.cpp
++++ b/src/Player/MarioMove.cpp
+@@ -22,6 +22,10 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
++
+ f32 TMario::getJumpAccelControl() const
+ {
+ 	if (mStatus == MARIO_STATUS_WIRE_JUMP)
+@@ -471,6 +475,15 @@
+ 	switch (status) {
+ 	case MARIO_STATUS_JUMP:
+ 	case 0x89C:
++#ifdef TARGET_PC
++		// BetterSunshineMoveset (processJumpOrLongJump, retail 0x80254534,
++		// with nops at 0x80254538, 0x8025453C, 0x80254540, 0x80254544): the
++		// call sets the jump speed itself (it reads this from r30).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80254534)) {
++			SMS_MOD_GPR(30, this);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		setPlayerJumpSpeed(0.25f, 42.0f);
+ 		mForwardVel *= 0.8f;
+ 
+@@ -591,6 +604,15 @@
+ 		if (jumpSpeed > 48.0f)
+ 			jumpSpeed = 48.0f;
+ 
++#ifdef TARGET_PC
++		// BetterSunshineMoveset (uncapDiveSpeed, retail 0x80254920): the call
++		// replaces the store and sets mForwardVel itself (it gets the capped
++		// speed in f1 and reads this from r30).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80254920)) {
++			SMS_MOD_GPR(30, this);
++			((void (*)(f32))sms_mod_t_)(jumpSpeed);
++		} else
++#endif
+ 		mForwardVel = jumpSpeed;
+ 		mSlideVelX  = mForwardVel * JMASSin(mFaceAngle.y);
+ 		mSlideVelZ  = mForwardVel * JMASCos(mFaceAngle.y);
+@@ -601,12 +623,30 @@
+ 
+ 	case MARIO_STATUS_BROAD_JUMP:
+ 		startVoice(MSD_SE_MV22_JUMP_MID_01);
++#ifdef TARGET_PC
++		// BetterSunshineMoveset (lerpTurboNozzleJumpSpeed, retail
++		// 0x80254990): the call replaces the store of mForwardVel and sets it
++		// itself (it reads this from r30); the mVel.y store below still runs.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80254990)) {
++			SMS_MOD_GPR(30, this);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		mForwardVel = mJumpParams.mBroadJumpForce.get();
+ 		mVel.y      = mJumpParams.mBroadJumpForceY.get();
+ 		break;
+ 
+ 	case MARIO_STATUS_ROTATE_BROAD_JUMP:
+ 		startVoice(MSD_SE_MV22_JUMP_MID_01);
++#ifdef TARGET_PC
++		// BetterSunshineMoveset (uncapDiveRolloutSpeed, retail 0x802549B0):
++		// the call replaces the store of mForwardVel and sets it itself (it
++		// reads this from r30); the mVel.y store below still runs.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802549B0)) {
++			SMS_MOD_GPR(30, this);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		mForwardVel = mJumpParams.mRotBroadJumpForce.get();
+ 		mVel.y      = mJumpParams.mRotBroadJumpForceY.get();
+ 		break;
+@@ -621,6 +661,16 @@
+ 				startVoice(MSD_SE_MV15_EXERT_INST_01);
+ 			if ((int)mWaterGun->mCurrentNozzle == TWaterGun::Hover)
+ 				startVoice(MSD_SE_MV21_JUMP_SMALL_01);
++#ifdef TARGET_PC
++			// BetterSunshineEngine (scaleFluddInitYSpd, retail 0x80254A2C):
++			// an assembly routine called in place of the load of the 10.0f
++			// force; it loads that same constant and multiplies it by
++			// mScaling.y (lfs f4, 0x28(r30)). Translated here; the mod's own
++			// function is an empty stub on the port.
++			if (SMS_MOD_SITE(0x80254A2C))
++				setPlayerJumpSpeed(0.0f, 10.0f * mScaling.y);
++			else
++#endif
+ 			setPlayerJumpSpeed(0.0f, 10.0f);
+ 		}
+ 		break;
+@@ -819,7 +869,30 @@
+ 
+ int TMario::changePlayerJumping(u32 param_1, u32 param_2)
+ {
++#ifdef TARGET_PC
++	// Retail inlines isJumpMiss here; BetterSunshineMoveset
++	// (avoidSlipJumpOnMultiJump, retail 0x80253A8C) replaces its isForceSlip
++	// call.
++	BOOL sms_mod_miss_;
++	void* sms_mod_t_ = SMS_MOD_SITE(0x80253A8C);
++	if (sms_mod_t_ == nullptr)
++		sms_mod_miss_ = isJumpMiss();
++	else if (((bool (*)(TMario*))sms_mod_t_)(this))
++		sms_mod_miss_ = mSlipParamsAll.mMissJump.get();
++	else if (mGroundPlane->isSlider())
++		sms_mod_miss_ = mSlipParamsAllSlider.mMissJump.get();
++	else if (mGroundPlane->isUnk2() && mGroundPlane->getNormal().y < 0.8660254f)
++		sms_mod_miss_ = mSlipParams45.mMissJump.get();
++	else if (mGroundPlane->isWetGround())
++		sms_mod_miss_ = mGroundPlane->getNormal().y > 0.99f
++		                    ? mSlipParamsWaterGround.mMissJump.get()
++		                    : mSlipParamsWaterSlope.mMissJump.get();
++	else
++		sms_mod_miss_ = mSlipParamsNormal.mMissJump.get();
++	if (sms_mod_miss_)
++#else
+ 	if (isJumpMiss())
++#endif
+ 		setMissJumping();
+ 	else {
+ 		if (considerRotateJumpStart())
+@@ -1753,7 +1826,20 @@
+ 
+ void TMario::checkCurrentPlane()
+ {
+-	if (checkStatusType(MARIO_STATUS_FLAG_UNK1000))
++#ifdef TARGET_PC
++	// BetterSunshineEngine (collisionHandler, retail 0x8025059C, with the
++	// word at 0x802505A0: rlwinm. r0, r3, 0, 19, 19): the call runs the
++	// mods' floor collision handlers and returns mStatus, which is tested
++	// in place of the loaded one.
++	if (SMS_MOD_SITE(0x8025059C)
++	        ? (((u32 (*)(TMario*))SMS_MOD_SITE(0x8025059C))(this)
++	           & MARIO_STATUS_FLAG_UNK1000)
++	              != 0
++	        :
++#else
++	if (
++#endif
++	    checkStatusType(MARIO_STATUS_FLAG_UNK1000))
+ 		return;
+ 
+ 	if (onYoshi())
+@@ -1812,6 +1898,21 @@
+ 				damageExec(&mFloorHitActor, record.mResultWalls[i]->getData());
+ 	}
+ 
++#ifdef TARGET_PC
++	// Retail inlines checkGroundPlane here; BetterSunshineEngine
++	// (enhanceMarioGroundPlaneCheck, retail 0x80250B54) replaces its first
++	// TMap::checkGround call.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80250B54)) {
++		mFloorPosition.y
++		    = ((f32 (*)(TMap*, f32, f32, f32, const TBGCheckData**))sms_mod_t_)(
++		        gpMap, mPosition.x, mPosition.y + 25.0f, mPosition.z,
++		        &mGroundPlane);
++		if (mGroundPlane->isMarioThrough())
++			mFloorPosition.y
++			    = gpMap->checkGround(mPosition.x, mFloorPosition.y - 1.0f,
++			                         mPosition.z, &mGroundPlane);
++	} else
++#endif
+ 	checkGroundPlane(mPosition.x, mPosition.y + 25.0f, mPosition.z,
+ 	                 &mFloorPosition.y, &mGroundPlane);
+ 
+@@ -1892,6 +1993,15 @@
+ 		} else {
+ 			Mtx ridingMtx;
+ 			getRidingMtx(ridingMtx);
++#ifdef TARGET_PC
++			// BetterSunshineEngine (patchRideMovementUpWarp, retail
++			// 0x80250514; it reads this from r30).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80250514)) {
++				SMS_MOD_GPR(30, this);
++				((void (*)(MtxPtr, Vec*, Vec*))sms_mod_t_)(ridingMtx, &unk2F4,
++				                                           &mPosition);
++			} else
++#endif
+ 			MTXMultVec(ridingMtx, &unk2F4, &mPosition);
+ 
+ 			// TODO: 100.0%, every instruction present; `ridingMtx` sits 4
+@@ -1933,7 +2043,16 @@
+ 
+ void TMario::stateMachine()
+ {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (stateMachineHandler, retail 0x802500B8): the
++	// call replaces li r3, 1; its result decides whether the state machine
++	// runs.
++	int result = SMS_MOD_SITE(0x802500B8)
++	                 ? ((bool (*)(TMario*))SMS_MOD_SITE(0x802500B8))(this)
++	                 : 1;
++#else
+ 	int result = 1;
++#endif
+ 	int passes = 0;
+ 	while (result != 0) {
+ 		switch (mStatus & MARIO_STATUS_TYPE_MASK) {
+@@ -2054,7 +2173,18 @@
+ 	f32 dVar7 = gpMap->checkGround(mPosition.x, mPosition.y - mVel.y,
+ 	                               mPosition.z, &ground);
+ 
+-	if (ground->isDeathPlane() && dVar7 > mPosition.y) {
++	if (ground->isDeathPlane() && (
++#ifdef TARGET_PC
++	        // BetterSunshineEngine (canDiePlane, retail 0x8024FB54, with the
++	        // words at 0x8024FB58: cmpwi r3, 0 and 0x8024FB5C: beq): its
++	        // result (it gets the floor height in f1 and reads this from r31)
++	        // replaces the height test.
++	        SMS_MOD_SITE(0x8024FB54)
++	            ? (SMS_MOD_GPR(31, this),
++	               ((bool (*)(f32))SMS_MOD_SITE(0x8024FB54))(dVar7))
++	            :
++#endif
++	            dVar7 > mPosition.y)) {
+ 		onFlag(MARIO_FLAG_GAME_OVER);
+ 		mHealth = 0;
+ 		mAnmSound->stop();
+@@ -2074,8 +2204,18 @@
+ 	mLightID = 0;
+ 	if (MarioEnforceJumpGround(this)->isShadow() && mFloorPosition.y + 200.0f > mPosition.y) {
+ 		mLightID = MarioEnforceJumpGround(this)->getData();
+-		if (mLightID == 1)
++		if (mLightID == 1) {
++#ifdef TARGET_PC
++			// Eclipse (checkIceStageSweat, retail 0x8024FC58): the call
++			// replaces the store of the flag and sets it itself (it reads
++			// this from r31).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024FC58)) {
++				SMS_MOD_GPR(31, this);
++				((void (*)())sms_mod_t_)();
++			} else
++#endif
+ 			onFlag(MARIO_FLAG_UNK_20);
++		}
+ 	}
+ 
+ 	if (gpCubeShadow != nullptr && gpCubeShadow->getInCubeNo(mPosition) != -1)
+@@ -2370,6 +2510,13 @@
+ 
+ 	mWaterGun->changeNozzle(TWaterGun::Hover, true);
+ 	normalizeNozzle();
++#ifdef TARGET_PC
++	// BetterSunshineEngine writes a nop over the store of resetWaterToFull
++	// (retail 0x8024EC2C): the water level its restoreNozzles (the call hook
++	// at 0x8024EC18) set is kept.
++	unsigned int sms_mod_w_;
++	if (!(sms_mod_word(0x8024EC2C, &sms_mod_w_) && sms_mod_w_ == 0x60000000))
++#endif
+ 	mWaterGun->resetWaterToFull();
+ }
+ 
+@@ -2455,7 +2602,17 @@
+ 	if (isMario() == 0)
+ 		return;
+ 
+-	if (onYoshi())
++#ifdef TARGET_PC
++	// Eclipse (isYoshiValidDrip, retail 0x8024E788): replaces the
++	// TYoshi::onYoshi call of the inlined onYoshi().
++	if (SMS_MOD_SITE(0x8024E788)
++	        ? (mYoshi != nullptr
++	           && ((bool (*)(TYoshi*))SMS_MOD_SITE(0x8024E788))(mYoshi))
++	        :
++#else
++	if (
++#endif
++	    onYoshi())
+ 		return;
+ 
+ 	if (mWetWaterParticleTimer <= 0)
+@@ -2579,6 +2736,20 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// Retail inlines checkPlayerAction here (enemyMario calls the out-of-line
++	// copy, which no mod patches). Eclipse (checkRideMovementCond, retail
++	// 0x8024DF54) replaces the inlined copy's checkRideMovement call.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024DF54)) {
++		mInput = 0;
++		checkController(param_1);
++		makeHistory();
++		checkCurrentPlane();
++		((void (*)(TMario*))sms_mod_t_)(this);
++		if (!(mInput & 3))
++			mInput |= 0x20;
++	} else
++#endif
+ 	checkPlayerAction(param_1);
+ 	checkCollision();
+ 	considerTake();

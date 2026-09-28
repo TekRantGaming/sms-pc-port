@@ -1,0 +1,79 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarioCap model load flags (BetterSunshineEngine)
+--- a/src/Player/MarioCap.cpp
++++ b/src/Player/MarioCap.cpp
+@@ -15,6 +15,22 @@
+ #include <System/DummyStrings.hpp>
+ #include <Player/MarioDirtyStrings.hpp>
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// A model's load flags, rewritten by a code mod: retail loads them with
++// `lis r4, flags >> 16` right before J3DModelLoaderDataBase::load; a mod
++// writing another `lis r4, imm` there (BetterSunshineEngine, 0x3C801130:
++// animated textures) loads imm << 16 instead.
++static inline u32 MarioCapLoadFlags(unsigned int addr, u32 flags)
++{
++	unsigned int w;
++	if (sms_mod_word(addr, &w) && (w & 0xFFFF0000) == 0x3C800000)
++		return (w & 0xFFFF) << 16;
++	return flags;
++}
++#endif
++
+ // cc28 closed the constructor. Two instruction residues: the helmet matrix is
+ // `unk10[2]->setBaseTRMtx(getAnmMtx(mJointIdHead))` (retail copies the head
+ // joint into the helmet's base, not the reverse), and unk30 is a one-element
+@@ -57,7 +73,13 @@
+ 
+ 	J3DModelData* maCap1ModelData = J3DModelLoaderDataBase::load(
+ 	    JKRFileLoader::getGlbResource("/mario/bmd/ma_cap1.bmd"),
++#ifdef TARGET_PC
++	    MarioCapLoadFlags(0x802421BC, // the lis r4 at retail 0x802421BC
++	                      J3DMLF_MaterialPEFull
++	                          | (16 << J3DMLF_TevStageNumShift)));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	// Might be an inlined function?
+ 	maCap1ModelData->getTexture()->setResTIMG(
+ 	    0,
+@@ -68,7 +90,13 @@
+ 
+ 	J3DModelData* maCap3ModelData = J3DModelLoaderDataBase::load(
+ 	    JKRFileLoader::getGlbResource("/mario/bmd/ma_cap3.bmd"),
++#ifdef TARGET_PC
++	    MarioCapLoadFlags(0x80242290, // the lis r4 at retail 0x80242290
++	                      J3DMLF_MaterialPEFull
++	                          | (16 << J3DMLF_TevStageNumShift)));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	// I could see this being an inlined
+ 	maCap3ModelData->getTexture()->setResTIMG(
+ 	    0,
+@@ -92,12 +120,24 @@
+ 
+ 	J3DModelData* diverHelmModelData = J3DModelLoaderDataBase::load(
+ 	    JKRFileLoader::getGlbResource("/mario/watergun2/body/diver_helm.bmd"),
++#ifdef TARGET_PC
++	    MarioCapLoadFlags(0x802423B4, // the lis r4 at retail 0x802423B4
++	                      J3DMLF_MaterialPEFull
++	                          | (16 << J3DMLF_TevStageNumShift)));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	unk10[2] = MarioCapNewModel(diverHelmModelData);
+ 
+ 	J3DModelData* maGlass1 = J3DModelLoaderDataBase::load(
+ 	    JKRFileLoader::getGlbResource("/mario/bmd/ma_glass1.bmd"),
++#ifdef TARGET_PC
++	    MarioCapLoadFlags(0x802423F0, // the lis r4 at retail 0x802423F0
++	                      J3DMLF_MaterialPEFull
++	                          | (16 << J3DMLF_TevStageNumShift)));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	unk10[3] = MarioCapNewModel(maGlass1);
+ 
+ 	// Mmmh, nintendo plz? I hope this is forgotten and not a check to crash the

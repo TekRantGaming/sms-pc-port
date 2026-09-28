@@ -1,0 +1,301 @@
+Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's extended Mario animation tables, animated-texture model flags and water animation fixes in MarioDraw
+--- a/src/Player/MarioDraw.cpp
++++ b/src/Player/MarioDraw.cpp
+@@ -39,6 +39,36 @@
+ extern unkTMarioAnimeFilesStruct portExport_marioAnimeFiles[] __asm__("marioAnimeFiles") __attribute__((alias("_ZL15marioAnimeFiles")));
+ #endif
+ 
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// BetterSunshineEngine's extended copies of the animation tables
++// (bse/src/player.cpp), which its patches below point the game at through
++// PowerPC stubs; weak, as they exist only with the mod linked in.
++extern TMarioAnimeData sPlayerAnimeDatas[] __attribute__((weak));
++extern unkTMarioAnimeFilesStruct sPlayerAnimeInfos[] __attribute__((weak));
++extern size_t sPlayerAnimeInfosSize __attribute__((weak));
++
++// Whether a weak symbol above is linked in.
++static inline bool sms_mod_linked_(const void* p)
++{
++	return p != 0;
++}
++
++// gMarioAnimeData, or the extended table when a mod patched the read (site).
++static inline TMarioAnimeData* sms_mod_animeDatas_(void* site)
++{
++	return site && sms_mod_linked_(sPlayerAnimeDatas) ? sPlayerAnimeDatas : gMarioAnimeData;
++}
++
++// What a D-form `addi`/`addis` word w computes (rA = 0).
++static inline u32 sms_mod_dform_(u32 w, u32 src)
++{
++	u32 imm = w & 0xFFFF, base = ((w >> 16) & 31) ? src : 0;
++	return (w >> 26) == 15 ? base + (imm << 16) : base + (u32)(s32)(s16)imm;
++}
++#endif
++
+ // clang-format off
+ TMarioAnimeData gMarioAnimeData[336] = {
+ 	/* 0x00 */ { 0x00, 0x00C8, 0x00, 0x01, 0x04, 0x16 }, // hgup
+@@ -1094,14 +1124,35 @@
+ 			changeHand(0);
+ 			mAnmSound->stop();
+ 		} else {
++#ifdef TARGET_PC
++			// BetterSunshineEngine points these reads at sPlayerAnimeDatas:
++			// the animation id (getExtendedPlayerAnimData, retail 0x8024786C;
++			// r28 keeps the entry for its two later reads), the texture
++			// pattern (0x802478BC) and the hand (0x8024794C).
++			TMarioAnimeData* sms_mod_d0_ = sms_mod_animeDatas_(SMS_MOD_SITE(0x8024786C));
++			TMarioAnimeData* sms_mod_d4_ = sms_mod_animeDatas_(SMS_MOD_SITE(0x802478BC));
++			TMarioAnimeData* sms_mod_d5_ = sms_mod_animeDatas_(SMS_MOD_SITE(0x8024794C));
++#endif
+ 			getM3UModel()->changeMtxCalcSIAnmBQAnmTransform(
++#ifdef TARGET_PC
++			    0, 0, sms_mod_d0_[anm_id].unk0);
++#else
+ 			    0, 0, gMarioAnimeData[anm_id].unk0);
++#endif
+ 			getM3UModel()->unk20->unk18->mMotionBlendRatio = 0.0f;
+ 			getMotionFrameCtrl().setAttribute(
++#ifdef TARGET_PC
++			    getM3UModel()->unk4->unk4[sms_mod_d0_[anm_id].unk0]
++#else
+ 			    getM3UModel()->unk4->unk4[gMarioAnimeData[anm_id].unk0]
++#endif
+ 			        ->getAttribute());
+ 
++#ifdef TARGET_PC
++			int unk1 = sms_mod_d4_[anm_id].unk4;
++#else
+ 			int unk1 = gMarioAnimeData[anm_id].unk4;
++#endif
+ 			if (mTrembleModelEffect != nullptr
+ 			    && mTrembleModelEffect->checkUnk8(1))
+ 				unk1 = 8;
+@@ -1109,7 +1160,11 @@
+ 			if (unk1 < 0x18)
+ 				getM3UModel()->changeAnmTexPattern(0, unk1);
+ 
++#ifdef TARGET_PC
++			u16 r0 = sms_mod_d0_[anm_id].unk0;
++#else
+ 			u16 r0 = gMarioAnimeData[anm_id].unk0;
++#endif
+ 			u32 unk; // SoundId?
+ 			if (rate >= 0.0f)
+ 				unk = 1;
+@@ -1118,7 +1173,11 @@
+ 
+ 			mAnmSound->initAnmSound(mAnmSoundTbl[r0], unk, 0.0f);
+ 
++#ifdef TARGET_PC
++			changeHand(sms_mod_d5_[anm_id].unk5);
++#else
+ 			changeHand(gMarioAnimeData[anm_id].unk5);
++#endif
+ 		}
+ 	}
+ 	getMotionFrameCtrl().setRate(rate * 0.5f);
+@@ -1199,7 +1258,14 @@
+ 	unk3A0         = 0;
+ 	mBodyModelData = J3DModelLoaderDataBase::load(
+ 	    JKRFileLoader::getGlbResource("/mario/bmd/ma_mdl1.bmd"),
++#ifdef TARGET_PC
++	    // BetterSunshineEngine rewrites the flags' `lis r4, 0x1010` here
++	    // (retail 0x802465E8) and for the hand models below (0x80246744,
++	    // 0x80246754, 0x80246764, 0x80246774, 0x80246784): animated textures.
++	    sms_mod_dform_(SMS_MOD_WORD(0x802465E8, 0x3C801010), 0));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	mJointIdCenter   = mBodyModelData->getJointName()->getIndex("center");
+ 	mJointIdChnChest = mBodyModelData->getJointName()->getIndex("chn_chest");
+ 	mJointIdChest    = mBodyModelData->getJointName()->getIndex("jnt_chest");
+@@ -1223,19 +1289,39 @@
+ 
+ 	mHandModels[0][0] = SMS_CreatePartsModel(
+ 	    "/mario/bmd/ma_hnd2r.bmd",
++#ifdef TARGET_PC
++	    sms_mod_dform_(SMS_MOD_WORD(0x80246744, 0x3C801010), 0));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	mHandModels[0][1] = SMS_CreatePartsModel(
+ 	    "/mario/bmd/ma_hnd2l.bmd",
++#ifdef TARGET_PC
++	    sms_mod_dform_(SMS_MOD_WORD(0x80246754, 0x3C801010), 0));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	mHandModels[1][0] = SMS_CreatePartsModel(
+ 	    "/mario/bmd/ma_hnd3r.bmd",
++#ifdef TARGET_PC
++	    sms_mod_dform_(SMS_MOD_WORD(0x80246764, 0x3C801010), 0));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	mHandModels[1][1] = SMS_CreatePartsModel(
+ 	    "/mario/bmd/ma_hnd3l.bmd",
++#ifdef TARGET_PC
++	    sms_mod_dform_(SMS_MOD_WORD(0x80246774, 0x3C801010), 0));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 	mRHand4ndModel = SMS_CreatePartsModel(
+ 	    "/mario/bmd/ma_hnd4r.bmd",
++#ifdef TARGET_PC
++	    sms_mod_dform_(SMS_MOD_WORD(0x80246784, 0x3C801010), 0));
++#else
+ 	    J3DMLF_MaterialPEFull | (16 << J3DMLF_TevStageNumShift));
++#endif
+ 
+ 	// Retail loads mBodyModelData (the setResTIMG argument) before each
+ 	// hand model. Naming the hand data first reversed that pair.
+@@ -1276,11 +1362,33 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine: the two tables' byte sizes (`li r3, 0x31c` at
++	// retail 0x80246AE4 and 0x80246AF0, four bytes an entry), the file table
++	// (getExtendedPlayerAnimInfo at 0x80246B00: sPlayerAnimeInfos) and the
++	// loop's bound (getExtendedPlayerAnimInfoSize at 0x80246B90:
++	// sPlayerAnimeInfosSize).
++	J3DAnmTransform** anmTransform
++	    = new J3DAnmTransform*[(s16)SMS_MOD_WORD(0x80246AE4, 0x3860031C) / 4];
++	mAnmSoundTbl = new JAIAnimeSound*[(s16)SMS_MOD_WORD(0x80246AF0, 0x3860031C) / 4];
++	const unkTMarioAnimeFilesStruct* sms_mod_files_
++	    = SMS_MOD_SITE(0x80246B00) && sms_mod_linked_(sPlayerAnimeInfos) ? sPlayerAnimeInfos
++	                                                                    : marioAnimeFiles;
++	int sms_mod_count_ = SMS_MOD_SITE(0x80246B90) && sms_mod_linked_(&sPlayerAnimeInfosSize)
++	                         ? (int)sPlayerAnimeInfosSize
++	                         : 199;
++#define marioAnimeFiles sms_mod_files_
++#else
+ 	J3DAnmTransform** anmTransform = new J3DAnmTransform*[199];
+ 	mAnmSoundTbl                   = new JAIAnimeSound*[199];
++#endif
+ 
+ 	char buffer[0x10C];
++#ifdef TARGET_PC
++	for (int i = 0; i < sms_mod_count_; ++i) {
++#else
+ 	for (int i = 0; i < 199; ++i) {
++#endif
+ 		snprintf(buffer, 0xff, "/mario/bck/ma_%s.bck", marioAnimeFiles[i].unk4);
+ 		J3DAnmTransform** trans = &anmTransform[i];
+ 		loadAnm(trans, buffer);
+@@ -1288,6 +1396,9 @@
+ 		snprintf(buffer, 0xff, "/mario/bas/ma_%s.bas", marioAnimeFiles[i].unk4);
+ 		loadBas((void**)&mAnmSoundTbl[i], buffer);
+ 	}
++#ifdef TARGET_PC
++#undef marioAnimeFiles
++#endif
+ 
+ 	J3DAnmTexPattern** anmTexPattern = new J3DAnmTexPattern*[0x18];
+ 	J3DTexNoAnm** anmTexNoAnm        = new J3DTexNoAnm*[0x18];
+@@ -1684,6 +1795,14 @@
+ 	f32 height
+ 	    = gpMapObjWave->getHeight(mPosition.x, mFloorPosition.z, mPosition.z);
+ 	ti.mTranslate.y += height - mFloorPosition.z;
++#ifdef TARGET_PC
++	// BetterSunshineEngine (fixMarioOceanAnimBug, retail 0x802456B8 in
++	// calcBaseMtx, which carries this block; it reads r30 = this).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802456B8)) {
++		SMS_MOD_GPR(30, this);
++		((void (*)(J3DTransformInfo&, MtxPtr))sms_mod_t_)(ti, mtx);
++	} else
++#endif
+ 	J3DGetTranslateRotateMtx(ti, mtx);
+ }
+ 
+@@ -1895,8 +2014,18 @@
+ 		const TBGCheckData* gp;
+ 		gpMap->checkGround(mPosition.x, mPosition.y + 160.0f, mPosition.z, &gp);
+ 		if (gp->isWaterSurface()) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (fixBlooperSurfAnimBug, retail 0x80245F6C).
++			f32 height;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80245F6C))
++				height = ((f32 (*)(TMapObjWave*, f32, f32, f32))sms_mod_t_)(
++				    gpMapObjWave, mPosition.x, mPosition.y, mPosition.z);
++			else
++				height = gpMapObjWave->getHeight(mPosition.x, mPosition.y, mPosition.z);
++#else
+ 			f32 height = gpMapObjWave->getHeight(mPosition.x, mPosition.y,
+ 			                                     mPosition.z);
++#endif
+ 			MTXTrans(unk318, 0.0f, height, 0.0f);
+ 		}
+ 	}
+@@ -1944,6 +2073,14 @@
+ {
+ 	return gMarioAnimeData[p->mAnimationId].unk6;
+ }
++#ifdef TARGET_PC
++// The same read from the table a mod's patch at `site` picked
++// (BetterSunshineEngine's checkExtendedPlayerAnimDataBodyFlags).
++static inline u8 MarioCBAnimeUnk6(const TMario* p, void* site)
++{
++	return sms_mod_animeDatas_(site)[p->mAnimationId].unk6;
++}
++#endif
+ 
+ void TMario::addCallBack(JDrama::TGraphics* graphics)
+ {
+@@ -1969,7 +2106,12 @@
+ 			mCap->mtxEffectHide();
+ 		}
+ 	} else {
++#ifdef TARGET_PC
++		// BetterSunshineEngine reads sPlayerAnimeDatas here (retail 0x80245210).
++		if ((MarioCBAnimeUnk6(this, SMS_MOD_SITE(0x80245210)) & 2) != 0
++#else
+ 		if ((MarioCBAnimeUnk6(this) & 2) != 0
++#endif
+ 		    && mUpperState == UPPER_STATE_IDLE) {
+ 			if (mMultiMtxEffect != nullptr) {
+ 				mMultiMtxEffect->flagOn(0x1);
+@@ -1985,7 +2127,12 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine reads sPlayerAnimeDatas here (retail 0x802452CC).
++	if ((MarioCBAnimeUnk6(this, SMS_MOD_SITE(0x802452CC)) & 4) != 0
++#else
+ 	if ((MarioCBAnimeUnk6(this) & 4) != 0
++#endif
+ 	    && mUpperState == UPPER_STATE_IDLE) {
+ 		if (checkFlag(MARIO_FLAG_HAS_FLUDD)) {
+ 			mWaterGun->unk1CDC->mMtxEffectTbl[1]->mFlags |= 1;
+@@ -2043,10 +2190,26 @@
+ 				MarioAddUpperM3UModel(this)->unk24[1].unk3 = -1;
+ 				return;
+ 			}
++#ifdef TARGET_PC
++			// BetterSunshineEngine (checkExtendedPlayerAnimDataFluddUpper,
++			// retail 0x80244F00, with `cmpw r0, r3` at 0x80244F04): both reads
++			// go to sPlayerAnimeDatas (r6 keeps the table) and the "no FLUDD
++			// animation" sentinel is sPlayerAnimeInfosSize instead of 0xC8.
++			if (sms_mod_animeDatas_(SMS_MOD_SITE(0x80244F00))[mAnimationId].unk2
++			    != (SMS_MOD_SITE(0x80244F00) && sms_mod_linked_(&sPlayerAnimeInfosSize)
++			            ? (u32)sPlayerAnimeInfosSize
++			            : 0xC8u)) {
++#else
+ 			if (gMarioAnimeData[mAnimationId].unk2 != 0xC8) {
++#endif
+ 				MarioAddUpperM3UModel(this)->unk24[1].unk3 = 1;
+ 				MarioAddUpperM3UModel(this)->changeMtxCalcSIAnmBQAnmTransform(
++#ifdef TARGET_PC
++				    1, 0,
++				    sms_mod_animeDatas_(SMS_MOD_SITE(0x80244F00))[mAnimationId].unk2);
++#else
+ 				    1, 0, gMarioAnimeData[mAnimationId].unk2);
++#endif
+ 			}
+ 			break;
+ 		case UPPER_STATE_HOLDING_OBJECT:

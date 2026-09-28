@@ -1,0 +1,60 @@
+Reason: port: code-mod hook (sms_modhook.h): BetterSunshineEngine's shallow-water test in both of TYoshi::movement's ground probes (retail 0x8026E9D4, 0x8026F144)
+--- a/src/Player/Yoshi.cpp
++++ b/src/Player/Yoshi.cpp
+@@ -924,13 +924,28 @@
+ // Map size 0x140 exactly. Both ground probes in movement() expand it: retail
+ // walks down through Mario-passable, non-water planes up to five times, with
+ // isMarioThrough()/isWaterSurface() called out of line at depth 2.
++#ifdef TARGET_PC
++// BetterSunshineEngine (isFixShallowWaterBug) stands in for the probe's
++// isWaterSurface test, separately in each of its two copies in movement()
++// (retail 0x8026E9D4 and 0x8026F144): the call site sets this for the copy.
++static void* sSmsModGroundWaterTest;
++#endif
++
+ f32 TYoshi::checkGroundYoshi(const JGeometry::TVec3<f32>& pos, f32* out_y,
+                              const TBGCheckData** out_plane)
+ {
+ 	*out_y = gpMap->checkGround(pos.x, 200.0f + pos.y, pos.z, out_plane);
+ 	for (int i = 0; i < 5; i++) {
++#ifdef TARGET_PC
++		if (!(*out_plane)->isMarioThrough()
++		    || (sSmsModGroundWaterTest
++		            ? ((bool (*)(const TBGCheckData*))sSmsModGroundWaterTest)(*out_plane)
++		            : (*out_plane)->isWaterSurface()))
++			break;
++#else
+ 		if (!(*out_plane)->isMarioThrough() || (*out_plane)->isWaterSurface())
+ 			break;
++#endif
+ 		*out_y = gpMap->checkGround(pos.x, *out_y - 1.0f, pos.z, out_plane);
+ 	}
+ 	mActor->setLightData(*out_plane, pos);
+@@ -1000,7 +1015,13 @@
+ 
+ 		const TBGCheckData* ground = nullptr;
+ 		f32 groundY;
++#ifdef TARGET_PC
++		sSmsModGroundWaterTest = SMS_MOD_SITE(0x8026E9D4);
+ 		checkGroundYoshi(mTranslation, &groundY, &ground);
++		sSmsModGroundWaterTest = nullptr;
++#else
++		checkGroundYoshi(mTranslation, &groundY, &ground);
++#endif
+ 		unk2C -= mMario->mJumpParams.mGravity.get();
+ 		mTranslation.y += unk2C;
+ 
+@@ -1107,7 +1128,13 @@
+ 
+ 		const TBGCheckData* ground;
+ 		f32 groundY;
++#ifdef TARGET_PC
++		sSmsModGroundWaterTest = SMS_MOD_SITE(0x8026F144);
+ 		checkGroundYoshi(mTranslation, &groundY, &ground);
++		sSmsModGroundWaterTest = nullptr;
++#else
++		checkGroundYoshi(mTranslation, &groundY, &ground);
++#endif
+ 
+ 		if (mState == STATE_UNMOUNTED && groundY > mTranslation.y) {
+ 			if (ground->isWaterSurface()) {

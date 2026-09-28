@@ -1,0 +1,41 @@
+Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's animations from /common when a disc has them there, by redirecting TWaterGun::init's two MActorAnmData::init calls (retail 0x8026A550, 0x8026A6E8)
+--- a/src/Player/WaterGun.cpp
++++ b/src/Player/WaterGun.cpp
+@@ -38,6 +38,9 @@
+ // names and nozzleBmdData's paths; without them every later .rodata string
+ // sits 24 bytes low and nozzleBmdData's relocations miss.
+ #include <Map/MapCollisionEntry.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TNozzleBmdData nozzleBmdData = {
+ 	{
+@@ -1283,7 +1286,13 @@
+ 	// useful
+ 	// TODO: Check if already exists
+ 	MActorAnmData* watergunAnmData = new MActorAnmData();
++#ifdef TARGET_PC
++	SMS_MOD_CALLM(0x8026A550, MActorAnmData, init,
++	              watergunAnmData->init("/mario/watergun2/body", nullptr), watergunAnmData,
++	              "/mario/watergun2/body", (const char**)nullptr);
++#else
+ 	watergunAnmData->init("/mario/watergun2/body", nullptr);
++#endif
+ 	mFluddModel = new MActor(watergunAnmData);
+ 
+ 	void* fluddModelData
+@@ -1328,7 +1337,13 @@
+ 		if (nozzleBmdData.getPath(i)) {
+ 
+ 			MActorAnmData* nozzleData = new MActorAnmData();
++#ifdef TARGET_PC
++			SMS_MOD_CALLM(0x8026A6E8, MActorAnmData, init,
++			              nozzleData->init(nozzleBmdData.getPath(i), nullptr), nozzleData,
++			              nozzleBmdData.getPath(i), (const char**)nullptr);
++#else
+ 			nozzleData->init(nozzleBmdData.getPath(i), nullptr);
++#endif
+ 			mNozzleList[i]->unk380 = new MActor(nozzleData);
+ 
+ 			void* nozzleModelData

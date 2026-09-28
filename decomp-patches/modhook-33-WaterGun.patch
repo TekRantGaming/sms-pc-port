@@ -1,0 +1,69 @@
+Reason: port: code-mod hooks (sms_modhook.h): TWaterGun and TNozzleTrigger hooks (BetterSunshineEngine, BetterSunshineMoveset)
+--- a/src/Player/WaterGun.cpp
++++ b/src/Player/WaterGun.cpp
+@@ -622,6 +622,15 @@
+ 			check = false;
+ 		}
+ 		if (!check || unk386 <= 0) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (killTriggerNozzle, retail 0x8026C370):
++			// the call replaces the store of the state and sets it itself
++			// (it reads this from r29).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8026C370)) {
++				SMS_MOD_GPR(29, this);
++				((void (*)())sms_mod_t_)();
++			} else
++#endif
+ 			unk385 = TNozzleTrigger::DEAD;
+ 			unk388 = 0.0f;
+ 			unk386 = 0;
+@@ -672,8 +681,32 @@
+ 		                                NozzleFludd(this)->mEmitPos[0], 0, nullptr, 0, 4);
+ 	}
+ 
+-	if (unk388 > mEmitParams.mInsidePressureMax.get()) {
++#ifdef TARGET_PC
++	// BetterSunshineMoveset (checkTurboSpecial, retail 0x8026C5BC): the call
++	// replaces the load of the maximum pressure and returns it; (checkFillMax,
++	// retail 0x8026C5C8): the call replaces the store of that value and
++	// makes its own (both read this from r29).
++	f32 sms_mod_max_ = SMS_MOD_SITE(0x8026C5BC)
++	                       ? (SMS_MOD_GPR(29, this),
++	                          ((f32 (*)())SMS_MOD_SITE(0x8026C5BC))())
++	                       : mEmitParams.mInsidePressureMax.get();
++#endif
++	if (unk388 >
++#ifdef TARGET_PC
++	    sms_mod_max_
++#else
++	    mEmitParams.mInsidePressureMax.get()
++#endif
++	) {
++#ifdef TARGET_PC
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8026C5C8)) {
++			SMS_MOD_GPR(29, this);
++			((void (*)())sms_mod_t_)();
++		} else
++			unk388 = sms_mod_max_;
++#else
+ 		unk388 = mEmitParams.mInsidePressureMax.get();
++#endif
+ 		if (!unk384 && unk385 == TNozzleTrigger::INACTIVE) {
+ 			unk385      = TNozzleTrigger::ACTIVE;
+ 			unk386      = mEmitParams.mTriggerTime.get();
+@@ -1756,6 +1789,15 @@
+ 		} else {
+ 			WaterGunFluddModel(this)->setBck("wg_house");
+ 			if (unk1CEC > 0.0f) {
++#ifdef TARGET_PC
++				// BetterSunshineMoveset (snapNozzleToReady, retail
++				// 0x802699CC): the call replaces the store of the decremented
++				// value and updates it itself (it reads this from r30).
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x802699CC)) {
++					SMS_MOD_GPR(30, this);
++					((void (*)())sms_mod_t_)();
++				} else
++#endif
+ 				unk1CEC -= 0.1f;
+ 				if (unk1CEC <= 0.0f)
+ 					unk1CEC = 0.0f;

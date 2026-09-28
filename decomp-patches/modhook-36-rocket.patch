@@ -1,0 +1,36 @@
+Reason: port: code-mod hooks (sms_modhook.h): rocket launch test in TRocket::checkTrigger (Eclipse)
+--- a/src/Enemy/rocket.cpp
++++ b/src/Enemy/rocket.cpp
+@@ -31,6 +31,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // The rocket's orientation while Mario carries it: the model is authored
+ // facing +X, so the root matrix gets a fixed 90 degree yaw.
+@@ -388,8 +391,22 @@
+ 		setBckAnm(ROCKET_ANM_FULL);
+ 	}
+ 
++#ifdef TARGET_PC
++	// Eclipse (isRocketLaunchWithStabilize, retail 0x8010AB9C in the copy of
++	// this function inlined into TNerveRocketPossessedNozzle, its only caller;
++	// with the words at 0x8010ABA0 (cmpwi r3, 0), 0x8010ABA4, 0x8010ABA8 and
++	// 0x8010ABAC (nops)): the mod's test replaces the trigger check.
++	bool launch;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8010AB9C))
++		launch = ((bool (*)())sms_mod_t_)() != 0;
++	else
++		launch = gpMarDirector->unk18[0]->checkFrameMeaning(
++		    TMarioGamePad::MEANING_0x400);
++	if (launch) {
++#else
+ 	if (gpMarDirector->unk18[0]->checkFrameMeaning(
+ 	        TMarioGamePad::MEANING_0x400)) {
++#endif
+ 		unk190 = 2.0f;
+ 		expandCollision();
+ 		gpMSound->startSoundActor(MSD_SE_PO_PETBOTTLE_FLY, &mPosition, 0,

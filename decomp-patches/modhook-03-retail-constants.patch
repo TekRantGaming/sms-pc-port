@@ -1,0 +1,223 @@
+Reason: port: three retail constants code mods overwrite become variables with the retail values: the 1.0 JASChannel's pitch and pan code reads (gAudioPitch), the 1.0 JASTrack's timing code reads (gAudioSpeed), and the shine shadow sphere's position in ModelWaterManager (gShineShadowPos); unchanged, they behave as the constants
+--- a/src/JSystem/JAudio/JASystem/JASChannel.cpp
++++ b/src/JSystem/JAudio/JASystem/JASChannel.cpp
+@@ -10,6 +10,15 @@
+ #include <JSystem/JUtility/JUTAssert.hpp>
+ #include <types.h>
+ 
++#ifdef TARGET_PC
++// Port: the retail code reads this 1.0 from one pooled constant (@324), which
++// code mods overwrite to change every sound's pitch (retail map name gAudioPitch); so do the functions that read it here.
++f32 gAudioPitch = 1.0f;
++#define JAS_CHANNEL_ONE gAudioPitch
++#else
++#define JAS_CHANNEL_ONE 1.0f
++#endif
++
+ namespace JASystem {
+ 
+ namespace Driver {
+@@ -324,9 +333,9 @@
+ 	                        f32 dolby)
+ 	{
+ 		f32 vol;
+-		f32 invPan   = 1.0f - pan;
+-		f32 invFxmix = 1.0f - fxmix;
+-		f32 invDolby = 1.0f - dolby;
++		f32 invPan   = JAS_CHANNEL_ONE - pan;
++		f32 invFxmix = JAS_CHANNEL_ONE - fxmix;
++		f32 invDolby = JAS_CHANNEL_ONE - dolby;
+ 
+ 		for (u32 i = 0; i < 6; i++) {
+ 			vol = volume;
+@@ -397,8 +406,8 @@
+ 
+ 				if (vol <= 0.0f)
+ 					vol = 0.0f;
+-				else if (vol >= 1.0f)
+-					vol = 1.0f;
++				else if (vol >= JAS_CHANNEL_ONE)
++					vol = JAS_CHANNEL_ONE;
+ 				channel->unkB4[i] = vol * Driver::getMixerLevel();
+ 			}
+ 		}
+@@ -480,8 +489,8 @@
+ 			}
+ 
+ 			if (param == 0) {
+-				channel->unk8C            = 1.0f;
+-				channel->unk90            = 1.0f;
++				channel->unk8C            = JAS_CHANNEL_ONE;
++				channel->unk90            = JAS_CHANNEL_ONE;
+ 				channel->unk68[0].mEffect = 0.5f;
+ 				channel->unk68[1].mEffect = 0.0f;
+ 				channel->unk68[2].mEffect = 0.0f;
+@@ -624,7 +633,7 @@
+ f32 TChannel::bankOscToOfs(u32 index)
+ {
+ 	JUT_ASSERT(index < 4);
+-	return unk38[index]->isOsc() ? unk38[index]->getOffset() : 1.0f;
++	return unk38[index]->isOsc() ? unk38[index]->getOffset() : JAS_CHANNEL_ONE;
+ }
+ 
+ void TChannel::effectOsc(u32 index, f32 effect)
+@@ -676,7 +685,7 @@
+ 	// Written out rather than calling bankOscToOfs(index): an inlined
+ 	// one-argument accessor would reserve another 8 bytes of frame here
+ 	// (retail's frame is 0x38, a bankOscToOfs level makes it 0x40).
+-	effectOsc(index, unk38[index]->isOsc() ? unk38[index]->getOffset() : 1.0f);
++	effectOsc(index, unk38[index]->isOsc() ? unk38[index]->getOffset() : JAS_CHANNEL_ONE);
+ }
+ 
+ void TChannel::overwriteOscMultiple(TOscillator::Osc_* osc1,
+@@ -727,7 +736,7 @@
+ {
+ 	f32 px = fl + fr + rl;
+ 	if (px == 0.0f)
+-		px = 1.0f;
++		px = JAS_CHANNEL_ONE;
+ 
+ 	unk5C.mSound   = fl / px;
+ 	unk5C.mEffect  = fr / px;
+@@ -910,7 +919,7 @@
+ 	for (u32 i = 0; i < 4; ++i)
+ 		if (unk38[i]->isOsc())
+ 			effectOsc(i,
+-			          unk38[i]->isOsc() ? unk38[i]->getOffset() : 1.0f);
++			          unk38[i]->isOsc() ? unk38[i]->getOffset() : JAS_CHANNEL_ONE);
+ 
+ 	updateEffectorParam();
+ 	Driver::__UpdateJcToDSPInit(this);
+--- a/src/JSystem/JAudio/JASystem/JASTrack.cpp
++++ b/src/JSystem/JAudio/JASystem/JASTrack.cpp
+@@ -14,6 +14,15 @@
+ #include <JSystem/JMath.hpp>
+ #include <dolphin/os.h>
+ 
++#ifdef TARGET_PC
++// Port: the retail code reads this 1.0 from one pooled constant (@440), which
++// code mods overwrite to change the music's tempo (retail map name gAudioSpeed); so do the functions that read it here.
++f32 gAudioSpeed = 1.0f;
++#define JAS_TRACK_ONE gAudioSpeed
++#else
++#define JAS_TRACK_ONE 1.0f
++#endif
++
+ namespace JASystem {
+ 
+ namespace Player {
+@@ -164,8 +173,8 @@
+ {
+ 	for (u8 i = 0; i < 18; i++) {
+ 		mTimedParam.mMoveParams[i].mMoveTime     = 0.0f;
+-		mTimedParam.mMoveParams[i].mCurrentValue = 1.0f;
+-		mTimedParam.mMoveParams[i].mTargetValue  = 1.0f;
++		mTimedParam.mMoveParams[i].mCurrentValue = JAS_TRACK_ONE;
++		mTimedParam.mMoveParams[i].mTargetValue  = JAS_TRACK_ONE;
+ 	}
+ 	mTimedParam.mMoveParams[1].mCurrentValue  = 0.0f;
+ 	mTimedParam.mMoveParams[1].mTargetValue   = 0.0f;
+@@ -339,7 +348,7 @@
+ 		mOscData[var1].mTarget = var2;
+ 		switch (var2) {
+ 		case 1:
+-			mOscData[var1].mVertex = 1.0f;
++			mOscData[var1].mVertex = JAS_TRACK_ONE;
+ 			break;
+ 		}
+ 	}
+@@ -739,12 +748,12 @@
+ 	if (mParent && unk3BD == 1) {
+ 		f32 thing = mTempo;
+ 		thing /= mParent->mTempo;
+-		if (thing > 1.0f)
+-			thing = 1.0f;
++		if (thing > JAS_TRACK_ONE)
++			thing = JAS_TRACK_ONE;
+ 		mTickCounter += thing;
+-		if (mTickCounter < 1.0f)
++		if (mTickCounter < JAS_TRACK_ONE)
+ 			return 0;
+-		mTickCounter -= 1.0f;
++		mTickCounter -= JAS_TRACK_ONE;
+ 	}
+ 
+ 	if (mParent && mChannelUpdater.mManagedChannels != 0) {
+@@ -794,7 +803,7 @@
+ 		MoveParam_* param = &mTimedParam.mMoveParams[i];
+ 		if (param->mMoveTime > 0.0f) {
+ 			param->mCurrentValue += param->mMoveAmount;
+-			param->mMoveTime -= 1.0f;
++			param->mMoveTime -= JAS_TRACK_ONE;
+ 			if (i <= TIMED_Unk5 || i >= TIMED_Osc1_Vertex) {
+ 				r31 |= 1 << i;
+ 			} else {
+@@ -907,7 +916,7 @@
+ 	if (iVar7 <= 0) {
+ 		moveParam->mCurrentValue = moveParam->mTargetValue;
+ 		moveParam->mMoveAmount   = 0.0f;
+-		moveParam->mMoveTime     = 1.0f;
++		moveParam->mMoveTime     = JAS_TRACK_ONE;
+ 	} else {
+ 		moveParam->mMoveAmount
+ 		    = (moveParam->mTargetValue - moveParam->mCurrentValue) / iVar7;
+@@ -1121,7 +1130,7 @@
+ 	initTrack(data, 0, nullptr);
+ 	mChannelUpdater.initAllocChannel(0);
+ 	mTickCounter = 0.0f;
+-	mTickRate    = 1.0f;
++	mTickRate    = JAS_TRACK_ONE;
+ 	updateTrackAll();
+ 	mSeqState = 2;
+ 
+@@ -1630,7 +1639,7 @@
+ 	case 1:
+ 		return param2;
+ 	case 2:
+-		result = param1 * (1.0f - param3) + param2 * param3;
++		result = param1 * (JAS_TRACK_ONE - param3) + param2 * param3;
+ 	}
+ 	return result;
+ }
+@@ -1645,11 +1654,11 @@
+ 		} else {
+ 			self->mTickCounter += self->mTickRate;
+ 
+-			if (self->mTickCounter < 1.0f) {
++			if (self->mTickCounter < JAS_TRACK_ONE) {
+ 				self->updateSeq(0, true);
+ 			} else {
+-				while (self->mTickCounter >= 1.0f) {
+-					self->mTickCounter -= 1.0f;
++				while (self->mTickCounter >= JAS_TRACK_ONE) {
++					self->mTickCounter -= JAS_TRACK_ONE;
+ 					if ((int)self->mainProc() != -1)
+ 						continue;
+ 
+--- a/src/Player/ModelWaterManager.cpp
++++ b/src/Player/ModelWaterManager.cpp
+@@ -30,6 +30,12 @@
+ 
+ #include <System/StageUtil.hpp>
+ 
++#ifdef TARGET_PC
++// Port: the position the shine shadow sphere is drawn at is a constant in
++// the retail game, which code mods overwrite (retail map name gShineShadowPos).
++Vec gShineShadowPos = { 0.0f, 3600.0f, -7458.0f };
++#endif
++
+ TModelWaterManager* gpModelWaterManager;
+ TWaterHitActor TModelWaterManager::mStaticHitActor;
+ GXColor gModelWaterManagerWaterColor[4] = {
+@@ -1805,7 +1811,11 @@
+ #endif
+ 		}
+ 
++#ifdef TARGET_PC
++		Vec shinePos = gShineShadowPos;
++#else
+ 		Vec shinePos = (Vec) { 0.0f, 3600.0f, -7458.0f };
++#endif
+ 
+ 		int r31 = unk5E44;
+ 		f32 f30 = (((unk5E0C + unk5E40) - unk5E0C) / f32(r31 - 1));

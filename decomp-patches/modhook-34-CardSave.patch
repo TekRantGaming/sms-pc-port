@@ -1,0 +1,61 @@
+Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's shine-counter tens digit on the save screens
+--- a/src/GC2D/CardSave.cpp
++++ b/src/GC2D/CardSave.cpp
+@@ -23,6 +23,9 @@
+ #include <System/DummyStrings.hpp>
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ extern JPAEmitterManager* gpEmitterManager4D2;
+ 
+@@ -825,6 +828,23 @@
+ 				} else {
+ 					unk13C->changeTexture(unk1C[score / 100]->getTexInfo(), 0);
+ 					score -= 100;
++#ifdef TARGET_PC
++					// BetterSunshineEngine (changeTextureForShineCounterOnSave_Tens_31,
++					// retail 0x8015E2C0; it reads r31 = this) with the words it writes
++					// at 0x8015E2A0, 0x8015E2A4, 0x8015E2A8, 0x8015E2AC, 0x8015E2B0,
++					// 0x8015E2B4, 0x8015E2B8, 0x8015E2BC: those nop the texture
++					// argument's computation, so unk1C[score / 10] (past the table
++					// from 200 shines on) is not read and only the picture is passed.
++					if (void* sms_mod_t_ = SMS_MOD_SITE(0x8015E2C0)) {
++						SMS_MOD_GPR(31, this);
++						unsigned int sms_mod_w_;
++						if (sms_mod_word(0x8015E2A0, &sms_mod_w_))
++							((void (*)(J2DPicture*))sms_mod_t_)(unk140);
++						else
++							((void (*)(J2DPicture*, const ResTIMG*, u8))sms_mod_t_)(
++							    unk140, unk1C[score / 10]->getTexInfo(), 0);
++					} else
++#endif
+ 					unk140->changeTexture(unk1C[score / 10]->getTexInfo(), 0);
+ 					unk144->changeTexture(unk1C[score % 10]->getTexInfo(), 0);
+ 					unk138->hide();
+@@ -1467,6 +1487,23 @@
+ 					((J2DPicture*)unk218)
+ 					    ->changeTexture(unk1C[score / 100]->getTexInfo(), 0);
+ 					score -= 100;
++#ifdef TARGET_PC
++					// BetterSunshineEngine (changeTextureForShineCounterOnSave_Tens_30,
++					// retail 0x8015BFE4; it reads r30 = this) with the words it writes
++					// at 0x8015BFC4, 0x8015BFC8, 0x8015BFCC, 0x8015BFD0, 0x8015BFD4,
++					// 0x8015BFD8, 0x8015BFDC, 0x8015BFE0: those nop the texture
++					// argument's computation, so unk1C[score / 10] (past the table
++					// from 200 shines on) is not read and only the picture is passed.
++					if (void* sms_mod_t_ = SMS_MOD_SITE(0x8015BFE4)) {
++						SMS_MOD_GPR(30, this);
++						unsigned int sms_mod_w_;
++						if (sms_mod_word(0x8015BFC4, &sms_mod_w_))
++							((void (*)(J2DPicture*))sms_mod_t_)((J2DPicture*)unk21C);
++						else
++							((void (*)(J2DPicture*, const ResTIMG*, u8))sms_mod_t_)(
++							    (J2DPicture*)unk21C, unk1C[score / 10]->getTexInfo(), 0);
++					} else
++#endif
+ 					((J2DPicture*)unk21C)
+ 					    ->changeTexture(unk1C[score / 10]->getTexInfo(), 0);
+ 					((J2DPicture*)unk220)

@@ -1,0 +1,28 @@
+Reason: port: code-mod hooks (sms_modhook.h): episode test in TNerveHino2GraphWander (Eclipse)
+--- a/src/Enemy/hinokuri2.cpp
++++ b/src/Enemy/hinokuri2.cpp
+@@ -29,6 +29,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <Map/MapCollisionManager.hpp>
+ #include <Map/MapCollisionEntry.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // NOTE: rodata ordering says this has to go here
+ 
+@@ -1258,7 +1261,14 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// Eclipse (word 0x60000000 at retail 0x8005B54C, a nop over the
++	// episode < 2 branch): the polluting phase no longer waits for episode 2.
++	if ((SMS_MOD_WORD(0x8005B54C, 0) == 0x60000000 || Hino2MarDirector()->unk7D >= 2)
++	    && self->unk164 <= 0) {
++#else
+ 	if (Hino2MarDirector()->unk7D >= 2 && self->unk164 <= 0) {
++#endif
+ 		if (self->getLevel() >= 1) {
+ 			spine->pushAfterCurrent(&TNerveHino2PrePol::theNerve());
+ 			return 1;

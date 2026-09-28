@@ -1,0 +1,24 @@
+Reason: port: code-mod hook (sms_modhook.h): MSound's constructor hands JAudio the built-in sound data at retail 0x80014F9C; BetterSunshineEngine takes that call to load /AudioRes/msound.aaf from a mod's disc instead
+--- a/src/MSound/MSound.cpp
++++ b/src/MSound/MSound.cpp
+@@ -24,6 +24,7 @@
+ 
+ // rogue
+ #include <System/DummyStrings.hpp>
++#include <sms_modhook.h>
+ 
+ // TODO: place in correct header
+ template <class T> static inline T min(T a, T b) { return a < b ? a : b; }
+@@ -531,7 +532,12 @@
+ 		param_4 = noAudio;
+ #endif
+ 	if (param_4 != nullptr)
++#ifdef TARGET_PC
++		SMS_MOD_CALLF(0x80014F9C, JAIGlobalParameter::setParamInitDataPointer,
++		              JAIGlobalParameter::setParamInitDataPointer(param_4), param_4);
++#else
+ 		JAIGlobalParameter::setParamInitDataPointer(param_4);
++#endif
+ 	if (param_5 != nullptr)
+ 		JAInter::TAsnData::asnData = param_5;
+ 

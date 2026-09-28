@@ -1,0 +1,43 @@
+Reason: port: code-mod hooks (sms_modhook.h): Eclipse blue coin shine count in TTalk2D2::setTagParam
+--- a/src/GC2D/Talk2D2.cpp
++++ b/src/GC2D/Talk2D2.cpp
+@@ -32,6 +32,9 @@
+ #include <JSystem/JUtility/JUTResFont.hpp>
+ #include <JSystem/JUtility/JUTTexture.hpp>
+ #include <dolphin/gx.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ #include <dolphin/mtx.h>
+ 
+ // rogue includes needed for matching sinit & bss
+@@ -1552,6 +1555,19 @@
+ 		case 3: {
+ 			int value = TFlagManager::getInstance()->getFlag(0x40001);
+ 			int spent = 0;
++#ifdef TARGET_PC
++			// Eclipse (countBlueCoinShines at retail 0x8015120C, in place of
++			// `li r24, 0`): the word at 0x80151210 (`mr r24, r3`) takes its
++			// result as the count, and the SMS_PATCH_B at 0x80151214 (to
++			// 0x80151260) skips both loops.
++			unsigned int sms_mod_w_;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8015120C)) {
++				int sms_mod_n_ = ((size_t(*)())sms_mod_t_)();
++				if (sms_mod_word(0x80151210, &sms_mod_w_))
++					spent = sms_mod_n_;
++			}
++			if (!SMS_MOD_SITE(0x80151214)) {
++#endif
+ 			for (int i = 0x46; i < 0x56; i++) {
+ 				if (TFlagManager::getInstance()->getFlag(0x10000 + i) != 0)
+ 					spent++;
+@@ -1560,6 +1576,9 @@
+ 				if (TFlagManager::getInstance()->getFlag(0x10000 + i) != 0)
+ 					spent++;
+ 			}
++#ifdef TARGET_PC
++			}
++#endif
+ 			value -= spent * 10;
+ 
+ 			if (value < 100) {

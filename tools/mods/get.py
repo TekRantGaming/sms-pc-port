@@ -2,12 +2,18 @@
 """Download and install optional mods, fresh each time.
 
     python3 tools/mods/get.py textures    the Super Mario Sunshine UHD Texture Pack
+    python3 tools/mods/get.py eclipse     Super Mario Eclipse (patched from your disc)
+    python3 tools/mods/get.py all         both
 
-A mod's previous install is removed first, then its release is downloaded
+Each mod's previous install is removed first, then its release is downloaded
 from where its authors publish it, checked against a known checksum, and
-installed under mods/. Nothing of the mod is part of this repository.
+installed under mods/. Nothing of either mod is part of this repository.
 
 Options:
+    --iso PATH        your Super Mario Sunshine image (North America, the
+                      unmodified 1:1 ISO), for Eclipse; by default the one
+                      named by SMS_DISC_IMAGE or disc_image in settings.txt,
+                      or the one in rom/
     --keep-download   keep the downloaded archives in mods/.downloads/
 
 Needs Python 3 and 7-Zip (7z, 7zz or 7za on PATH).
@@ -23,6 +29,9 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import vcdiff  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(HERE))
 MODS = os.path.join(ROOT, "mods")
 DOWNLOADS = os.path.join(MODS, ".downloads")
@@ -38,6 +47,20 @@ TEXTURES = {
     "size": 986431331,
     "unpacked": 3218563135,
     "install": os.path.join(MODS, "textures", "GMS"),
+}
+ECLIPSE = {
+    "name": "Super Mario Eclipse v1.1.0 (Eclipse Team)",
+    "page": "https://gamebanana.com/mods/536309",
+    "url": "https://gamebanana.com/dl/1729332",
+    "file": "super_mario_eclipse_v110.7z",
+    "md5": "37c1805ab88b2a3bb2a96bcdf6884433",
+    "size": 892257115,
+    "patch": "patches/v1.1.0.xdelta",
+    "patch_size": 1191516980,
+    "source_md5": "0c6d2edae9fdf40dfc410ff1623e4119",  # GMSE01, as Eclipse's own patcher requires
+    "result_md5": "caa546309e0443f7b47632b040a250d7",
+    "install": os.path.join(MODS, "eclipse"),
+    "iso": "Super Mario Eclipse v1.1.0.iso",
 }
 
 
@@ -137,6 +160,38 @@ def extract(archive, dest, members=()):
         raise Failure("7-Zip could not unpack %s:\n%s" % (archive, r.stderr.strip()))
 
 
+def settings_disc():
+    for path in (os.path.join(ROOT, "settings.txt"),):
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = (s.strip() for s in line.split("=", 1))
+                    if k in ("disc_image", "SMS_DISC_IMAGE") and v:
+                        return v
+        except OSError:
+            pass
+    return None
+
+
+def find_iso(explicit):
+    if explicit:
+        return explicit
+    for cand in (os.environ.get("SMS_DISC_IMAGE"), settings_disc()):
+        if cand:
+            return cand
+    rom = os.path.join(ROOT, "rom")
+    if os.path.isdir(rom):
+        images = sorted(n for n in os.listdir(rom) if n.lower().endswith((".iso", ".gcm")))
+        if len(images) == 1:
+            return os.path.join(rom, images[0])
+        if len(images) > 1:
+            raise Failure("rom/ holds several images; name yours with --iso")
+    raise Failure("no Super Mario Sunshine image found: pass --iso PATH (or put it in rom/)")
+
+
 def get_textures(keep):
     mod = TEXTURES
     say("== Textures: %s" % mod["name"])
@@ -166,16 +221,78 @@ def get_textures(keep):
         " and SMS_GX_SCALE for a higher internal resolution.")
 
 
+def get_eclipse(keep, iso_arg):
+    mod = ECLIPSE
+    say("== Eclipse: %s" % mod["name"])
+    seven_zip()
+    iso = find_iso(iso_arg)
+    if not os.path.isfile(iso):
+        raise Failure("no such image: %s" % iso)
+    say("Checking your image, %s" % iso)
+    got = md5_of(iso)
+    if got != mod["source_md5"]:
+        raise Failure("Eclipse patches only the North American ISO with MD5 %s, and this one is %s"
+                      " (compressed or trimmed images such as CISO, NKit and RVZ do not work)"
+                      % (mod["source_md5"], got))
+    if os.path.isdir(mod["install"]):
+        say("Removing the previous install, %s" % os.path.relpath(mod["install"], ROOT))
+        remove(mod["install"])
+    need_space(MODS, mod["size"] + mod["patch_size"] + os.path.getsize(iso) + (64 << 20))
+    archive = fetch(mod)
+    tmp = os.path.join(DOWNLOADS, "eclipse")
+    out = os.path.join(mod["install"], mod["iso"])
+    try:
+        extract(archive, tmp, [mod["patch"], "readme.md", "changelog.md", "license.md"])
+        if not keep:
+            remove(archive)
+        os.makedirs(mod["install"])
+        say("Patching your image (a minute or two)")
+        last = [0.0]
+
+        def progress(done, total):
+            now = time.time()
+            if sys.stdout.isatty() and now - last[0] > 1.0:
+                last[0] = now
+                print("\r  %d%%   " % (100 * done // total), end="", flush=True)
+
+        try:
+            vcdiff.apply(iso, os.path.join(tmp, mod["patch"]), out + ".part", progress)
+        except vcdiff.VcdiffError as e:
+            raise Failure("patching failed: %s" % e)
+        if sys.stdout.isatty():
+            print("\r        \r", end="")
+        got = md5_of(out + ".part")
+        if got != mod["result_md5"]:
+            raise Failure("the patched image is not the expected one (MD5 %s, expected %s)"
+                          % (got, mod["result_md5"]))
+        os.replace(out + ".part", out)
+        shutil.copy(os.path.join(tmp, "changelog.md"), os.path.join(mod["install"], "changelog.md"))
+    except BaseException:
+        remove(mod["install"])
+        raise
+    finally:
+        remove(tmp)
+        if not keep:
+            remove(archive)
+    say("Installed %s." % os.path.relpath(out, ROOT))
+    say("It is the same image Eclipse's own patcher makes, for Dolphin or a console. The port"
+        " cannot run it yet: Eclipse also changes the game's code, which has to be ported first"
+        " (docs/ECLIPSE.md).")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="\n\n".join(__doc__.split("\n\n")[1:]))
-    ap.add_argument("what", choices=["textures"])
+    ap.add_argument("what", choices=["textures", "eclipse", "all"])
+    ap.add_argument("--iso")
     ap.add_argument("--keep-download", action="store_true")
     args = ap.parse_args()
     try:
-        if args.what == "textures":
+        if args.what in ("textures", "all"):
             get_textures(args.keep_download)
+        if args.what in ("eclipse", "all"):
+            get_eclipse(args.keep_download, args.iso)
     except Failure as e:
         sys.exit("error: %s" % e)
     except KeyboardInterrupt:

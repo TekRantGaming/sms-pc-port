@@ -1,0 +1,32 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE sun follows camera
+--- a/src/Camera/sunmodel.cpp
++++ b/src/Camera/sunmodel.cpp
+@@ -13,6 +13,9 @@
+ #include <JSystem/J3D/J3DGraphLoader/J3DModelLoader.hpp>
+ #include <JSystem/JKernel/JKRFileLoader.hpp>
+ #include <Map/MapStaticObject.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ #include <Camera/cameralib.hpp>
+ #include <Camera/CameraMarioData.hpp>
+ #include <Camera/Camera.hpp>
+@@ -319,7 +322,17 @@
+ void TSunModel::perform(u32 cue, JDrama::TGraphics*)
+ {
+ 	bool sunInBounds;
+-	if (gpCameraMario->isMarioIndoor()) {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (sunFollowCameraAndScaleLightness at retail
++	// 0x8002EB34, `bl isMarioIndoor`; reads r29 = this): r3 = gpCameraMario.
++	void* sms_mod_t_ = SMS_MOD_SITE(0x8002EB34);
++	if (sms_mod_t_ ? (SMS_MOD_GPR(29, this),
++	                  ((bool (*)(TCameraMarioData*))sms_mod_t_)(gpCameraMario))
++	               :
++#else
++	if (
++#endif
++	    gpCameraMario->isMarioIndoor()) {
+ 		sunInBounds = false;
+ 	} else {
+ 		f32 bounds = unk1A8;

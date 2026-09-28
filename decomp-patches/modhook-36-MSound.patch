@@ -1,0 +1,21 @@
+Reason: port: code-mod hooks (sms_modhook.h): voice variant test in MSound::startMarioVoice (Eclipse)
+--- a/src/MSound/MSound.cpp
++++ b/src/MSound/MSound.cpp
+@@ -1136,8 +1136,17 @@
+ 			param_1 = MSD_SE_MV41_JUMP_T_01;
+ 			break;
+ 		}
++#ifdef TARGET_PC
++		// Eclipse (word 0x60000000 at retail 0x80013C68, a nop over the
++		// branch taken after MSD_SE_MV13_ACTION_SMALL_01): the last voice no
++		// longer holds back the variant.
++		if ((SMS_MOD_WORD(0x80013C68, 0) == 0x60000000
++		     || unk94 != MSD_SE_MV13_ACTION_SMALL_01)
++		    && param_3 != 2 && JALCalc::getRandom_0_1() < 0.7f)
++#else
+ 		if (unk94 != MSD_SE_MV13_ACTION_SMALL_01 && param_3 != 2
+ 		    && JALCalc::getRandom_0_1() < 0.7f)
++#endif
+ 			param_1 = MSD_SE_MA_VO_JUMP_MID_0;
+ 		break;
+ 

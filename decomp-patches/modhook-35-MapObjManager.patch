@@ -1,0 +1,81 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE global surfing bloopers and map object texture fixes
+--- a/src/MoveBG/MapObjManager.cpp
++++ b/src/MoveBG/MapObjManager.cpp
+@@ -24,6 +24,9 @@
+ #include <JSystem/J3D/J3DGraphLoader/J3DModelLoader.hpp>
+ #include <JSystem/J3D/J3DGraphBase/J3DSys.hpp>
+ #include <stdio.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -107,15 +110,36 @@
+ 	unk80 = loadMatTable("/scene/mapObj/barrel.bmt");
+ 	unk84 = loadMatTable("/scene/mapObj/BrickBlock.bmt");
+ 	unk88 = loadMatTable("/scene/mapObj/WaterMelonBlock.bmt");
++#ifdef TARGET_PC
++	// BetterSunshineEngine (generic.cpp): the word at 0x801B7490 (a nop)
++	// loads bianco.bmt on every map.
++	unsigned int sms_mod_w_;
++	if (gpMarDirector->getCurrentMap() == 2 || sms_mod_word(0x801B7490, &sms_mod_w_))
++#else
+ 	if (gpMarDirector->getCurrentMap() == 2)
++#endif
+ 		unk8C = loadMatTable("/scene/mapObj/bianco.bmt");
+ 	unk90 = loadMatTable("/scene/mapObj/LeafBoat.bmt");
+ 	unk94 = loadMatTable("/scene/mapObj/riccoShip.bmt");
+ 
+-	if ((gpMarDirector->getCurrentMap() == 3
+-	     && (SMSGetMarDirector()->unk7D == 1
+-	         || SMSGetMarDirector()->unk7D == 5))
+-	    || gpMarDirector->getCurrentMap() == 0x1E) {
++#ifdef TARGET_PC
++	// BetterSunshineEngine (generic.cpp, surfing bloopers everywhere): the
++	// words at 0x801B74F8, 0x801B74FC, 0x801B7500, 0x801B7504, 0x801B7508
++	// and 0x801B750C (nops) drop the map test, and those at 0x801B7510
++	// (`addi r3, r30, 0x780`, the model's path), 0x801B7514
++	// (`bl JKRFileLoader::getGlbResource`), 0x801B7518 (`cmplwi r3, 0`) and
++	// 0x801B751C (`beq 0x801B75C0`) build the models whenever the scene
++	// archive has surfgeso.bmd.
++	if (sms_mod_word(0x801B751C, &sms_mod_w_)
++	        ? JKRFileLoader::getGlbResource("/scene/mapObj/surfgeso.bmd") != nullptr
++	        :
++#else
++	if (
++#endif
++	    ((gpMarDirector->getCurrentMap() == 3
++	      && (SMSGetMarDirector()->unk7D == 1
++	          || SMSGetMarDirector()->unk7D == 5))
++	     || gpMarDirector->getCurrentMap() == 0x1E)) {
+ 		mSurfGessoModelData = SMS_MakeSDLModelData(
+ 		    "/scene/mapObj/surfgeso.bmd", J3DMLF_MaterialPEFull
+ 		                                      | J3DMLF_UseUniqueMaterials
+@@ -136,6 +160,18 @@
+ 	unkC0 = loadMatTable("/scene/mapObj/SandBombBase.bmt");
+ 	unkC4 = loadMatTable("/scene/mapObj/mirror.bmt");
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (objectfix.cpp): the words at 0x801B760C,
++	// 0x801B7628, 0x801B7644 and 0x801B7660 (nops) drop these map tests.
++	if (gpMarDirector->getCurrentMap() == 4 || sms_mod_word(0x801B760C, &sms_mod_w_))
++		unkCC = (ResTIMG*)JKRGetResource("/scene/mapObj/mon_bri_rope.bti");
++	if (gpMarDirector->getCurrentMap() == 13 || sms_mod_word(0x801B7628, &sms_mod_w_))
++		unkCC = (ResTIMG*)JKRGetResource("/scene/mapObj/mon_bri_rope.bti");
++	if (gpMarDirector->getCurrentMap() == 9 || sms_mod_word(0x801B7644, &sms_mod_w_))
++		unkC8 = (ResTIMG*)JKRGetResource("/scene/mapObj/cogwheel_rope.bti");
++	if (gpMarDirector->getCurrentMap() == 8 || sms_mod_word(0x801B7660, &sms_mod_w_))
++		unkCC = (ResTIMG*)JKRGetResource("/scene/mapObj/mon_bri_rope.bti");
++#else
+ 	if (gpMarDirector->getCurrentMap() == 4)
+ 		unkCC = (ResTIMG*)JKRGetResource("/scene/mapObj/mon_bri_rope.bti");
+ 	if (gpMarDirector->getCurrentMap() == 13)
+@@ -144,6 +180,7 @@
+ 		unkC8 = (ResTIMG*)JKRGetResource("/scene/mapObj/cogwheel_rope.bti");
+ 	if (gpMarDirector->getCurrentMap() == 8)
+ 		unkCC = (ResTIMG*)JKRGetResource("/scene/mapObj/mon_bri_rope.bti");
++#endif
+ }
+ 
+ TMapObjManager::TMapObjManager(const char* name)

@@ -1,0 +1,623 @@
+Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in the shine select screen
+--- a/src/GC2D/SelectMenu.cpp
++++ b/src/GC2D/SelectMenu.cpp
+@@ -30,6 +30,56 @@
+ #include <System/MarioGamePad.hpp>
+ #include <System/SelectDir.hpp>
+ #include <GC2D/ShineTable.hpp>
++#ifdef TARGET_PC
++#include <new>
++#include <sms_modhook.h>
++
++// BetterSunshineEngine's shine select (bse/src/area.cpp). Its
++// doScenarioCountPatches (initData, retail 0x80174540) gives each area its
++// own scenario count: it moves mShineMarks (0xDC) and mShineUnlockStates
++// (0x150) of TSelectMenu, and TSelectShineManager::mShines (0x10), to heap
++// arrays whose pointers it keeps in their first word, and rewrites the
++// instructions that index them (`lwz r12, 0xDC(r31); lwzx r3, r12, r3` and
++// the like) to go through those pointers. Each access below names the
++// rewritten words and reads through the pointer once they are in place.
++static inline J2DPicture** SelectMenuMarks(TSelectMenu* menu, unsigned int addr)
++{
++	unsigned int w;
++	return sms_mod_word(addr, &w) ? *(J2DPicture***)menu->mShineMarks : menu->mShineMarks;
++}
++
++static inline u8* SelectMenuStates(TSelectMenu* menu, unsigned int addr)
++{
++	unsigned int w;
++	return sms_mod_word(addr, &w) ? *(u8**)menu->mShineUnlockStates : menu->mShineUnlockStates;
++}
++
++static inline TSelectShine** SelectMenuShines(TSelectShineManager* mgr, unsigned int addr)
++{
++	unsigned int w;
++	return sms_mod_word(addr, &w) ? *(TSelectShine***)mgr->mShines : mgr->mShines;
++}
++
++// This object's out-of-line copy of SMS_getShineID is replaced by the mod's
++// (SMS_PATCH_B at retail 0x80175AF8, its first instruction); the mod's
++// returns an s32 and every caller sign-extends the low half. Retail calls
++// the copy from selectPrev, selectNext and initData's SMS_isGetShine loop;
++// the call at the end of initData is inlined and keeps the original.
++static inline s16 SelectMenuShineID(u32 stage, u32 scenario, bool is_etc_shine)
++{
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80175AF8))
++		return (s16)((s32(*)(u32, u32, bool))sms_mod_t_)(stage, scenario, is_etc_shine);
++	return SMS_getShineID(stage, scenario, is_etc_shine);
++}
++
++// getScenarioNameForSelectScreen reads r31 = the menu and takes no
++// arguments; its result replaces SMSGetMessageData's.
++static inline const char* SelectMenuScenarioName(TSelectMenu* menu, void* fn)
++{
++	SMS_MOD_GPR(31, menu);
++	return ((const char* (*)())fn)();
++}
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -296,6 +346,22 @@
+ 	}
+ 
+ 	mMenuScreen      = new J2DSetScreen("scenario_select_1.blo", pArch);
++#ifdef TARGET_PC
++	// BetterSunshineEngine (doScenarioCountPatches at retail 0x80174540, in
++	// place of the `bl __nw` of this TExPane's 0x54 bytes; it reads r31 =
++	// this and returns the memory the pane is built in). It sets up the
++	// moved arrays and writes, at run time, the words at 0x80174E84,
++	// 0x80174E90, 0x80174E98, 0x80174ED0, 0x80174ED4, 0x80174ED8,
++	// 0x8017505C, 0x80175114, 0x801750A4, 0x801750B0, 0x8017515C,
++	// 0x80175168, 0x80175020, 0x80175094, 0x80175098, 0x8017514C,
++	// 0x80175150, 0x8017529C, 0x801752A0, 0x801752B4, 0x801752B8 (below)
++	// and those perform and the other select-screen functions read.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80174540)) {
++		SMS_MOD_GPR(31, this);
++		void* sms_mod_p_ = ((void* (*)())sms_mod_t_)();
++		mLetterBoxTop = sms_mod_p_ ? ::new (sms_mod_p_) TExPane(mMenuScreen, 'msk1') : nullptr;
++	} else
++#endif
+ 	mLetterBoxTop    = new TExPane(mMenuScreen, 'msk1');
+ 	mLetterBoxBottom = new TExPane(mMenuScreen, 'msk2');
+ 	mStageName       = (J2DTextBox*)mMenuScreen->search('map');
+@@ -393,7 +459,17 @@
+ 		s32 digit2 = numCoins % 10;
+ 		coinDigits[2]->changeTexture(mCoinNumTex[digit2]->getTexInfo(), 0);
+ 
+-		if (TFlagManager::getInstance()->getShineFlag(stages[mStage][0])) {
++#ifdef TARGET_PC
++		// BetterSunshineEngine (getShineFlagForSelectScreen1 at retail
++		// 0x80174B48, reads r31 = this); the words at 0x80174B40 and
++		// 0x80174B44 (nops) drop the loads of its old argument.
++		void* sms_mod_f_ = SMS_MOD_SITE(0x80174B48);
++		if (sms_mod_f_ ? (SMS_MOD_GPR(31, this), ((bool (*)())sms_mod_f_)())
++		               : TFlagManager::getInstance()->getShineFlag(stages[mStage][0]))
++#else
++		if (TFlagManager::getInstance()->getShineFlag(stages[mStage][0]))
++#endif
++		{
+ 			mMenuScreen->search('sc_s')->show();
+ 		}
+ 
+@@ -402,8 +478,21 @@
+ sharedShineSetup:
+ 	{
+ 		s8 count = 0;
++#ifdef TARGET_PC
++		// BetterSunshineEngine (getShineFlagForSelectScreen2 at retail
++		// 0x80174B94, reads r31 = this, r26 = i); the words at 0x80174B8C
++		// and 0x80174B90 (nops) drop the loads of its old argument.
++		void* sms_mod_f2_ = SMS_MOD_SITE(0x80174B94);
++#endif
+ 		for (s32 i = 1; i < 3; i++) {
+-			if (TFlagManager::getInstance()->getShineFlag(stages[mStage][i])) {
++#ifdef TARGET_PC
++			if (sms_mod_f2_ ? (SMS_MOD_GPR(31, this), SMS_MOD_GPR(26, i),
++			                   ((bool (*)())sms_mod_f2_)())
++			                : TFlagManager::getInstance()->getShineFlag(stages[mStage][i]))
++#else
++			if (TFlagManager::getInstance()->getShineFlag(stages[mStage][i]))
++#endif
++			{
+ 				count++;
+ 			}
+ 		}
+@@ -439,11 +528,49 @@
+ 
+ 		mMenuScreen->search('bi_0')->hide();
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (constructExPaneForSelectScreen at retail
++		// 0x80174D40, constructBoundPaneForSelectScreenA at 0x80174D88 and
++		// constructBoundPaneForSelectScreenB at 0x80174DD0, in place of the
++		// three constructors): r3 = the new memory, r4 = mMenuScreen; they
++		// read r31 = this and pick the pane ids themselves.
++		void* sms_mod_c_ = SMS_MOD_SITE(0x80174D40);
++		if (sms_mod_c_) {
++			void* sms_mod_p_ = ::operator new(sizeof(TExPane));
++			if (sms_mod_p_) {
++				SMS_MOD_GPR(31, this);
++				((TExPane* (*)(void*, J2DScreen*))sms_mod_c_)(sms_mod_p_, mMenuScreen);
++			}
++			mStageBannerPane = (TExPane*)sms_mod_p_;
++		} else
++#endif
+ 		mStageBannerPane = new TExPane(mMenuScreen, tags[mStage] * 0x100 + '0');
+ 		mStageBannerPane->getPane()->show();
++#ifdef TARGET_PC
++		sms_mod_c_ = SMS_MOD_SITE(0x80174D88);
++		if (sms_mod_c_) {
++			void* sms_mod_p_ = ::operator new(sizeof(TBoundPane));
++			if (sms_mod_p_) {
++				SMS_MOD_GPR(31, this);
++				((TBoundPane* (*)(void*, J2DScreen*))sms_mod_c_)(sms_mod_p_, mMenuScreen);
++			}
++			mStageBannerText = (TBoundPane*)sms_mod_p_;
++		} else
++#endif
+ 		mStageBannerText
+ 		    = new TBoundPane(mMenuScreen, tags[mStage] * 0x100 + 'a');
+ 		mStageBannerText->getPane()->show();
++#ifdef TARGET_PC
++		sms_mod_c_ = SMS_MOD_SITE(0x80174DD0);
++		if (sms_mod_c_) {
++			void* sms_mod_p_ = ::operator new(sizeof(TBoundPane));
++			if (sms_mod_p_) {
++				SMS_MOD_GPR(31, this);
++				((TBoundPane* (*)(void*, J2DScreen*))sms_mod_c_)(sms_mod_p_, mMenuScreen);
++			}
++			mStageBannerShadow = (TBoundPane*)sms_mod_p_;
++		} else
++#endif
+ 		mStageBannerShadow
+ 		    = new TBoundPane(mMenuScreen, tags[mStage] * 0x100 + 'b');
+ 		mStageBannerShadow->getPane()->show();
+@@ -457,6 +584,18 @@
+ 		// initData 91.5 -> 89.8).
+ 		mStageBmg = JKRGetResource("/common/2d/stagename.bmg");
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine: the words at 0x80174DFC, 0x80174E00,
++		// 0x80174E04, 0x80174E08, 0x80174E0C, 0x80174E10, 0x80174E14 and
++		// 0x80174E18 (nops) drop these stores and the one at 0x80174E1C
++		// (`b 0x80174E8C`) the loop after them; doScenarioCountPatches has
++		// filled the states and mNumUnlockedShines itself. The loop's bound
++		// is the `cmpwi` word at 0x80174E84, and the word at 0x80174E50
++		// masks the shine id to 16 bits for getShineFlag, whose parameter
++		// the port keeps a u8 (as TFlagManager's own hooks do).
++		unsigned int sms_mod_w_;
++		if (!sms_mod_word(0x80174DFC, &sms_mod_w_)) {
++#endif
+ 		mShineUnlockStates[0] = 2;
+ 		mShineUnlockStates[1] = 2;
+ 		mShineUnlockStates[2] = 2;
+@@ -465,19 +604,44 @@
+ 		mShineUnlockStates[5] = 2;
+ 		mShineUnlockStates[6] = 2;
+ 		mShineUnlockStates[7] = 2;
++#ifdef TARGET_PC
++		}
++#endif
+ 
+ 		// Check which shines are unlocked.
+-		for (s8 i = 0; i < 8; i++) {
++#ifdef TARGET_PC
++		if (!sms_mod_word(0x80174E1C, &sms_mod_w_))
++		for (s8 i = 0; i < (s16)SMS_MOD_WORD(0x80174E84, 0x2C000008); i++)
++#else
++		for (s8 i = 0; i < 8; i++)
++#endif
++		{
+ 			u32 stage = SMS_getShineStage(mStage);
+-			if (SMS_isGetShine(stage, i, false)) {
++#ifdef TARGET_PC
++			s16 sms_mod_id_;
++			if (SMS_MOD_SITE(0x80175AF8)
++			        ? ((sms_mod_id_ = SelectMenuShineID(stage, i, false)) != -1
++			           && TFlagManager::getInstance()->getShineFlag(sms_mod_id_))
++			        : SMS_isGetShine(stage, i, false))
++#else
++			if (SMS_isGetShine(stage, i, false))
++#endif
++			{
+ 				mShineUnlockStates[i] = 3;
+ 				mNumUnlockedShines    = i + 2;
+ 			}
+ 		}
+ 
++#ifdef TARGET_PC
++		// The clamp's `cmplwi` (0x80174E90) and `li` (0x80174E98) words.
++		if (mNumUnlockedShines > (u16)SMS_MOD_WORD(0x80174E90, 0x28000008)) {
++			mNumUnlockedShines = (s16)SMS_MOD_WORD(0x80174E98, 0x38000008);
++		}
++#else
+ 		if (mNumUnlockedShines > 8) {
+ 			mNumUnlockedShines = 8;
+ 		}
++#endif
+ 
+ 		if (mNumUnlockedShines == 0) {
+ 			mNumUnlockedShines = 1;
+@@ -489,9 +653,20 @@
+ 		}
+ 		mSelectedShine = lastShineIdx;
+ 
++#ifdef TARGET_PC
++		// The word at 0x80174ED8 (`b 0x80174F4C`) skips this loop (the mod
++		// cleared the rest itself); its bound is the `cmpwi`/`subfic` words
++		// at 0x80174ED0 and 0x80174ED4.
++		if (!sms_mod_word(0x80174ED8, &sms_mod_w_))
++		for (s32 i = mNumUnlockedShines;
++		     i < (s16)SMS_MOD_WORD(0x80174ED0, 0x2C050008); i++) {
++			mShineUnlockStates[i] = 0;
++		}
++#else
+ 		for (s32 i = mNumUnlockedShines; i < 8; i++) {
+ 			mShineUnlockStates[i] = 0;
+ 		}
++#endif
+ 
+ 		// Show arrows if we have more than one shine unlocked.
+ 		if (mNumUnlockedShines > 1) {
+@@ -511,6 +686,10 @@
+ 			}
+ 		}
+ 
++#ifdef TARGET_PC
++		// The word at 0x80175020 (a nop) keeps the moved array's pointer.
++		if (!sms_mod_word(0x80175020, &sms_mod_w_))
++#endif
+ 		mShineMarks[0] = nullptr;
+ 		mShineMarks[1] = nullptr;
+ 		mShineMarks[2] = nullptr;
+@@ -523,6 +702,55 @@
+ 		// This code displays the icons of the unlocked shines at the bottom of
+ 		// the screen. It handles even and odd numbers differently to centre
+ 		// them correctly.
++#ifdef TARGET_PC
++		// The loops' slot bases are the `subfic` words at 0x8017505C (odd)
++		// and 0x80175114 (even); their mShineMarks stores go through the
++		// pointer by the words at 0x80175094, 0x80175098 (odd) and
++		// 0x8017514C, 0x80175150 (even), their state reads by the words at
++		// 0x801750A4, 0x801750B0 (odd) and 0x8017515C, 0x80175168 (even).
++		s32 i = 0;
++		if ((mNumUnlockedShines & 1) == 1) {
++			// Odd number of shines.
++			J2DPicture** marks = SelectMenuMarks(this, 0x80175094);
++			u8* states         = SelectMenuStates(this, 0x801750A4);
++			s32 slot = ((s16)SMS_MOD_WORD(0x8017505C, 0x20030007) - mNumUnlockedShines) / 2;
++			s32 lastSlot = slot + mNumUnlockedShines - 1;
++
++			for (; slot <= lastSlot; slot++) {
++				marks[i] = (J2DPicture*)mMenuScreen->search('i_o0' + slot);
++				marks[i]->show();
++
++				if (states[i] == 2 || states[i] == 1) {
++					JUTTexture* mark = mShineUnlockedMark;
++					marks[i]->insert(mark, 0, 1.0f);
++					marks[i]->remove(1);
++				} else if (states[i] == 0) {
++					marks[i]->hide();
++				}
++				i++;
++			}
++		} else {
++			// Even number of shines.
++			J2DPicture** marks = SelectMenuMarks(this, 0x8017514C);
++			u8* states         = SelectMenuStates(this, 0x8017515C);
++			s32 slot = ((s16)SMS_MOD_WORD(0x80175114, 0x20030008) - mNumUnlockedShines) / 2;
++			s32 lastSlot = slot + mNumUnlockedShines - 1;
++
++			for (; slot <= lastSlot; slot++) {
++				marks[i] = (J2DPicture*)mMenuScreen->search('i_e0' + slot);
++				marks[i]->mVisible = true;
++
++				if (states[i] == 2 || states[i] == 1) {
++					JUTTexture* mark = mShineUnlockedMark;
++					marks[i]->insert(mark, 0, 1.0f);
++					marks[i]->remove(1);
++				} else if (states[i] == 0) {
++					marks[i]->hide();
++				}
++				i++;
++			}
++		}
++#else
+ 		s32 i = 0;
+ 		if ((mNumUnlockedShines & 1) == 1) {
+ 			// Odd number of shines.
+@@ -563,6 +791,7 @@
+ 				i++;
+ 			}
+ 		}
++#endif
+ 
+ 		mSelectedMarkCol
+ 		    = ((J2DPicture*)mMenuScreen->search('i_o0'))->getWhite();
+@@ -573,11 +802,23 @@
+ 		((J2DPicture*)mMenuScreen->search('i_o0'))->setWhite(mMarkCol);
+ 		((J2DPicture*)mMenuScreen->search('i_o0'))->setAlpha(mMarkAlpha);
+ 
++#ifdef TARGET_PC
++		// The words at 0x8017529C, 0x801752A0 and 0x801752B4, 0x801752B8.
++		SelectMenuMarks(this, 0x8017529C)[mSelectedShine]->setWhite(mSelectedMarkCol);
++		SelectMenuMarks(this, 0x801752B4)[mSelectedShine]->setAlpha(mSelectedMarkAlpha);
++#else
+ 		mShineMarks[mSelectedShine]->setWhite(mSelectedMarkCol);
+ 		mShineMarks[mSelectedShine]->setAlpha(mSelectedMarkAlpha);
++#endif
+ 
+ 		mScenarioImg1->changeTexture(
+ 		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
++#ifdef TARGET_PC
++		// BetterSunshineEngine: with initMultiDigitEpisodeIndexToUI at
++		// retail 0x801752D8 (the call above), the word at 0x801752DC
++		// (`b 0x801752FC`) skips this one.
++		if (!sms_mod_word(0x801752DC, &sms_mod_w_))
++#endif
+ 		mScenarioShadow1->changeTexture(
+ 		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
+ 
+@@ -607,6 +848,10 @@
+ 	mSelectShineMgr->mShines[mSelectedShine]->mSpinning = true;
+ }
+ 
++#ifdef TARGET_PC
++// selectPrev and selectNext call this object's SMS_getShineID copy.
++#define SMS_getShineID SelectMenuShineID
++#endif
+ inline void TSelectMenu::selectPrev()
+ {
+ 	if (getPrevIndex() != -1) {
+@@ -628,16 +873,41 @@
+ 		mScenarioPane1->setPaneOffset(10, mScenarioPaneDist, 0, 0,
+ 		                              0);
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (applyMultiDigitEpisodeIndexToUI at retail
++		// 0x80173904, in place of this first changeTexture; it reads
++		// r31 = this, r23 = prevIndex), and the word at 0x80173908
++		// (`b 0x8017395C`) that skips the other three.
++		unsigned int sms_mod_w_;
++		void* sms_mod_t_ = SMS_MOD_SITE(0x80173904);
++		if (sms_mod_t_) {
++			SMS_MOD_GPR(31, this);
++			SMS_MOD_GPR(23, prevIndex);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		mScenarioImg2->changeTexture(
+ 		    mScenarioTex[prevIndex]->getTexInfo(), 0);
++#ifdef TARGET_PC
++		if (!(sms_mod_t_ && sms_mod_word(0x80173908, &sms_mod_w_))) {
++#endif
+ 		mScenarioShadow2->changeTexture(
+ 		    mScenarioTex[prevIndex]->getTexInfo(), 0);
+ 		mScenarioImg1->changeTexture(
+ 		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
+ 		mScenarioShadow1->changeTexture(
+ 		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
++#ifdef TARGET_PC
++		}
++		// BetterSunshineEngine (getScenarioNameForSelectScreen at retail
++		// 0x8017398C, in place of SMSGetMessageData).
++		void* sms_mod_n_ = SMS_MOD_SITE(0x8017398C);
++#endif
+ 
+ 		strncpy(mScenarioText1->getStringPtr(),
++#ifdef TARGET_PC
++		        sms_mod_n_ ? SelectMenuScenarioName(this, sms_mod_n_) :
++#endif
+ 		        SMSGetMessageData(
+ 		            mScenarioBmg2,
+ 		            (u16)SMS_getNormalStage(SMS_getShineID(
+@@ -645,15 +915,32 @@
+ 		                false))),
+ 		        127);
+ 
++#ifdef TARGET_PC
++		// The words at 0x801739B4, 0x801739B8 and 0x801739CC, 0x801739D0
++		// (mShineMarks) and 0x801739E4, 0x801739E8 (the manager's mShines).
++		SelectMenuMarks(this, 0x801739B4)[mSelectedShine]->mWhite = mMarkCol;
++		SelectMenuMarks(this, 0x801739CC)[mSelectedShine]->setAlpha(mMarkAlpha);
++
++		SelectMenuShines(mSelectShineMgr, 0x801739E4)[mSelectedShine]->mSpinning
++		    = false;
++#else
+ 		mShineMarks[mSelectedShine]->mWhite = mMarkCol;
+ 		mShineMarks[mSelectedShine]->setAlpha(mMarkAlpha);
+ 
+ 		mSelectShineMgr->mShines[mSelectedShine]->mSpinning
+ 		    = false;
++#endif
+ 
+ 		mSelectedShine = prevIndex;
+ 
++#ifdef TARGET_PC
++		// getScenarioNameForSelectScreen at retail 0x80173A24.
++		sms_mod_n_ = SMS_MOD_SITE(0x80173A24);
++#endif
+ 		strncpy(mScenarioText2->getStringPtr(),
++#ifdef TARGET_PC
++		        sms_mod_n_ ? SelectMenuScenarioName(this, sms_mod_n_) :
++#endif
+ 		        SMSGetMessageData(
+ 		            mScenarioBmg2,
+ 		            (u16)SMS_getNormalStage(SMS_getShineID(
+@@ -661,11 +948,21 @@
+ 		                false))),
+ 		        127);
+ 
++#ifdef TARGET_PC
++		// The words at 0x80173A4C, 0x80173A50 and 0x80173A64, 0x80173A68
++		// (mShineMarks) and 0x80173A7C, 0x80173A80 (the manager's mShines).
++		SelectMenuMarks(this, 0x80173A4C)[mSelectedShine]->mWhite = mSelectedMarkCol;
++		SelectMenuMarks(this, 0x80173A64)[mSelectedShine]->setAlpha(mSelectedMarkAlpha);
++
++		SelectMenuShines(mSelectShineMgr, 0x80173A7C)[mSelectedShine]->mSpinning
++		    = true;
++#else
+ 		mShineMarks[mSelectedShine]->mWhite = mSelectedMarkCol;
+ 		mShineMarks[mSelectedShine]->setAlpha(mSelectedMarkAlpha);
+ 
+ 		mSelectShineMgr->mShines[mSelectedShine]->mSpinning
+ 		    = true;
++#endif
+ 
+ 		if (mNumUnlockedShines > 1) {
+ 			if ((mSelectedShine != 0) && !mArrowL->isVisible()) {
+@@ -702,41 +999,101 @@
+ 		mScenarioPane1->setPaneOffset(10, -mScenarioPaneDist, 0, 0,
+ 		                              0);
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (applyMultiDigitEpisodeIndexToUI at retail
++		// 0x80173C90, in place of this first changeTexture; it reads
++		// r31 = this, r23 = nextIndex), and the word at 0x80173C94
++		// (`b 0x80173CE8`) that skips the other three.
++		unsigned int sms_mod_w_;
++		void* sms_mod_t_ = SMS_MOD_SITE(0x80173C90);
++		if (sms_mod_t_) {
++			SMS_MOD_GPR(31, this);
++			SMS_MOD_GPR(23, nextIndex);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		mScenarioImg2->changeTexture(
+ 		    mScenarioTex[nextIndex]->getTexInfo(), 0);
++#ifdef TARGET_PC
++		if (!(sms_mod_t_ && sms_mod_word(0x80173C94, &sms_mod_w_))) {
++#endif
+ 		mScenarioShadow2->changeTexture(
+ 		    mScenarioTex[nextIndex]->getTexInfo(), 0);
+ 		mScenarioImg1->changeTexture(
+ 		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
+ 		mScenarioShadow1->changeTexture(
+ 		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
++#ifdef TARGET_PC
++		}
++#endif
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (getScenarioNameForSelectScreen at retail
++		// 0x80173D18, in place of SMSGetMessageData).
++		void* sms_mod_n_ = SMS_MOD_SITE(0x80173D18);
++		const char* scenarioName;
++		if (sms_mod_n_) {
++			scenarioName = SelectMenuScenarioName(this, sms_mod_n_);
++		} else {
++#endif
+ 		s16 shineID = SMS_getShineID(SMS_getShineStage(mStage),
+ 		                             mSelectedShine, false);
++#ifdef TARGET_PC
++		scenarioName = SMSGetMessageData(
++		    mScenarioBmg2, (u16)SMS_getNormalStage(shineID));
++		}
++#else
+ 		const char* scenarioName = SMSGetMessageData(
+ 		    mScenarioBmg2, (u16)SMS_getNormalStage(shineID));
++#endif
+ 
+ 		strncpy(mScenarioText1->getStringPtr(), scenarioName, 127);
+ 
++#ifdef TARGET_PC
++		// The words at 0x80173D40, 0x80173D44 (the manager's mShines) and
++		// 0x80173D58, 0x80173D5C and 0x80173D70, 0x80173D74 (mShineMarks).
++		SelectMenuShines(mSelectShineMgr, 0x80173D40)[mSelectedShine]->mSpinning
++		    = false;
++		SelectMenuMarks(this, 0x80173D58)[mSelectedShine]->mWhite = mMarkCol;
++		SelectMenuMarks(this, 0x80173D70)[mSelectedShine]->setAlpha(mMarkAlpha);
++#else
+ 		mSelectShineMgr->mShines[mSelectedShine]->mSpinning
+ 		    = false;
+ 		mShineMarks[mSelectedShine]->mWhite = mMarkCol;
+ 		mShineMarks[mSelectedShine]->setAlpha(mMarkAlpha);
++#endif
+ 
+ 		mSelectedShine = nextIndex;
+ 
++#ifdef TARGET_PC
++		// getScenarioNameForSelectScreen at retail 0x80173DB0.
++		sms_mod_n_ = SMS_MOD_SITE(0x80173DB0);
++#endif
+ 		strncpy(mScenarioText2->getStringPtr(),
++#ifdef TARGET_PC
++		        sms_mod_n_ ? SelectMenuScenarioName(this, sms_mod_n_) :
++#endif
+ 		        SMSGetMessageData(mScenarioBmg2,
+ 		                          (u16)SMS_getNormalStage(SMS_getShineID(
+ 		                              SMS_getShineStage(mStage),
+ 		                              mSelectedShine, false))),
+ 		        127);
+ 
++#ifdef TARGET_PC
++		// The words at 0x80173DD8, 0x80173DDC (the manager's mShines) and
++		// 0x80173DF0, 0x80173DF4 and 0x80173E08, 0x80173E0C (mShineMarks).
++		SelectMenuShines(mSelectShineMgr, 0x80173DD8)[mSelectedShine]->mSpinning
++		    = true;
++
++		SelectMenuMarks(this, 0x80173DF0)[mSelectedShine]->mWhite = mSelectedMarkCol;
++		SelectMenuMarks(this, 0x80173E08)[mSelectedShine]->setAlpha(mSelectedMarkAlpha);
++#else
+ 		mSelectShineMgr->mShines[mSelectedShine]->mSpinning
+ 		    = true;
+ 
+ 		mShineMarks[mSelectedShine]->mWhite = mSelectedMarkCol;
+ 		mShineMarks[mSelectedShine]->setAlpha(mSelectedMarkAlpha);
++#endif
+ 
+ 		if (mNumUnlockedShines > 1) {
+ 			if ((mSelectedShine != (mNumUnlockedShines - 1))
+@@ -751,6 +1108,9 @@
+ 		mMenuState = MENU_ANIM_LOOP;
+ 	}
+ }
++#ifdef TARGET_PC
++#undef SMS_getShineID
++#endif
+ 
+ // The letterbox fade sits two inline levels below perform: retail calls
+ // TColor::set out of line from here, i.e. the TColor constructor is at depth 3.
+@@ -1053,7 +1413,14 @@
+ 
+ 				JGeometry::TVec3<f32> emitterPos(300.0f, 244.0f, 0.0f);
+ 				JPAEmitterManager* emitter = mSelectDir->unk34;
+-				if (mShineUnlockStates[mSelectedShine] == 3) {
++#ifdef TARGET_PC
++				// The words at 0x801736A8, 0x801736B0, 0x801736B4 read
++				// mShineUnlockStates through its pointer.
++				if (SelectMenuStates(this, 0x801736B0)[mSelectedShine] == 3)
++#else
++				if (mShineUnlockStates[mSelectedShine] == 3)
++#endif
++				{
+ 					emitter->createEmitter(emitterPos, 5, nullptr, nullptr);
+ 				} else {
+ 					emitter->createEmitter(emitterPos, 4, nullptr, nullptr);
+@@ -1085,7 +1452,13 @@
+ 					mMenuState = MENU_INPUT_LOOP;
+ 				}
+ 			}
++#ifdef TARGET_PC
++			// The words at 0x801740B4, 0x801740B8 (and 0x80174108,
++			// 0x8017410C below) read mShineMarks through its pointer.
++			s32 alpha = SelectMenuMarks(this, 0x801740B4)[mSelectedShine]->getAlpha();
++#else
+ 			s32 alpha = mShineMarks[mSelectedShine]->getAlpha();
++#endif
+ 			if (mMarkPulseDir) {
+ 				u8 alphaRef = mSelectedMarkAlpha;
+ 				alpha       = alpha + 6;
+@@ -1100,7 +1473,11 @@
+ 					alpha         = 64;
+ 				}
+ 			}
++#ifdef TARGET_PC
++			SelectMenuMarks(this, 0x80174108)[mSelectedShine]->setAlpha(alpha);
++#else
+ 			mShineMarks[mSelectedShine]->setAlpha(alpha);
++#endif
+ 
+ 		} break;
+ 		case DISAPPEAR_MENU: {

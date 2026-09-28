@@ -1,0 +1,44 @@
+Reason: port: code-mod hooks (sms_modhook.h): NPC talk radius and throw scaling (BetterSunshineEngine, Eclipse)
+--- a/src/NPC/NpcChange.cpp
++++ b/src/NPC/NpcChange.cpp
+@@ -21,6 +21,9 @@
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ bool TBaseNPC::isNerveWalk() const
+ {
+@@ -236,6 +239,15 @@
+ 
+ 	onLiveFlag(LIVE_FLAG_UNK10000000);
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (scaleNPCThrow, retail 0x80214650 in place of the
++	// CLBPalFrame call): the mod (this in r31) scales the throw velocity and
++	// returns the frame count itself.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80214650)) {
++		SMS_MOD_GPR(31, this);
++		unk1DC = ((u32(*)())sms_mod_t_)();
++	} else
++#endif
+ 	unk1DC = CLBPalFrame(15l);
+ 	unk158 = nullptr;
+ 	if (mActorType == 0x4000018) {
+@@ -520,6 +532,14 @@
+ 						} else {
+ 							fVar2 = mPtrSaveNormal->mTalkAcceptDist.get();
+ 						}
++#ifdef TARGET_PC
++						// BetterSunshineEngine and Eclipse (scaleNPCTalkRadius,
++						// both at retail 0x80213314, ahead of the height load):
++						// the talk distance (f30) scales with Mario's
++						// mScaling.z (gpMarioAddress + 0x2C).
++						if (SMS_MOD_SITE(0x80213314))
++							fVar2 *= ((JDrama::TActor*)gpMarioAddress)->mScaling.z;
++#endif
+ 						fVar1 = mPtrSaveNormal->mTalkAcceptHeight.get();
+ 					}
+ 

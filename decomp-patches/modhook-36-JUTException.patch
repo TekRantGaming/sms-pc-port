@@ -1,0 +1,28 @@
+Reason: port: code-mod hooks (sms_modhook.h): GPR page of JUTException::printContext (BetterSunshineEngine)
+--- a/src/JSystem/JUtility/JUTException.cpp
++++ b/src/JSystem/JUtility/JUTException.cpp
+@@ -10,6 +10,9 @@
+ #include <dolphin/vi.h>
+ #include <dolphin/base/PPCArch.h>
+ #include <macros.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ struct CallbackObject {
+ 	/* 0x00 */ OSErrorHandler callback;
+@@ -479,7 +482,14 @@
+ 		JUTConsoleManager::getManager()->drawDirect(true);
+ 		waitTime(mPrintWaitTime0);
+ 
++#ifdef TARGET_PC
++		// BetterSunshineEngine (word 0x60000000 at retail 0x802C7638, a nop
++		// over the JUT_PRINT_GPR branch): the GPR page is always shown.
++		if (SMS_MOD_WORD(0x802C7638, 0) == 0x60000000
++		    || (mPrintFlags & JUT_PRINT_GPR) != 0) {
++#else
+ 		if ((mPrintFlags & JUT_PRINT_GPR) != 0) {
++#endif
+ 			printDebugInfo(EINFO_PAGE_GPR, error, context, dsisr, dar);
+ 			JUTConsoleManager::getManager()->drawDirect(true);
+ 			waitTime(mPrintWaitTime0);

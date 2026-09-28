@@ -1,0 +1,32 @@
+Reason: port: code-mod hooks (sms_modhook.h): 16-bit shine id in TWaterHitPictureHideObj::loadAfter (BetterSunshineEngine)
+--- a/src/MoveBG/MapObjHide.cpp
++++ b/src/MoveBG/MapObjHide.cpp
+@@ -29,6 +29,9 @@
+ #include <MSound/MSoundBGM.hpp>
+ #include <M3DUtil/InfectiousStrings.hpp>
+ #include <Map/MapCollisionManager.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ void THideObjBase::appearObj(f32 y_offset)
+ {
+@@ -497,8 +500,18 @@
+ 			mHiddenObj->offMapObjFlag(MAP_OBJ_FLAG_UNK10000000);
+ 
+ 		if (mHiddenObj->isActorType(0x20000013)) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine (word 0x5404043E at retail 0x801FF850,
++			// `clrlwi r4, r0, 16`): the shine id is masked to 16 bits instead
++			// of 8. The port's getShineFlag still takes a u8, so ids above
++			// 0xFF cannot reach it.
++			bool isShineCollected = TFlagManager::smInstance->getShineFlag(
++			    SMS_MOD_WORD(0x801FF850, 0) == 0x5404043E ? mHiddenObj->mEventId & 0xFFFF
++			                                              : mHiddenObj->mEventId & 0xFF);
++#else
+ 			bool isShineCollected
+ 			    = TFlagManager::smInstance->getShineFlag(mHiddenObj->mEventId);
++#endif
+ 			if (isShineCollected) {
+ 				if (mReverse)
+ 					mProgress = mMinProgress;

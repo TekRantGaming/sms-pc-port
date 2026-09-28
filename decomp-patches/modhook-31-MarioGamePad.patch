@@ -1,0 +1,29 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarioGamePad::updateMeaning debug input filter
+--- a/src/System/MarioGamePad.cpp
++++ b/src/System/MarioGamePad.cpp
+@@ -1,5 +1,8 @@
+ #include <System/MarioGamePad.hpp>
+ #include <System/Application.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ JDrama::TFlagT<u16> TMarioGamePad::mResetFlag;
+ 
+@@ -173,6 +176,16 @@
+ 	}
+ 
+ finalize:
++#ifdef TARGET_PC
++	// BetterSunshineEngine (checkShouldUpdateMeaning, retail 0x802A8948,
++	// over the mMeaning load; the words at 0x802A894C, 0x802A8950 mask and
++	// store its result instead, `andc r3, r3, r31`, `stw r3, 0xd4(r30)`):
++	// the mod reads the pad from r30 and may clear mMeaning first.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A8948)) {
++		SMS_MOD_GPR(30, this);
++		mEnabledFrameMeaning = ((u32(*)())sms_mod_t_)() & ~prevMeaning;
++	} else
++#endif
+ 	mEnabledFrameMeaning  = mMeaning & ~prevMeaning;
+ 	mDisabledFrameMeaning = prevMeaning & ~mMeaning;
+ }

@@ -1,0 +1,37 @@
+Reason: port: code mods (Super Mario Eclipse) start at the end of TApplication::initialize, once the game's heaps, DVD and GX are up and before the boot thread; arcBufMario is exported under its retail name for them
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -64,6 +64,10 @@
+ static int sGameInit;
+ static void* arcBufNLogo;
+ static void* arcBufMario;
++#ifdef TARGET_PC
++// Code mods (sms_mod/modhooks.h) name this by its retail map name.
++extern void* portExport_arcBufMario __asm__("arcBufMario") __attribute__((alias("_ZL11arcBufMario")));
++#endif
+ static void* arcBufCmn;
+ static void* bufStageArcBin;
+ static void* spGameHeapBlock;
+@@ -71,6 +75,9 @@
+ TARAMBlock gArBkConsole;
+ TARAMBlock gArBkGuide;
+ 
++#ifdef TARGET_PC
++extern "C" void sms_mod_start(void);
++#endif
+ extern "C" void ReInitializeGX();
+ 
+ f32 SMSGetVSyncTimesPerSec()
+@@ -265,6 +272,12 @@
+ 	srand(OSGetTick());
+ 	gpSetupThreadStack = new (0x20) u8[0x10000];
+ 
++#ifdef TARGET_PC
++	// Code mods start here, with the game's heaps, DVD and GX up and before
++	// the boot thread runs (on the GameCube, Kuribo loads them during boot).
++	sms_mod_start();
++#endif
++
+ 	mAppState = APP_STATE_BOOT;
+ 
+ 	mHeap->becomeCurrentHeap();

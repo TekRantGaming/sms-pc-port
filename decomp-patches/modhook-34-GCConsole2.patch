@@ -1,0 +1,269 @@
+Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, water tank, balloons and camera-demo checks rewritten by BetterSunshineEngine and Eclipse
+--- a/src/GC2D/GCConsole2.cpp
++++ b/src/GC2D/GCConsole2.cpp
+@@ -38,6 +38,32 @@
+ #include <dolphin/mtx.h>
+ #include <stdio.h>
+ #include <string.h>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// A camera's isDemoCamera() with its isSimpleDemoCamera() call redirected to
++// a mod's function t (Eclipse's spoofCameraDemoForUI).
++static inline bool sms_mod_isDemoCamera_(void* t, CPolarSubCamera* camera)
++{
++	return ((bool (*)(CPolarSubCamera*))t)(camera) || camera->isBckDemoCamera() ? true
++	                                                                            : false;
++}
++
++// What a D-form `addi`/`addis`/`ori`/`oris` word w computes from src (the
++// value of its source register; rA = 0 reads 0 for addi/addis).
++static inline u32 sms_mod_dform_(u32 w, u32 src)
++{
++	u32 op = w >> 26, imm = w & 0xFFFF;
++	u32 base = ((w >> 16) & 31) ? src : 0;
++	switch (op) {
++	case 14: return base + (u32)(s32)(s16)imm;
++	case 15: return base + (imm << 16);
++	case 24: return src | imm;
++	case 25: return src | (imm << 16);
++	}
++	return src;
++}
++#endif
+ 
+ extern JPAEmitterManager* gpEmitterManager4D2;
+ 
+@@ -497,7 +523,15 @@
+ 			console->unk18 = 5;
+ 			console->unk38 = 0;
+ 		}
++#ifdef TARGET_PC
++		// BetterSunshineEngine writes a nop over the `bne` at 0x801410E4
++		// (inlined into perform) that skips this while Mario is under water.
++		if ((!gpMarioOriginal->isUnderWater()
++		     || SMS_MOD_WORD(0x801410E4, 0) == 0x60000000)
++		    && console->unk84 == 0)
++#else
+ 		if (!gpMarioOriginal->isUnderWater() && console->unk84 == 0)
++#endif
+ 			console->unk84 = 1;
+ 		if (!(amount >= 8 && console->unk84 == 0) && console->unk84 < 1000)
+ 			++console->unk84;
+@@ -1294,7 +1328,21 @@
+ 	// The ROM reads gpMarioOriginal->mFlag directly and tests 0x8000, not
+ 	// the 0x10000 bit through the SMS_CheckMarioFlag wrapper: the tank only
+ 	// comes up once Mario actually has FLUDD.
++#ifdef TARGET_PC
++	// BetterSunshineEngine (hasWaterCardOpen, retail 0x8014206C in perform,
++	// reading r31 = console, with `cmpwi r3, 0x0` written at 0x80142070): the
++	// mod's result replaces the unk46 test.
++	bool sms_mod_open_;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8014206C)) {
++		SMS_MOD_GPR(31, console);
++		sms_mod_open_ = ((bool (*)())sms_mod_t_)();
++	} else {
++		sms_mod_open_ = console->unk46;
++	}
++	if (!sms_mod_open_ && gpMarioOriginal->checkFlag(MARIO_FLAG_HAS_FLUDD)
++#else
+ 	if (!console->unk46 && gpMarioOriginal->checkFlag(MARIO_FLAG_HAS_FLUDD)
++#endif
+ 	    && !console->unk45 && !console->unk50)
+ 		console->startAppearTank();
+ }
+@@ -1979,6 +2027,15 @@
+ 	unk168 = TFlagManager::smInstance->getFlag(0x40001);
+ 
+ 	int spentBlueCoins = 0;
++#ifdef TARGET_PC
++	// Eclipse (countBlueCoinShines, retail 0x8014DF4C, its result moved into
++	// the count by the `mr r23, r3` at 0x8014DF50, and a `b` at 0x8014DF54 to
++	// 0x8014DFA0 past both loops) counts the spent blue coins itself.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8014DF4C)) {
++		spentBlueCoins = ((size_t (*)())sms_mod_t_)();
++		goto sms_mod_counted_;
++	}
++#endif
+ 	for (int flag = 0x46; flag < 0x56; ++flag)
+ 		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 			++spentBlueCoins;
+@@ -1986,6 +2043,9 @@
+ 	for (int flag = 0x6C; flag <= 0x73; ++flag)
+ 		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 			++spentBlueCoins;
++#ifdef TARGET_PC
++sms_mod_counted_:
++#endif
+ 
+ 	int blueCoinValue = unk168;
+ 	blueCoinValue -= spentBlueCoins * 10;
+@@ -2686,7 +2746,21 @@
+ 	for (int i = 0; i < 4; ++i)
+ 		unk414[i]->getPane()->hide();
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (ensureJetBalloonAdjustOpen, retail 0x8014AC0C,
++	// reading r30 = this; `cmpwi r3, 0x0` written at 0x8014AC14): its result
++	// replaces the unk404 != unk408 test.
++	bool sms_mod_ne_;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8014AC0C)) {
++		SMS_MOD_GPR(30, this);
++		sms_mod_ne_ = ((bool (*)())sms_mod_t_)();
++	} else {
++		sms_mod_ne_ = unk404 != unk408;
++	}
++	if (!sms_mod_ne_)
++#else
+ 	if (unk404 == unk408)
++#endif
+ 		unk3FC->setPaneOffset(80, 0, 0, 0, 465 - unk3FC->mInitialBounds.y1);
+ 	else
+ 		unk3FC->setPaneOffset(80, 0, -73, 0, 465 - unk3FC->mInitialBounds.y1);
+@@ -2792,8 +2866,20 @@
+ 	JMSMesgEntry* entry
+ 	    = unk3D0->getMessageEntry(messageID & 0xffff);
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (shouldRenderTalkBalloon, retail 0x8014A21C, given
++	// the entry and reading r28 = this; `cmpwi r3, 0x0` at 0x8014A220 and
++	// `bne` at 0x8014A224): the balloon opens only when the mod says so.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8014A21C)) {
++		SMS_MOD_GPR(28, this);
++		if (!((bool (*)(JMSMesgEntry*))sms_mod_t_)(entry))
++			return false;
++	} else if (entry->unk4 <= unk3F0)
++		return false;
++#else
+ 	if (entry->unk4 <= unk3F0)
+ 		return false;
++#endif
+ 
+ 	if (unk10 != 0) {
+ 		if (unk3F4 == 0xffffffff) {
+@@ -2974,8 +3060,19 @@
+ 
+ 	TWaterGun* waterGun = gpMarioOriginal->mWaterGun;
+ 	JUTRect bounds(((J2DPicture*)unk26C->getPane())->mBounds);
++#ifdef TARGET_PC
++	// Eclipse recolours the tank's water: it rewrites the `lis r30, 0x1` at
++	// 0x801494C0 and the `subi r0, r30, ...` making each colour at 0x801494C4
++	// and 0x801494E0.
++	u32 sms_mod_r30_ = sms_mod_dform_(SMS_MOD_WORD(0x801494C0, 0x3FC00001), 0);
++	GXSetTevColor(GX_TEVREG0, JUtility::TColor(sms_mod_dform_(
++	                              SMS_MOD_WORD(0x801494C4, 0x381EFF78), sms_mod_r30_)));
++	GXSetTevColor(GX_TEVREG1, JUtility::TColor(sms_mod_dform_(
++	                              SMS_MOD_WORD(0x801494E0, 0x381EFF00), sms_mod_r30_)));
++#else
+ 	GXSetTevColor(GX_TEVREG0, JUtility::TColor(0x0000ff78));
+ 	GXSetTevColor(GX_TEVREG1, JUtility::TColor(0x0000ff00));
++#endif
+ 
+ 	if (waterGun->isPressureOn()) {
+ 		f32 pressure    = waterGun->getPressure();
+@@ -3531,6 +3628,15 @@
+ 	if (unk8A != 0) {
+ 		if (unk8A > 0xFB) {
+ 			int spentBlueCoins = 0;
++#ifdef TARGET_PC
++			// Eclipse (accumulateBlueCoinShinesForCalc, retail 0x80147A80,
++			// with the words it writes at 0x80147A84 (`mr r29, r3`) and
++			// 0x80147A88 (a `b` to 0x80147AD4 past both loops)).
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80147A80)) {
++				spentBlueCoins = ((size_t (*)())sms_mod_t_)();
++				goto sms_mod_counted_;
++			}
++#endif
+ 			for (int flag = 0x46; flag < 0x56; ++flag)
+ 				if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 					++spentBlueCoins;
+@@ -3538,6 +3644,9 @@
+ 			for (int flag = 0x6C; flag <= 0x73; ++flag)
+ 				if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 					++spentBlueCoins;
++#ifdef TARGET_PC
++		sms_mod_counted_:
++#endif
+ 
+ 			if (unk170 != blueTotal - spentBlueCoins * 10) {
+ 				--unk170;
+@@ -3632,6 +3741,15 @@
+ 		++unk168;
+ 
+ 		int spentBlueCoins = 0;
++#ifdef TARGET_PC
++		// Eclipse (countBlueCoinShines, retail 0x801475C8, its result moved
++		// into the count by the `mr r28, r3` at 0x801475CC, and a `b` at
++		// 0x801475D0 to 0x8014761C past both loops).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x801475C8)) {
++			spentBlueCoins = ((size_t (*)())sms_mod_t_)();
++			goto sms_mod_counted_;
++		}
++#endif
+ 		for (int flag = 0x46; flag < 0x56; ++flag)
+ 			if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 				++spentBlueCoins;
+@@ -3639,6 +3757,9 @@
+ 		for (int flag = 0x6C; flag < 0x74; ++flag)
+ 			if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 				++spentBlueCoins;
++#ifdef TARGET_PC
++	sms_mod_counted_:
++#endif
+ 
+ 		int blueCoins = unk168;
+ 		blueCoins -= spentBlueCoins * 10;
+@@ -3791,6 +3912,15 @@
+ 	TFlagManager::smInstance->getFlag(0x40001);
+ 
+ 	int blueCoins = 0;
++#ifdef TARGET_PC
++	// Eclipse (countBlueCoinShines, retail 0x80146BFC, its result moved into
++	// the count by the `mr r25, r3` at 0x80146C00, and a `b` at 0x80146C04 to
++	// 0x80146C50 past both loops).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80146BFC)) {
++		blueCoins = ((size_t (*)())sms_mod_t_)();
++		goto sms_mod_counted_;
++	}
++#endif
+ 	for (int flag = 0x46; flag < 0x56; ++flag)
+ 		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 			++blueCoins;
+@@ -3798,6 +3928,9 @@
+ 	for (int flag = 0x6C; flag <= 0x73; ++flag)
+ 		if (TFlagManager::smInstance->getFlag(0x10000 + flag) != 0)
+ 			++blueCoins;
++#ifdef TARGET_PC
++sms_mod_counted_:
++#endif
+ 
+ 	// TODO: retail computes this straight into the flag counter's register
+ 	// (`subf. r25`); the countBlueCoin/loadAfter `-=` spelling and reusing
+@@ -4610,10 +4743,27 @@
+ {
+ 	if (flags & 1) {
+ 		if (!unk50) {
++#ifdef TARGET_PC
++			// Eclipse (spoofCameraDemoForUI) redirects isDemoCamera's
++			// isSimpleDemoCamera call at retail 0x8014087C.
++			void* sms_mod_t_ = SMS_MOD_SITE(0x8014087C);
++			if ((sms_mod_t_ ? sms_mod_isDemoCamera_(sms_mod_t_, gpCamera)
++			                : gpCamera->isDemoCamera())
++			    || SMS_CheckMarioFlag(0x400)
++#else
+ 			if (gpCamera->isDemoCamera() || SMS_CheckMarioFlag(0x400)
++#endif
+ 			    || (!mAppearFromDemo && TFlagManager::smInstance->getBool(0x30002)))
+ 				startCameraDemo();
++#ifdef TARGET_PC
++			// Eclipse (spoofCameraDemoForUI) at retail 0x80140928, as above.
++		} else if (!(SMS_MOD_SITE(0x80140928)
++		                 ? sms_mod_isDemoCamera_(SMS_MOD_SITE(0x80140928), gpCamera)
++		                 : gpCamera->isDemoCamera())
++		           && !SMS_CheckMarioFlag(0x400)) {
++#else
+ 		} else if (!gpCamera->isDemoCamera() && !SMS_CheckMarioFlag(0x400)) {
++#endif
+ 			endCameraDemo();
+ 		}
+ 

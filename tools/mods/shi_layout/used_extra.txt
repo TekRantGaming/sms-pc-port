@@ -1,0 +1,5 @@
+# Members the mods use unqualified inside their own subclasses (Class.member):
+# the renaming pass of used_members.py cannot attribute these.
+TBPTornado._94
+TBPTornado._98
+TMapObjBall._C0

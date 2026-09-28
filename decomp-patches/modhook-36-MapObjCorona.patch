@@ -1,0 +1,33 @@
+Reason: port: code-mod hooks (sms_modhook.h): movie of TBathtub::startDemo (Eclipse)
+--- a/src/MoveBG/MapObjCorona.cpp
++++ b/src/MoveBG/MapObjCorona.cpp
+@@ -30,6 +30,9 @@
+ // These game sound headers emit the lists present in this TU's static init.
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ TBathtubParams::TBathtubParams()
+     : TParams("/MapObj/bathtub.prm")
+@@ -904,7 +907,19 @@
+ 	JDrama::TFlagT<u16> flag(0);
+ 	MapObjCoronaMarDirector()->fireStartDemoCamera("koopa_last2", &mPosition, -1,
+ 	    mRotation.y, false, nullptr, 0, nullptr, flag);
++#ifdef TARGET_PC
++	// Eclipse (word at retail 0x801FA3A4, `li r4, 0xe` becoming `li r4,
++	// imm`): another movie plays.
++	{
++		unsigned int w;
++		u8 movie = 0xE;
++		if (sms_mod_word(0x801FA3A4, &w) && (w & 0xFFFF0000) == 0x38800000)
++			movie = (u8)(s16)(w & 0xFFFF);
++		MapObjCoronaMarDirector()->fireStreamingMovie(movie);
++	}
++#else
+ 	MapObjCoronaMarDirector()->fireStreamingMovie(0xE);
++#endif
+ 	JDrama::TNameRefGen::search<TKoopa>("\x83\x4e\x83\x62\x83\x70")
+ 	    ->fall();
+ 	unk29A = 1;

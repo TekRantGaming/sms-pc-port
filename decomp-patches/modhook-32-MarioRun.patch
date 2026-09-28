@@ -1,0 +1,111 @@
+Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, doSurfing, doRunning, slideProcess)
+--- a/src/Player/MarioRun.cpp
++++ b/src/Player/MarioRun.cpp
+@@ -12,6 +12,9 @@
+ #include <Map/PollutionManager.hpp>
+ #include <Map/PollutionLayer.hpp>
+ #include <Map/Map.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -433,10 +436,27 @@
+ 	mVel.z      = mSlideVelZ;
+ 	mForwardVel = MsSqrtf(mSlideVelX * mSlideVelX + mSlideVelZ * mSlideVelZ);
+ 
++#ifdef TARGET_PC
++	// moveset checkSlideSpeedMulti, retail 0x8025C404 (with the words at
++	// 0x8025C3D8, 0x8025C3FC, 0x8025C400, 0x8025C408, 0x8025C410): the sqrt
++	// is stored to mForwardVel as before, then the call (reading r30 = this)
++	// returns the cap that replaces 100.0f; mForwardVel and the slide
++	// velocities are reloaded after it.
++	f32 sms_cap_ = 100.0f;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025C404)) {
++		SMS_MOD_GPR(30, this);
++		sms_cap_ = ((f32 (*)())sms_mod_t_)();
++	}
++	if (mForwardVel > sms_cap_) {
++		mSlideVelX = (sms_cap_ * mSlideVelX) / mForwardVel;
++		mSlideVelZ = (sms_cap_ * mSlideVelZ) / mForwardVel;
++	}
++#else
+ 	if (mForwardVel > 100.0f) {
+ 		mSlideVelX = (100.0f * mSlideVelX) / mForwardVel;
+ 		mSlideVelZ = (100.0f * mSlideVelZ) / mForwardVel;
+ 	}
++#endif
+ 
+ 	if (turn < -0x4000 || turn > 0x4000)
+ 		mForwardVel *= -1.0f;
+@@ -559,8 +579,21 @@
+ 	f32 maxSp = mRunParams.mMaxSpeed.get();
+ 	f32 sp    = mIntendedMag < maxSp ? mIntendedMag : maxSp;
+ 
++#ifdef TARGET_PC
++	// moveset checkGroundSpeedLimit, retail 0x8025B8C0 (with the nop at
++	// 0x8025B8BC over the onYoshi branch and 0x8025B8C4 `fmuls f31, f31,
++	// f1`): onYoshi() still runs, then sp is always scaled by the call's
++	// result; it reads r31 = this.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025B8C0)) {
++		onYoshi();
++		SMS_MOD_GPR(31, this);
++		sp *= ((f32 (*)())sms_mod_t_)();
++	} else if (onYoshi())
++		sp *= MarioRunParam(mYoshiParams.mRunYoshiMult);
++#else
+ 	if (onYoshi())
+ 		sp *= MarioRunParam(mYoshiParams.mRunYoshiMult);
++#endif
+ 
+ 	if (mForwardVel <= 0.0f) {
+ 		mForwardVel += MarioRunParam(mRunParams.mVelMinusBrake);
+@@ -674,7 +707,17 @@
+ 		mForwardVel += 1.1f;
+ 	} else if (mForwardVel <= want) {
+ 		f32 accel;
++#ifdef TARGET_PC
++		// BetterSunshineEngine fixBlooperParamDifferentiation, retail
++		// 0x8025B690: the `lwz r3, 0xe0(r31)` loading mGroundPlane becomes a
++		// call whose returned plane is the one tested.
++		const TBGCheckData* sms_floor_ = mGroundPlane;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025B690))
++			sms_floor_ = ((const TBGCheckData* (*)())sms_mod_t_)();
++		if (sms_floor_->isWaterSurface())
++#else
+ 		if (mGroundPlane->isWaterSurface())
++#endif
+ 			accel = getSurfingParamsWater()->mAccel.get();
+ 		else
+ 			accel = getSurfingParamsGround()->mAccel.get();
+@@ -852,8 +895,29 @@
+ 				return changePlayerStatus(MARIO_STATUS_WALL_JUMP, 0, false);
+ 			}
+ 
++#ifdef TARGET_PC
++			// BetterSunshineEngine canRunClingWall, retail 0x8025B200 (with
++			// the words at 0x8025B1FC, 0x8025B204, 0x8025B208, 0x8025B20C,
++			// 0x8025B210, 0x8025B214, 0x8025B218): the null test's branch
++			// becomes the call's `lhz r4, 0(r3)`, the call reads r31 = this,
++			// its result is discarded (r3 is reloaded with mWallPlane) and
++			// only the wall pointer is tested. The GameCube reads the type
++			// through a null wall harmlessly; here 0 is passed instead.
++			bool sms_cling_;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025B200)) {
++				SMS_MOD_GPR(31, this);
++				((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
++				    mWallPlane, mWallPlane ? mWallPlane->mBGType : 0);
++				sms_cling_ = mWallPlane != nullptr;
++			} else {
++				sms_cling_ = mWallPlane != nullptr && mWallPlane->isFence();
++			}
++			if (sms_cling_)
++				return changePlayerCatching();
++#else
+ 			if (mWallPlane != nullptr && mWallPlane->isFence())
+ 				return changePlayerCatching();
++#endif
+ 
+ 			doPushingAnimation(prevPos);
+ 			mDashTimer = 0;

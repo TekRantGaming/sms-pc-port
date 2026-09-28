@@ -1,0 +1,381 @@
+Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, updateGameMode and next stage/scenario choice
+--- a/src/System/MarDirectorDirect.cpp
++++ b/src/System/MarDirectorDirect.cpp
+@@ -38,6 +38,9 @@
+ #include <Map/MapCollisionEntry.hpp>
+ 
+ #include <System/StageUtil.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++#endif
+ 
+ extern OSThread gSetupThread;
+ 
+@@ -90,6 +93,31 @@
+ 			}
+ 			gpMSound->unkA8 = bVar7;
+ 
++#ifdef TARGET_PC
++			// BetterSunshineEngine (animationFreezeCheck, retail 0x802999D8,
++			// and the word at 0x802999DC, `b 0x80299A10`): the mod's function
++			// takes over this switch. It is PowerPC assembly (empty on the
++			// port), reading this from r26 and setting bits of uVar8 (r27):
++			// states 5, 10 and 12 freeze as before, 11 only while Mario's
++			// status is not 0x1302.
++			bool sms_mod_skip_switch_ = false;
++			if (SMS_MOD_SITE(0x802999D8)) {
++				u8 st = mState;
++				bool freeze;
++				if (st == 10)
++					freeze = true;
++				else if ((st < 10 && st != 5) || st >= 13)
++					freeze = false;
++				else if (!gpMarioAddress || ((TMario*)gpMarioAddress)->mStatus != 0x1302)
++					freeze = true;
++				else
++					freeze = st != 11;
++				if (freeze)
++					uVar8 |= 3;
++				sms_mod_skip_switch_ = SMS_MOD_WORD(0x802999DC, 0) == 0x48000034;
++			}
++			if (!sms_mod_skip_switch_)
++#endif
+ 			switch (mState) {
+ 			case STATE_UNK5:
+ 			case STATE_UNK11:
+@@ -202,7 +230,13 @@
+ // +0x10). Spelling the copy as `gpApplication.mNextArea = local_3C` or a
+ // direct three-argument `set` is worse (84%) and breaks the expanded copies
+ // in changeState/updateGameMode.
++#ifdef TARGET_PC
++// sms_mod_standalone_ is false where retail expands this function into its
++// caller: the code mods patch those copies at their own addresses.
++static void decideNextStage(bool sms_mod_standalone_ = true)
++#else
+ static void decideNextStage()
++#endif
+ {
+ 	TGameSequence local_3C;
+ 
+@@ -217,9 +251,90 @@
+ 		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
+ 		break;
+ 	}
++#ifdef TARGET_PC
++	// Eclipse (assignOnDeathDestination, retail 0x80299808): after the stage
++	// and scenario stores, the TFlagT::set call storing the flag becomes a
++	// call of the mod's function, given (&mNextArea's flag, flag value;
++	// r5/r6 hold nothing it may rely on).
++	if (sms_mod_standalone_) {
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80299808)) {
++			TGameSequence& next = gpApplication.mNextArea;
++			next.unk0           = local_3C.unk0;
++			next.unk1           = local_3C.unk1;
++			((void (*)(TGameSequence*, u8, u8, u16))sms_mod_t_)(
++			    (TGameSequence*)&next.unk2, (u8)local_3C.unk2.mValue, 0, 0);
++			return;
++		}
++	}
++#endif
+ 	MDDApp().setNextArea(local_3C);
+ }
+ 
++#ifdef TARGET_PC
++// decideNextStage's next area, for the copies of it retail expands into
++// TMarDirector::changeState and updateGameMode, which code mods patch.
++static TGameSequence decideNextStageArea()
++{
++	TGameSequence local_3C;
++
++	int stage = SMS_getShineStage(gpApplication.mCurrArea.getStage());
++	switch (stage) {
++	case 0:
++		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
++		break;
++	default:
++		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
++		break;
++	}
++	return local_3C;
++}
++
++// changeState's copy (pause menu exit). Eclipse (assignExitAreaDestination,
++// retail 0x80299230) takes its TGameSequence::set call on mNextArea; the mod
++// declares the flag a u16 (retail passes the copy's address), given here as
++// the flag's value.
++static void decideNextStageOfExit()
++{
++	void* sms_mod_t_ = SMS_MOD_SITE(0x80299230);
++	if (!sms_mod_t_) {
++		decideNextStage(false);
++		return;
++	}
++	TGameSequence next = decideNextStageArea();
++	((void (*)(TGameSequence*, u8, u8, u16))sms_mod_t_)(&gpApplication.mNextArea, next.unk0,
++	                                                    next.unk1, next.unk2.mValue);
++}
++
++// updateGameMode's copy (shine get). Eclipse (assignShineExitDestination,
++// retail 0x80297C80) replaces the `addi r3, r3, 0x12` forming &mNextArea, so
++// it gets (&gpApplication, stage, scenario, flag), and writes a nop at
++// 0x80297C84 over the TGameSequence::set call that BetterSunshineEngine
++// redirects to thinkSetNextSequence there; Eclipse loads after
++// BetterSunshineEngine, so its nop is the word left at 0x80297C84.
++static void decideNextStageOfShineGet()
++{
++	void* sms_mod_t_  = SMS_MOD_SITE(0x80297C80);
++	void* sms_mod_t2_ = SMS_MOD_SITE(0x80297C84);
++	unsigned int sms_mod_w_;
++	bool sms_mod_nop_ = sms_mod_word(0x80297C84, &sms_mod_w_) && sms_mod_w_ == 0x60000000;
++	if (!sms_mod_t_ && !sms_mod_t2_ && !sms_mod_nop_) {
++		decideNextStage(false);
++		return;
++	}
++	TGameSequence next = decideNextStageArea();
++	if (sms_mod_t_)
++		((void (*)(TApplication*, u8, u8, JDrama::TFlagT<u16>))sms_mod_t_)(
++		    &gpApplication, next.unk0, next.unk1, next.unk2);
++	if (sms_mod_nop_)
++		return;
++	if (sms_mod_t2_)
++		((void (*)(TGameSequence*, u8, u8, JDrama::TFlagT<u16>))sms_mod_t2_)(
++		    &gpApplication.mNextArea, next.unk0, next.unk1, next.unk2);
++	else
++		gpApplication.mNextArea.set(next.unk0, next.unk1, next.unk2);
++}
++#endif
++
+ // UNUSED, 0x10c.
+ // TODO: dead in the shipped game and 67 instructions in the map, with no call
+ // site and no literal of its own to read; the body is unrecovered.
+@@ -234,8 +349,24 @@
+ 
+ 	int i = 0;
+ 	do {
++#ifdef TARGET_PC
++		// Eclipse (checkIsFloodedPlazaCriteria, retail 0x80299644) takes the
++		// getShineFlag call (retail expands this function into
++		// decideNextScenario); its `b 0x80299670` at 0x8029964C, over the
++		// loop's `bne`, makes the first result the answer.
++		bool sms_mod_r_;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80299644))
++			sms_mod_r_ = (u8)((u32(*)())sms_mod_t_)() != 0;
++		else
++			sms_mod_r_ = TFlagManager::smInstance->getShineFlag(stages[i]);
++		if (SMS_MOD_SITE(0x8029964C))
++			return sms_mod_r_;
++		if (!sms_mod_r_)
++			return false;
++#else
+ 		if (!TFlagManager::smInstance->getShineFlag(stages[i]))
+ 			return false;
++#endif
+ 		++i;
+ 	} while (i < 7);
+ 
+@@ -251,8 +382,25 @@
+ {
+ 	switch (param_1) {
+ 	case 1:
++#ifdef TARGET_PC
++	{
++		// Eclipse: the word at retail 0x8029961C (`addi r4, r4, 0x3ae`)
++		// tests another flag, and getScenarioForLateDolpic (0x8029962C,
++		// over `li r3, 2`) supplies the scenario.
++		unsigned int sms_mod_w_;
++		u32 sms_mod_flag_ = 0x103AE;
++		if (sms_mod_word(0x8029961C, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x3884)
++			sms_mod_flag_ = 0x10000 + (s16)sms_mod_w_;
++		if (TFlagManager::smInstance->getBool(sms_mod_flag_)) {
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029962C))
++				return ((u32(*)())sms_mod_t_)();
++			return 2;
++		}
++	}
++#else
+ 		if (TFlagManager::smInstance->getBool(0x103AE))
+ 			return 2;
++#endif
+ 		if (checkDefeatShadowMarioAll())
+ 			return 9;
+ 		if (TFlagManager::smInstance->getBool(0x10389))
+@@ -285,6 +433,16 @@
+ {
+ 	const TGameSequence& curArea = gpApplication.mCurrArea;
+ 	if (SMS_isExMap() || curArea.getStage() == 0 || curArea.getStage() == 60) {
++#ifdef TARGET_PC
++		// Eclipse (assignOnDeathExDestination, retail 0x8029943C, with nops
++		// at 0x80299440, 0x80299444, 0x80299448, 0x8029944C, 0x80299450 over
++		// the rest of the inlined set): the mod reads &curArea from r28 and
++		// sets the next area itself.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029943C)) {
++			SMS_MOD_GPR(28, &curArea);
++			((void (*)())sms_mod_t_)();
++		} else
++#endif
+ 		getNextArea().set(curArea.getStage(), 0, 0);
+ 	} else {
+ 		decideNextStage();
+@@ -391,7 +549,11 @@
+ 			unkB4     = TApplication::APP_STATE_DONE;
+ 			break;
+ 		case 5:
++#ifdef TARGET_PC
++			decideNextStageOfExit();
++#else
+ 			decideNextStage();
++#endif
+ 			offUnk4CFlag(0x100);
+ 			moveStage();
+ 			unkE4     = 2;
+@@ -416,6 +578,16 @@
+ 				} else {
+ 					getNextArea().set(1, 0xff, 0);
+ 				}
++#ifdef TARGET_PC
++				// Eclipse (assignGameOverDestination, retail 0x8029932C, with
++				// nops at 0x80299334, 0x80299338 over the flag store): the mod
++				// reads this from r31, clears the flag and redirects the next
++				// area itself.
++				if (void* sms_mod_t_ = SMS_MOD_SITE(0x8029932C)) {
++					SMS_MOD_GPR(31, this);
++					((void (*)())sms_mod_t_)();
++				} else
++#endif
+ 				offUnk4CFlag(0x100);
+ 				moveStage();
+ 				gpApplication.mFader->setFadeStatus(
+@@ -479,7 +651,21 @@
+ 		unkB4 = TApplication::APP_STATE_DONE;
+ 	}
+ 
++#ifdef TARGET_PC
++	// BetterSunshineEngine (checkBootOut, retail 0x802995A8, and the word at
++	// 0x802995AC, `cmpwi r3, 0`): the mod reads nextState from r28 and
++	// decides whether the state changes.
++	bool sms_mod_change_;
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802995A8)) {
++		SMS_MOD_GPR(28, nextState);
++		sms_mod_change_ = ((bool (*)())sms_mod_t_)();
++	} else {
++		sms_mod_change_ = nextState != mState;
++	}
++	if (sms_mod_change_) {
++#else
+ 	if (nextState != mState) {
++#endif
+ 		currentStateFinalize(nextState);
+ 		nextStateInitialize(nextState);
+ 		mState = nextState;
+@@ -862,6 +1048,54 @@
+ 				break;
+ 			}
+ 
++#ifdef TARGET_PC
++			// BetterSunshineEngine (shouldNotUpdateMarDirector, retail
++			// 0x80297A48, over the mMap load; the word at 0x80297A4C compares
++			// its result instead, `cmplwi r3, 1`): the mod reads this from r31.
++			bool sms_mod_update_;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x80297A48)) {
++				SMS_MOD_GPR(31, this);
++				u32 sms_mod_r_ = ((bool (*)())sms_mod_t_)();
++				unsigned int sms_mod_w_;
++				u32 sms_mod_imm_ = 1;
++				if (sms_mod_word(0x80297A4C, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x2803)
++					sms_mod_imm_ = sms_mod_w_ & 0xFFFF;
++				sms_mod_update_ = sms_mod_r_ != sms_mod_imm_;
++			} else {
++				sms_mod_update_ = mMap != 15;
++			}
++			if (sms_mod_update_) {
++				// BetterSunshineMoveset (word at retail 0x80297A60: another
++				// `rlwinm.` mask for the button) and Eclipse (word at
++				// 0x80297A64: the `beq` becomes `b 0x80297A70`, so this
++				// branch is never taken).
++				unsigned int sms_mod_w_;
++				u32 sms_mod_mask_ = 0x10;
++				if (sms_mod_word(0x80297A60, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x5400
++				    && ((sms_mod_w_ >> 11) & 31) == 0
++				    && ((sms_mod_w_ >> 6) & 31) == ((sms_mod_w_ >> 1) & 31))
++					sms_mod_mask_ = 0x80000000u >> ((sms_mod_w_ >> 6) & 31);
++				bool sms_mod_never_ = sms_mod_word(0x80297A64, &sms_mod_w_) && sms_mod_w_ == 0x4800000C;
++				if (!sms_mod_never_ && (unk18[0]->mButton.mTrigger & sms_mod_mask_)) {
++					r29 = STATE_UNK10;
++					break;
++				}
++
++				if (unk18[0]->mEnabledFrameMeaning & 0x1) {
++					// Eclipse (checkForPauseValidFilter, retail 0x80297AA8,
++					// over the mStatus load; the word at 0x80297AAC tests its
++					// result, `cmpwi r3, 0`): the mod gets gpMarioOriginal
++					// (r3) and replaces checkActionThing3's jumping test.
++					bool sms_mod_act_;
++					if (void* sms_mod_t_ = SMS_MOD_SITE(0x80297AA8)) {
++						TMario* mario = gpMarioOriginal;
++						sms_mod_act_  = mario->checkFlag(MARIO_FLAG_HELMET_FLW_CAMERA)
++						             || !((bool (*)(TMario*))sms_mod_t_)(mario);
++					} else {
++						sms_mod_act_ = gpMarioOriginal->checkActionThing3();
++					}
++					if (sms_mod_act_) {
++#else
+ 			if (mMap != 15) {
+ 				if (unk18[0]->mButton.mTrigger & 0x10) {
+ 					r29 = STATE_UNK10;
+@@ -870,6 +1104,7 @@
+ 
+ 				if (unk18[0]->mEnabledFrameMeaning & 0x1) {
+ 					if (gpMarioOriginal->checkActionThing3()) {
++#endif
+ 						r29 = STATE_UNK5;
+ 						break;
+ 					}
+@@ -895,14 +1130,48 @@
+ 				console->unk47 = 1;
+ 				MSBgm::startBGM(MSD_BGM_GET_SHINE);
+ 				TFlagManager::getInstance()->setBool(true, 0x30006);
++#ifdef TARGET_PC
++				{
++					// BetterSunshineEngine (word at retail 0x80297BA0: the
++					// event id's mask widens, `clrlwi r4, r0, 16`) and Eclipse
++					// (TFlagManager_setShineFlag_override at 0x80297BA4, given
++					// (flag manager, id)).
++					u32 sms_mod_id_ = unk25C->getEventId();
++					unsigned int sms_mod_w_;
++					if (sms_mod_word(0x80297BA0, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x5404
++					    && ((sms_mod_w_ >> 11) & 31) == 0 && ((sms_mod_w_ >> 1) & 31) == 31)
++						sms_mod_id_ &= 0xFFFFFFFFu >> ((sms_mod_w_ >> 6) & 31);
++					else
++						sms_mod_id_ &= 0xFF;
++					if (void* sms_mod_t_ = SMS_MOD_SITE(0x80297BA4))
++						((void (*)(TFlagManager*, u32))sms_mod_t_)(TFlagManager::getInstance(), sms_mod_id_);
++					else
++						TFlagManager::getInstance()->setShineFlag(sms_mod_id_);
++				}
++#else
+ 				TFlagManager::getInstance()->setShineFlag(unk25C->getEventId());
++#endif
+ 				// The fade lengths go through an inline seconds-to-frames
+ 				// helper, which is what keeps retail's real `fmuls` by 1.0f.
+ 				u16 fadeInFrames = secToFrame(1.0f, unkDC);
+ 				unkDC->registFadeout(fadeInFrames, secToFrame(5.3333333f, unkDC));
++#ifdef TARGET_PC
++				{
++					// BetterSunshineEngine (word at retail 0x80297BE8: another
++					// `ori r4, r4, ...` mask).
++					unsigned int sms_mod_w_;
++					if (sms_mod_word(0x80297BE8, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x6084)
++						onUnk4CFlag(sms_mod_w_ & 0xFFFF);
++					else
++						onUnk4CFlag(0x8202);
++				}
++				unk261 = 6;
++				decideNextStageOfShineGet();
++#else
+ 				onUnk4CFlag(0x8202);
+ 				unk261 = 6;
+ 				decideNextStage();
++#endif
+ 				break;
+ 			}
+ 

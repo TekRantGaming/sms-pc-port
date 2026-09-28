@@ -1,5 +1,6 @@
 // Port runtime: logging, stub accounting, and the boot sequence that stands in
 // for the GameCube IPL/__start/OSInit before SMS_main runs.
+#include "sms_mod/modhooks.h"
 #include "port_compat.h"
 #include "port_platform.h"
 #include "port_stub.h"
@@ -506,6 +507,7 @@ extern "C" void port_init(int argc, char** argv)
 		port_frame_rate = atoi(r) == 60 ? 60 : 30;
 	if (port_frame_rate == 60)
 		port_log("[port] frame rate: 60 during gameplay\n");
+	sms_mod_activate();
 	for (int i = 1; i < argc; i++)
 		if (strcmp(argv[i], "--headless") == 0) {
 			port_setenv("SMS_HEADLESS", "1", 1);

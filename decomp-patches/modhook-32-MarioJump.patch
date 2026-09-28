@@ -1,0 +1,254 @@
+Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain handlers, hipAttacking, stayWall, landing, jumpingBasic, doJumping)
+--- a/src/Player/MarioJump.cpp
++++ b/src/Player/MarioJump.cpp
+@@ -8,6 +8,34 @@
+ #include <System/Particles.hpp>
+ #include <System/MarDirector.hpp>
+ #include <MarioUtil/DrawUtil.hpp>
++#ifdef TARGET_PC
++#include <sms_modhook.h>
++
++// checkBackTrig as retail inlines it into jumpMain's handlers, stayWall and
++// landing: each inlined copy has its own setPlayerVelocity call, which a mod
++// may redirect on its own (moveset's uncapDiveAirSpeed at 0x802496AC,
++// 0x8024976C, 0x8024999C, 0x80249C70 and 0x8024C284; it reads the player from
++// r30, which holds `this` at all of them). `site` is what is registered at the
++// copy's call, or null for a copy no mod touches.
++static BOOL smsCheckBackTrigAt(TMario* mario, void* site)
++{
++	if (mario->mInput & 0x8000) {
++		if (mario->mGamePad->mEnabledFrameMeaning & 0x2000) {
++			return mario->changePlayerStatus(MARIO_STATUS_HIP_DROP, 0, 0);
++		}
++		if (mario->onYoshi() == 0) {
++			if (site) {
++				SMS_MOD_GPR(30, mario);
++				((void (*)(f32))site)(mario->mJumpParams.mJumpJumpCatchSp.get());
++			} else {
++				mario->setPlayerVelocity(mario->mJumpParams.mJumpJumpCatchSp.get());
++			}
++			return mario->changePlayerStatus(MARIO_STATUS_JUMP_CATCH, 0, 0);
++		}
++	}
++	return 0;
++}
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -121,12 +149,37 @@
+ 			accelControl = getJumpAccelControl();
+ 		}
+ 
++#ifdef TARGET_PC
++		// moveset checkJumpSpeedMulti, retail 0x8024CC2C (the fmadds becomes
++		// a call taking f1 = accelControl, f2 = mag * cos; the word at
++		// 0x8024CC30 restores r5 after it). The words at 0x8024CB00,
++		// 0x8024CC50, 0x8024CCF8 and 0x8024CD24 only move sideVel from f2 to
++		// f11 so it survives the inserted calls; 0x8024CB00 loads the same
++		// 0.0f (@3364, r2-0x1090), so the arithmetic is unchanged.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024CC2C))
++			((TMario* (*)(TMario*, f32, f32))sms_mod_t_)(
++			    this, accelControl, mag * JMASCos(angleDiff));
++		else
++			mForwardVel += mag * JMASCos(angleDiff) * accelControl;
++#else
+ 		mForwardVel += mag * JMASCos(angleDiff) * accelControl;
++#endif
+ 		sideVel = mag * JMASSin(angleDiff) * getJumpSlideControl();
+ 	}
+ 
++#ifdef TARGET_PC
++	// moveset checkJumpSpeedLimit, retail 0x8024CC6C (with the nops at
++	// 0x8024CC60, 0x8024CC64, 0x8024CC68): the > 32 test and the -0.2 are
++	// gone and the call gets f1 = mForwardVel, reading r31 = this.
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024CC6C)) {
++		SMS_MOD_GPR(31, this);
++		((void (*)(f32))sms_mod_t_)(mForwardVel);
++	} else if (mForwardVel > 32.0f)
++		mForwardVel -= 0.2f;
++#else
+ 	if (mForwardVel > 32.0f)
+ 		mForwardVel -= 0.2f;
++#endif
+ 	if (mForwardVel < -16.0f)
+ 		mForwardVel += 0.4f;
+ 
+@@ -239,7 +292,23 @@
+ 			}
+ 		}
+ 		if (mWallPlane != nullptr) {
++#ifdef TARGET_PC
++			// BetterSunshineEngine canJumpClingWall, retail 0x8024C88C (with
++			// the words at 0x8024C888, 0x8024C890, 0x8024C894, 0x8024C898,
++			// 0x8024C89C, 0x8024C8A0): called with (wall, wall->type),
++			// reading r28 = this; its result replaces the 0x10A test.
++			bool sms_fence_;
++			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024C88C)) {
++				SMS_MOD_GPR(28, this);
++				sms_fence_ = ((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
++				    mWallPlane, mWallPlane->mBGType);
++			} else {
++				sms_fence_ = mWallPlane->isFence();
++			}
++			if (sms_fence_) {
++#else
+ 			if (mWallPlane->isFence()) {
++#endif
+ 				const JGeometry::TVec3<f32>& normal = mWallPlane->getNormal();
+ 				mFaceAngle.y    = matan(normal.z, normal.x) + 0x8000;
+ 				mModelFaceAngle = mFaceAngle.y;
+@@ -349,6 +418,15 @@
+ 		break;
+ 	}
+ 	default:
++#ifdef TARGET_PC
++		// moveset processJumpOrLongJumpAnim, retail 0x80249554 (this copy
++		// inlined into jumpMain).
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80249554)) {
++			((void (*)(TMario*, int, int, int))sms_mod_t_)(
++			    this, MARIO_STATUS_JUMP_SLIP, ANIM_JUMP, 3);
++			break;
++		}
++#endif
+ 		jumpingBasic(MARIO_STATUS_JUMP_SLIP, ANIM_JUMP, 3);
+ 		break;
+ 	}
+@@ -367,6 +445,15 @@
+ 	if (jumpingCommonEvents())
+ 		return 1;
+ 
++#ifdef TARGET_PC
++	// moveset playDoubleOrTripleAnim, retail 0x80249618 (this copy inlined
++	// into jumpMain).
++	if (void* sms_mod_t_ = SMS_MOD_SITE(0x80249618)) {
++		((void (*)(TMario*, int, int, int))sms_mod_t_)(
++		    this, MARIO_STATUS_SEC_JUMP_SLIP, anim, 3);
++		return 0;
++	}
++#endif
+ 	jumpingBasic(MARIO_STATUS_SEC_JUMP_SLIP, anim, 3);
+ 	return 0;
+ }
+@@ -378,7 +465,12 @@
+ 		rumbleStart(0x15, mMotorParams.mMotorWall.get());
+ 	}
+ 
++#ifdef TARGET_PC
++	// checkBackTrig inlined into jumpMain; its setPlayerVelocity is retail 0x802496AC.
++	if (smsCheckBackTrigAt(this, SMS_MOD_SITE(0x802496AC)))
++#else
+ 	if (checkBackTrig())
++#endif
+ 		return 1;
+ 
+ 	if (rocketCheck())
+@@ -390,7 +482,12 @@
+ 
+ BOOL TMario::backJumping()
+ {
++#ifdef TARGET_PC
++	// checkBackTrig inlined into jumpMain; its setPlayerVelocity is retail 0x8024976C.
++	if (smsCheckBackTrigAt(this, SMS_MOD_SITE(0x8024976C)))
++#else
+ 	if (checkBackTrig())
++#endif
+ 		return 1;
+ 
+ 	if (rocketCheck())
+@@ -417,7 +514,12 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// checkBackTrig inlined into landing; its setPlayerVelocity is retail 0x8024C284.
++	if (smsCheckBackTrigAt(this, SMS_MOD_SITE(0x8024C284)))
++#else
+ 	if (checkBackTrig())
++#endif
+ 		return true;
+ 
+ 	if (rocketCheck())
+@@ -445,7 +547,14 @@
+ 	if (jumpingCommonEvents())
+ 		return 1;
+ 
++#ifdef TARGET_PC
++	// the second checkBackTrig, inlined into jumpMain (setPlayerVelocity at
++	// retail 0x802498D4, which no mod patches); the first, in
++	// jumpingCommonEvents, calls the out-of-line one.
++	if (smsCheckBackTrigAt(this, nullptr))
++#else
+ 	if (checkBackTrig())
++#endif
+ 		return 1;
+ 
+ 	if (jumpingBasic(MARIO_STATUS_U_TURN_JUMP_SLIP, ANIM_TJMP1, 1) != 3) {
+@@ -457,7 +566,12 @@
+ 
+ BOOL TMario::jumpWall()
+ {
++#ifdef TARGET_PC
++	// checkBackTrig inlined into jumpMain; its setPlayerVelocity is retail 0x8024999C.
++	if (smsCheckBackTrigAt(this, SMS_MOD_SITE(0x8024999C)))
++#else
+ 	if (checkBackTrig())
++#endif
+ 		return 1;
+ 	if (considerJumpRotate())
+ 		return 1;
+@@ -624,8 +738,18 @@
+ 		return changePlayerStatus(MARIO_STATUS_WALL_JUMP, 0, false);
+ 	}
+ 
++#ifdef TARGET_PC
++	// checkBackTrig inlined here (setPlayerVelocity at retail 0x8024BC58, no
++	// mod redirects it). moveset writes `b .L_8024BC78` (0x48000068) over
++	// the `beq` at 0x8024BC10 that tests mInput & 0x8000, which skips the
++	// whole check.
++	if (SMS_MOD_WORD(0x8024BC10, 0x41820068) != 0x48000068
++	    && smsCheckBackTrigAt(this, nullptr))
++		return true;
++#else
+ 	if (checkBackTrig())
+ 		return true;
++#endif
+ 
+ 	if (mStatusTimer < 20) {
+ 		mStatusTimer += 1;
+@@ -1031,7 +1155,12 @@
+ 
+ BOOL TMario::rotateJumping()
+ {
++#ifdef TARGET_PC
++	// checkBackTrig inlined into jumpMain; its setPlayerVelocity is retail 0x80249C70.
++	if (smsCheckBackTrigAt(this, SMS_MOD_SITE(0x80249C70)))
++#else
+ 	if (checkBackTrig())
++#endif
+ 		return 1;
+ 
+ 	if (rocketCheck())
+@@ -1110,7 +1239,22 @@
+ 		// fallthrough
+ 
+ 	case 1:
++#ifdef TARGET_PC
++		// BetterSunshineEngine checkIfHipAttackingValid, retail 0x8024A7BC
++		// (with the words at 0x8024A7C0 `cmpwi r3, 0` and 0x8024A7C4 `beq`):
++		// called with f1 = mFloorPosition.y, reading r31 = this; its result
++		// replaces the floor-above test.
++		bool sms_hit_;
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024A7BC)) {
++			SMS_MOD_GPR(31, this);
++			sms_hit_ = ((bool (*)(f32))sms_mod_t_)(mFloorPosition.y);
++		} else {
++			sms_hit_ = mFloorPosition.y > mPosition.y;
++		}
++		if (sms_hit_) {
++#else
+ 		if (mFloorPosition.y > mPosition.y) {
++#endif
+ 			mPosition.y = 1.0f + mFloorPosition.y;
+ 			changePlayerStatus(MARIO_STATUS_HIP_ATTACK_END, 0, 0);
+ 		}

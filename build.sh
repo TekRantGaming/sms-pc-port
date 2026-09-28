@@ -50,7 +50,7 @@ setup_macos() {
   fi
 
   local objcopy="" c
-  for c in "$(brew --prefix llvm 2>/dev/null)/bin/llvm-objcopy" \
+  for c in "${SMS_LLVM_BIN:-}/llvm-objcopy" "$(brew --prefix llvm 2>/dev/null)/bin/llvm-objcopy" \
            /opt/homebrew/opt/llvm/bin/llvm-objcopy /usr/local/opt/llvm/bin/llvm-objcopy; do
     if [[ -x "$c" ]]; then objcopy=$c; break; fi
   done

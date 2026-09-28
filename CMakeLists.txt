@@ -206,7 +206,10 @@ target_compile_options(sms_game PRIVATE ${SMS_GAME_FLAGS})
 # which would also capture libstdc++ and the platform layer (and crash before
 # the first JKRHeap exists). Rename the game's definitions and every game
 # reference to them, so only game code allocates from JKR heaps.
-if(SMS_ARCH STREQUAL "32")
+if(WIN32 AND SMS_ARCH STREQUAL "64")
+  # MinGW x64 is LLP64: size_t is unsigned long long, mangled as y.
+  set(_sz y)
+elseif(SMS_ARCH STREQUAL "32")
   set(_sz j)
 else()
   set(_sz m)
@@ -226,7 +229,11 @@ if(APPLE)
   endif()
 elseif(WIN32)
   # COFF adds a leading underscore to each 32-bit C++ symbol.
-  set(_object_prefix "_")
+  if(SMS_ARCH STREQUAL "32")
+    set(_object_prefix "_")
+  else()
+    set(_object_prefix "")
+  endif()
   set(SMS_OBJCOPY objcopy)
 else()
   set(_object_prefix "")
@@ -248,6 +255,7 @@ file(GLOB_RECURSE SMS_PLATFORM_SOURCES CONFIGURE_DEPENDS
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/gx/")
 # platform/mods/eclipse is built by cmake/eclipse.cmake, and only with SMS_ECLIPSE.
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/mods/eclipse/")
+list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/tests/")
 if(WIN32 OR APPLE)
   list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/trace/trace\\.cpp$")
 endif()
@@ -266,7 +274,15 @@ target_compile_options(sms PRIVATE -fno-strict-aliasing -Wno-unused-parameter -U
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++11>)
 # dsptask.c points a DSP task at the fixed low-memory address 0x80004600.
 if(WIN32)
-  target_link_options(sms PRIVATE -Wl,--large-address-aware -Wl,--defsym=_lbl_80004600=0x80004600)
+  target_link_options(sms PRIVATE "-Wl,--defsym=${_object_prefix}lbl_80004600=0x80004600")
+  if(SMS_ARCH STREQUAL "32")
+    target_link_options(sms PRIVATE -Wl,--large-address-aware)
+  endif()
+  if(SMS_ARCH STREQUAL "64")
+    # Game pointers pass through u32 slots, including addresses of static
+    # data. Keep the image below 4 GiB, as on the Linux non-PIE build.
+    target_link_options(sms PRIVATE -Wl,--image-base,0x400000 -Wl,--disable-dynamicbase -Wl,--disable-high-entropy-va)
+  endif()
 elseif(APPLE)
   # Apple ld has no --defsym; provide a normal symbol (DSP HLE does not need the GC address).
   target_sources(sms PRIVATE ${SMS_PORT_SRC}/lbl_80004600_darwin.c)
@@ -284,6 +300,15 @@ if(APPLE)
   target_link_options(sms PRIVATE "LINKER:-pagezero_size,0x1000")
 endif()
 find_package(Threads REQUIRED)
+if(WIN32 AND SMS_ARCH STREQUAL "64")
+  add_executable(sms_windows_stack_test EXCLUDE_FROM_ALL
+    platform/os/tests/windows_stack_test.cpp platform/os/windows_stack.cpp)
+  target_include_directories(sms_windows_stack_test PRIVATE ${SMS_PORT_SRC})
+  target_compile_features(sms_windows_stack_test PRIVATE cxx_std_11)
+  target_link_libraries(sms_windows_stack_test PRIVATE Threads::Threads)
+  target_link_options(sms_windows_stack_test PRIVATE -Wl,--image-base,0x400000
+    -Wl,--disable-dynamicbase -Wl,--disable-high-entropy-va)
+endif()
 if(APPLE)
   # Apple ld: -force_load pulls every member (like --whole-archive).
   # force_load does not pull INTERFACE deps, so also link sms_gx normally for SDL2.
@@ -313,6 +338,13 @@ endif()
 option(SMS_ECLIPSE "Build Super Mario Eclipse in (32-bit; fetches its sources, see docs/ECLIPSE.md)" OFF)
 if(SMS_ECLIPSE)
   include(cmake/eclipse.cmake)
+elseif(WIN32)
+  # COFF x64 does not resolve these optional weak data imports to null.
+  # Only standard Sunshine uses null imports; Eclipse must supply real ones.
+  foreach(_optional_mod_symbol IN ITEMS __start_sms_mod_ctors __stop_sms_mod_ctors
+          sPlayerAnimeDatas sPlayerAnimeInfos sPlayerAnimeInfosSize)
+    target_link_options(sms PRIVATE "-Wl,--defsym=${_object_prefix}${_optional_mod_symbol}=0")
+  endforeach()
 endif()
 
 # --- Standalone executable ------------------------------------------------------

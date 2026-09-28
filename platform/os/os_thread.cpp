@@ -9,6 +9,7 @@
 // keeps the GameCube's uniprocessor, strict-priority semantics that the game's
 // locking relies on.
 #include "port_compat.h"
+#include "port_win64_stack.h"
 #include "port_os.h"
 #include "port_platform.h"
 #include <dolphin/os.h>
@@ -148,6 +149,7 @@ struct LowStack {
 	void* base;
 	pthread_t th;
 	bool used;
+	void* argument;
 };
 std::vector<LowStack*> g_low_stacks;
 
@@ -159,6 +161,9 @@ LowStack* low_stack()
 #ifdef __GLIBC__
 		if (pthread_tryjoin_np(ls->th, NULL) == 0)
 			return ls;
+#elif defined(_WIN64)
+		if (_pthread_tryjoin(ls->th, NULL) == 0)
+			return ls;
 #endif
 	}
 	void* p = port_low_alloc(kLowStackSize);
@@ -166,10 +171,17 @@ LowStack* low_stack()
 		port_log("[os] no memory below 2 GiB for a thread stack\n");
 		abort();
 	}
-	LowStack* ls = new LowStack{p, pthread_t(), true};
+	LowStack* ls = new LowStack{p, pthread_t(), true, NULL};
 	g_low_stacks.push_back(ls);
 	return ls;
 }
+#ifdef _WIN64
+void* windows_host_entry(void* argument)
+{
+	LowStack* stack = (LowStack*)argument;
+	return port_win64_stack_call(stack->base, kLowStackSize, host_entry, stack->argument);
+}
+#endif
 #endif
 
 // Hand the CPU to `next` (already chosen). Returns once `self` owns the CPU
@@ -191,12 +203,22 @@ void switch_to(OSThread* self, OSThread* next, bool exiting)
 		pthread_attr_init(&a);
 #if UINTPTR_MAX > 0xFFFFFFFFu
 		LowStack* ls = low_stack();
+#ifdef _WIN64
+		pthread_attr_setstacksize(&a, kLowStackSize);
+		ls->argument = next;
+#else
 		pthread_attr_setstack(&a, ls->base, kLowStackSize);
+#endif
 #else
 		pthread_attr_setstacksize(&a, 1 << 20);
 		pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
 #endif
-		if (pthread_create(&hn->th, &a, host_entry, next) != 0) {
+#ifdef _WIN64
+		int create_result = pthread_create(&hn->th, &a, windows_host_entry, ls);
+#else
+		int create_result = pthread_create(&hn->th, &a, host_entry, next);
+#endif
+		if (create_result != 0) {
 			port_log("[os] pthread_create failed\n");
 			abort();
 		}
@@ -209,7 +231,11 @@ void switch_to(OSThread* self, OSThread* next, bool exiting)
 	}
 	if (exiting) {
 		pthread_mutex_unlock(&g_cpu);
+#ifdef _WIN64
+		port_win64_thread_exit();
+#else
 		pthread_exit(NULL);
+#endif
 	}
 	while (g_cur != self) {
 		pthread_cond_wait(&hs->cv, &g_cpu);
@@ -217,7 +243,11 @@ void switch_to(OSThread* self, OSThread* next, bool exiting)
 		// has since been recreated and scheduled (it then has a new Host).
 		if (hs->cancelled && (g_cur != self || host_of(self) != hs)) {
 			pthread_mutex_unlock(&g_cpu);
+#ifdef _WIN64
+			port_win64_thread_exit();
+#else
 			pthread_exit(NULL);
+#endif
 		}
 	}
 	g_irq_enabled = hs->irq_enabled;

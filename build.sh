@@ -4,7 +4,7 @@
 # Builds the port for this computer into build/<os>-<arch>/:
 #   Linux    build/linux-32/sms       (SMS_ARCH=64: build/linux-64/sms)
 #   macOS    build/macos-64/sms       (x86_64, runs under Rosetta on Apple Silicon)
-#   Windows  build/windows-32/sms.exe (MSYS2 MINGW32 shell, or build.cmd)
+#   Windows  build/windows-64/sms.exe (MSYS2 MINGW64 shell, or build.cmd)
 # With a disc image (the argument, SMS_DISC_IMAGE, or the one image in rom/)
 # it also builds a copy that has the game's files inside and needs no image:
 # sms-standalone (sms-standalone.exe on Windows, SMS.app on macOS).

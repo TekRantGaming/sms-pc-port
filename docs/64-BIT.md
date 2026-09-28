@@ -21,7 +21,7 @@ Done:
 7. **Stages**: warping to episode 0 of the airstrip, Bianco Hills, Ricco Harbor, Gelato Beach, Pinna Park, Sirena Beach, the Delfino Hotel, Noki Bay and Pianta Village runs in 64-bit with frames matching 32-bit (under 15 differing pixels, except Ricco and Gelato at 100-300 scattered edge pixels).
    Pinna Park needed `ptr64-02-atan-table-wrap`: a NaN ratio makes `GetAtanTable` index `atntable[INT_MIN]`, which 32-bit addresses wrap back to entry 0 and a 64-bit host does not.
 
-Next: the movie sweep and the other stages in 64-bit, Windows 64-bit (LLP64), then making 64-bit a supported build.
+Windows x64 uses MSYS2 MINGW64 and is the Windows launcher target. LLP64 uses 32-bit `u32`/`s32` spellings matching the other 64-bit builds; operator new uses the Windows size_t ABI, the PE image stays below 4 GiB, and each game thread enters an explicit low stack with Windows TEB stack bounds. winpthreads ignores the address passed to `pthread_attr_setstack`, so a Windows-specific entry/exit trampoline handles this. `sms_windows_stack_test` checks low locals, stack bounds, normal returns, repeated thread exit/join, and restoration of the host stack without a ROM. Actual Windows gameplay coverage is recorded separately from compilation/runtime checks.
 
 ## Where things stood before the work (measured 2026-09-24)
 

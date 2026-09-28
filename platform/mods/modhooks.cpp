@@ -186,8 +186,13 @@ extern "C" void sms_mod_add_module(const char* name, sms_mod_entry_t entry)
 // The code mods' static constructors (patch registrations, module entries,
 // their globals), moved out of the process's own by cmake/eclipse.cmake.
 typedef void (*ctor_t)(void);
+#if defined(__APPLE__)
+extern "C" ctor_t __start_sms_mod_ctors[] __attribute__((weak_import));
+extern "C" ctor_t __stop_sms_mod_ctors[] __attribute__((weak_import));
+#else
 extern "C" ctor_t __start_sms_mod_ctors[] __attribute__((weak));
 extern "C" ctor_t __stop_sms_mod_ctors[] __attribute__((weak));
+#endif
 
 extern "C" void sms_mod_activate(void)
 {

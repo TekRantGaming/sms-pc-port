@@ -1,0 +1,71 @@
+Reason: Mach-O does not support the compiler alias attribute. Publish the same retail data names as assembler symbols on macOS; keep ELF/COFF aliases unchanged.
+--- a/src/Player/MarioDraw.cpp
++++ b/src/Player/MarioDraw.cpp
+@@ -36,7 +36,11 @@
+ 
+ #ifdef TARGET_PC
+ // Code mods (sms_mod/modhooks.h) name this by its retail map name.
++#if defined(__APPLE__)
++__asm__(".globl _marioAnimeFiles\n.set _marioAnimeFiles, __ZL15marioAnimeFiles");
++#else
+ extern unkTMarioAnimeFilesStruct portExport_marioAnimeFiles[] __asm__("marioAnimeFiles") __attribute__((alias("_ZL15marioAnimeFiles")));
++#endif
+ #endif
+ 
+ #ifdef TARGET_PC
+--- a/src/Player/Yoshi.cpp
++++ b/src/Player/Yoshi.cpp
+@@ -59,7 +59,11 @@
+ #endif
+ #ifdef TARGET_PC
+ // Code mods (sms_mod/modhooks.h) name this by its retail map name.
++#if defined(__APPLE__)
++__asm__(".globl _bodyColor\n.set _bodyColor, __ZL9bodyColor");
++#else
+ extern GXColor portExport_bodyColor[] __asm__("bodyColor") __attribute__((alias("_ZL9bodyColor")));
++#endif
+ #endif
+ 
+ void TYoshi::startVoice(u32 param_1) { }
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -66,7 +66,11 @@
+ static void* arcBufMario;
+ #ifdef TARGET_PC
+ // Code mods (sms_mod/modhooks.h) name this by its retail map name.
++#if defined(__APPLE__)
++__asm__(".globl _arcBufMario\n.set _arcBufMario, __ZL11arcBufMario");
++#else
+ extern void* portExport_arcBufMario __asm__("arcBufMario") __attribute__((alias("_ZL11arcBufMario")));
++#endif
+ #endif
+ static void* arcBufCmn;
+ static void* bufStageArcBin;
+--- a/src/Enemy/graph.cpp
++++ b/src/Enemy/graph.cpp
+@@ -134,7 +134,11 @@
+ };
+ #ifdef TARGET_PC
+ // Code mods use it by its retail address (platform/mods/eclipse/rawdata.cpp).
++#if defined(__APPLE__)
++__asm__(".globl _sms_port_grDummyRail\n.set _sms_port_grDummyRail, __ZL11grDummyRail");
++#else
+ extern TRailNode sms_port_grDummyRail[3] __asm__("sms_port_grDummyRail") __attribute__((alias("_ZL11grDummyRail")));
++#endif
+ #endif
+ 
+ TGraphWeb::TGraphWeb(TRailNode* param_1, const char* param_2, int param_3)
+--- a/src/MoveBG/MapObjInit.cpp
++++ b/src/MoveBG/MapObjInit.cpp
+@@ -10812,7 +10812,11 @@
+ };
+ #ifdef TARGET_PC
+ // Code mods (sms_mod/modhooks.h) name this by its retail map name.
++#if defined(__APPLE__)
++__asm__(".globl _sObjDataTable\n.set _sObjDataTable, __ZL13sObjDataTable");
++#else
+ extern TMapObjData* portExport_sObjDataTable[] __asm__("sObjDataTable") __attribute__((alias("_ZL13sObjDataTable")));
++#endif
+ #endif
+ 
+ void TMapObjBase::setMatTable(J3DMaterialTable* table)

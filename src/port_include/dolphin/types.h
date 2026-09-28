@@ -1,7 +1,7 @@
 /* Port override of decomp/include/dolphin/types.h (same include guard, so it
  * wins whichever copy is reached first; port_compat.h includes this one).
  * MWCC's u32/s32 are (unsigned) long; on LP64 hosts that is 64 bits, so the
- * port spells them int there. On ILP32 hosts long is 32 bits and the original
+ * port spells them int on all 64-bit hosts (including Windows LLP64), so its platform signatures agree. On ILP32 hosts long is 32 bits and the original
  * spelling (and C++ mangling) is kept. */
 #ifndef _DOLPHIN_TYPES_H_
 #define _DOLPHIN_TYPES_H_
@@ -10,7 +10,7 @@ typedef signed char s8;
 typedef unsigned char u8;
 typedef signed short int s16;
 typedef unsigned short int u16;
-#if defined(__LP64__) || defined(_LP64)
+#if defined(__LP64__) || defined(_LP64) || defined(_WIN64)
 typedef signed int s32;
 typedef unsigned int u32;
 #else

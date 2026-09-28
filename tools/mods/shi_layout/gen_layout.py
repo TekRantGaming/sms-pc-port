@@ -250,11 +250,11 @@ def main():
             if not ch[32] and not ch[64]: continue
             orig = raw[a_:b_]
             v = {a: (version(orig, dec[a][0], dec[a][1], i, a) if ch[a] else orig.strip('\n') + '\n') for a in (32, 64)}
-            E.append((a_, b_, '\n#if defined(__LP64__)\n' + v[64] + '#else\n' + v[32] + '#endif\n'))
+            E.append((a_, b_, '\n#if __SIZEOF_POINTER__ == 8\n' + v[64] + '#else\n' + v[32] + '#endif\n'))
         tails = {a: plans[a][1] if plans[a][2] else 0 for a in (32, 64)}
         if tails[32] or tails[64]:
             e = d['body'][1]
-            E.append((e, e, '\n#if defined(__LP64__)\n' + ('    u8 _pc64_tail[%d];\n' % tails[64] if tails[64] else '') + '#else\n' + ('    u8 _pc32_tail[%d];\n' % tails[32] if tails[32] else '') + '#endif\n'))
+            E.append((e, e, '\n#if __SIZEOF_POINTER__ == 8\n' + ('    u8 _pc64_tail[%d];\n' % tails[64] if tails[64] else '') + '#else\n' + ('    u8 _pc32_tail[%d];\n' % tails[32] if tails[32] else '') + '#endif\n'))
         for x, y, t in sorted(E, key=lambda e: (e[0], e[1]), reverse=True):
             raw = raw[:x] + t + raw[y:]
         open(out_file, 'w', errors='surrogateescape').write(raw)

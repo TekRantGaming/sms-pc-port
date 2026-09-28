@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "port_platform.h"
+#include "port_win64_stack.h"
 
 extern void SMS_main(void);
 
@@ -42,8 +43,7 @@ int main(int argc, char** argv)
 	}
 	Args a = {argc, argv};
 #ifdef _WIN64
-	// winpthreads would ignore the stack address; switch this thread instead.
-	port_run_on_stack(stack, size, run_game, &a);
+	port_win64_stack_call(stack, size, run_game, &a);
 	return 0;
 #endif
 #if defined(__APPLE__) && defined(__x86_64__)

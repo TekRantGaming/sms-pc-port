@@ -5,6 +5,7 @@
 // surface.  GXInit brings this up automatically if the host has not called
 // GXPC_Init itself, and every GXCopyDisp presents the XFB to the window.
 #include "gx_internal.h"
+#include "gx_window_layout.h"
 #include "sms_gx/gx_pc.h"
 
 #include <stdio.h>
@@ -70,6 +71,9 @@ void applyIcon() {
 }
 
 bool openWindow(int scale) {
+#ifdef SDL_HINT_WINDOWS_DPI_SCALING
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
+#endif
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
         logmsg("SDL_Init failed: %s", SDL_GetError());
         return false;
@@ -78,16 +82,37 @@ bool openWindow(int scale) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    int ws = scale < 1 ? 1 : scale;
-    if (const char* e = getenv("SMS_WINDOW_SCALE")) ws = atoi(e) > 0 ? atoi(e) : ws;
-    int winW = int(640.0f * GXPC_GetWidescreen() + 0.5f) * ws;
-    s_window = SDL_CreateWindow("Super Mario Sunshine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, winW,
-                                480 * ws, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    // Open on the monitor containing the pointer (usually the launcher's Play
+    // button). Fall back to the primary display if global coordinates are unavailable.
+    SDL_Point pointer = {};
+    SDL_GetGlobalMouseState(&pointer.x, &pointer.y);
+    int display = 0;
+    for (int i = 0; i < SDL_GetNumVideoDisplays(); ++i) {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayBounds(i, &bounds) == 0 && SDL_PointInRect(&pointer, &bounds)) {
+            display = i;
+            break;
+        }
+    }
+    SDL_Rect desktop = {0, 0, 1280, 800};
+    if (SDL_GetDisplayUsableBounds(display, &desktop) != 0 &&
+        SDL_GetDisplayBounds(display, &desktop) != 0) desktop = {0, 0, 1280, 800};
+    int windowScale = 0;
+    if (const char* e = getenv("SMS_WINDOW_SCALE")) {
+        const long requested = strtol(e, nullptr, 10);
+        if (requested > 0) windowScale = int(std::min(requested, 16L));
+    }
+    const WindowArea layout = initialWindowLayout({desktop.x, desktop.y, desktop.w, desktop.h},
+                                                  640.0 * GXPC_GetWidescreen() / 480.0, windowScale);
+    s_window = SDL_CreateWindow("Super Mario Sunshine", layout.x, layout.y, layout.w, layout.h,
+                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
+                                SDL_WINDOW_HIDDEN);
     if (!s_window) {
         logmsg("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
         return false;
     }
+    SDL_SetWindowMinimumSize(s_window, std::min(320, layout.w), std::min(240, layout.h));
     applyIcon();
     s_glctx = SDL_GL_CreateContext(s_window);
     if (!s_glctx) {
@@ -107,7 +132,18 @@ bool openWindow(int scale) {
         SDL_Quit();
         return false;
     }
-    logmsg("window %dx%d, OpenGL context ready", winW, 480 * ws);
+    SDL_ShowWindow(s_window);
+    // Some window managers choose their own placement when mapping a hidden
+    // window. Center the decorated frame after showing it, using a conservative
+    // title-bar allowance if the platform cannot report its borders yet.
+    WindowBorders borders = {48, 8, 8, 8};
+    if (SDL_GetWindowBordersSize(s_window, &borders.top, &borders.left, &borders.bottom, &borders.right) != 0)
+        borders = {48, 8, 8, 8};
+    SDL_SetWindowPosition(s_window,
+        desktop.x + (desktop.w - layout.w - borders.left - borders.right) / 2 + borders.left,
+        desktop.y + (desktop.h - layout.h - borders.top - borders.bottom) / 2 + borders.top);
+    logmsg("window %dx%d centered on display %d, internal resolution scale %d, OpenGL context ready",
+           layout.w, layout.h, display, scale);
     return true;
 }
 #endif

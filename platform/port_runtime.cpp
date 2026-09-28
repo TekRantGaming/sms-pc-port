@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <execinfo.h>
 #include "port_host.h"
+#include "disc/gcdisc.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
@@ -107,10 +108,8 @@ extern "C" void port_stub_report(void)
 static void crash_symbolise(void** bt, int n)
 {
 	char exe[512];
-	ssize_t len = readlink("/proc/self/exe", exe, sizeof exe - 1);
-	if (len <= 0)
+	if (!gcdisc_self_path(exe, sizeof exe))
 		return;
-	exe[len] = 0;
 	static char addrs[64][24];
 	char* argv[64 + 8];
 	int argc = 0;

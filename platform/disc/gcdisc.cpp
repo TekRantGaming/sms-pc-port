@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
@@ -265,6 +266,15 @@ extern "C" int gcdisc_self_path(char* buf, uint32_t bufsize)
 		return 0;
 	strcpy(buf, resolved);
 #else
+	// A private 32-bit loader allows an x64 OS without system multilib. In that
+	// case /proc/self/exe names the loader; run.sh records the actual game.
+	const char* launched = getenv("SMS_GAME_EXECUTABLE");
+	if (launched && *launched) {
+		if (strlen(launched) >= bufsize)
+			return 0;
+		strcpy(buf, launched);
+		return 1;
+	}
 	ssize_t n = readlink("/proc/self/exe", buf, bufsize - 1);
 	if (n <= 0)
 		return 0;

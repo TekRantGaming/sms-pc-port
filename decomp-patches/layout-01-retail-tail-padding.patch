@@ -5,7 +5,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  
  private:
  	u16 mUseMtxIndex;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[2];
@@ -19,7 +19,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  
  public:
  	/* 0x4 */ u8 mTarget;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[3];
@@ -33,7 +33,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  protected:
  	/* 0x4 */ const char* mName;
  	/* 0x8 */ u16 mKeyCode;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[2];
@@ -47,7 +47,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  
  public:
  	/* 0xC */ TFlagT<u16> unkC;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[2];
@@ -61,7 +61,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  	/* 0x20 */ Mtx unk20;
  	/* 0x50 */ JGeometry::TVec3<f32> mPrevTranslation;
  	/* 0x5C */ u16 mFlags;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[2];
@@ -75,7 +75,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  	/* 0x198 */ f32 unk198;
  	/* 0x19C */ GXColorS10 unk19C;
  	/* 0x1A4 */ u8 unk1A4;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[3];
@@ -89,7 +89,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  	/* 0x144 */ char* mHiddenShineDemoName;
  	/* 0x148 */ s32 unk148;
  	/* 0x14C */ bool mAllowReveal;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[3];
@@ -103,7 +103,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  	/* 0x148 */ s8 unk148;
  	/* 0x14A */ volatile s16 unk14A; // TODO: fake or real?
  	/* 0x14C */ s8 unk14C;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[3];
@@ -115,7 +115,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  	/* 0x152 */ u16 unk152;
  	/* 0x154 */ f32 unk154;
  	/* 0x158 */ s8 unk158;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[3];
@@ -129,7 +129,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  	/* 0x170 */ GXColorS10 unk170[3];
  	/* 0x188 */ f32 unk188[3];
  	/* 0x194 */ bool unk194;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[3];
@@ -143,7 +143,7 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  
  public:
  	/* 0x138 */ u16 unk138;
-+#if defined(TARGET_PC) && !defined(__LP64__)
++#if defined(TARGET_PC) && __SIZEOF_POINTER__ == 4
 +	// Port: the GameCube compiler never places a derived class's members in
 +	// this class's tail padding; g++ would (Itanium ABI), so it is filled.
 +	u8 _pcTailPad[2];

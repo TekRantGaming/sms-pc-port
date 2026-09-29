@@ -27,7 +27,7 @@ Reason: port: code-mod hooks (sms_modhook.h): exotic wall check in TMap::isTouch
 +	void* sms_mod_sea_ = SMS_MOD_SITE(0x8018A064);
 +	void* sms_mod_ind_ = SMS_MOD_SITE(0x8018A0D0);
 +	if (sms_mod_sea_ && sms_mod_ind_) {
-+#if !defined(__LP64__)
++#if __SIZEOF_POINTER__ == 4
 +		// (code mods run on the 32-bit build, where the object is retail's size)
 +		(void)sizeof(char[sizeof(TMapStaticObj) <= 0x80 ? 1 : -1]);
 +#endif

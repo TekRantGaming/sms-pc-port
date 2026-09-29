@@ -17,7 +17,7 @@ These tools do that, and produce `platform/mods/eclipse/shi-layout.patch`, which
 ## How a class is re-laid out
 
 For each SHI class with a port counterpart, every member at retail offset R is placed where the port keeps whatever is at retail offset R (the retail layout of the port's class, then the same member in the port's 32- or 64-bit layout).
-The class body gets, under `#if defined(__LP64__)` / `#else`, explicit `u8 _pc64_N[...]` / `_pc32_N` padding before members that move, the retail padding members (`_XX`) removed where nothing uses them, and a tail pad up to where the retail end of the class lands.
+The class body gets, under `#if __SIZEOF_POINTER__ == 8` / `#else`, explicit `u8 _pc64_N[...]` / `_pc32_N` padding before members that move, the retail padding members (`_XX`) removed where nothing uses them, and a tail pad up to where the retail end of the class lands.
 Members SHI places where retail has nothing of the kind are left in place and logged.
 Only the members the mods use (`used_members.py`) and the size of the classes they derive from are checked by `verify.py`; the rest follows from the same mapping.
 

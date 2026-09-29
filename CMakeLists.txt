@@ -50,6 +50,13 @@ message(STATUS "SMS port: building -m${SMS_ARCH}")
 
 # --- Decomp translation units -----------------------------------------------
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+if(WIN32 AND SMS_ARCH STREQUAL "32" AND "$ENV{SMS_WINDOWS_32_CROSS}" STREQUAL "1")
+  set(_msys_launcher "${Python3_EXECUTABLE};${CMAKE_CURRENT_SOURCE_DIR}/tools/msys_cross_compile.py")
+  set(CMAKE_C_COMPILER_LAUNCHER "${_msys_launcher}")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${_msys_launcher}")
+  set(CMAKE_C_LINKER_LAUNCHER "${_msys_launcher}")
+  set(CMAKE_CXX_LINKER_LAUNCHER "${_msys_launcher}")
+endif()
 execute_process(
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_sources.py
           ${SMS_DECOMP} ${CMAKE_BINARY_DIR}/decomp_sources.cmake
@@ -164,7 +171,22 @@ set_source_files_properties(${SMS_DECOMP_PCH_SOURCES} PROPERTIES
   COMPILE_OPTIONS "-include;${_sms_pch}")
 
 option(SMS_WITH_GX "Build and link platform/gx (the graphics layer)" ON)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32" AND DEFINED ENV{SMS_LINUX32_ROOT})
+  set(_graphics "$ENV{SMS_LINUX32_ROOT}/graphics/usr")
+  add_library(SDL2::SDL2 SHARED IMPORTED GLOBAL)
+  set_target_properties(SDL2::SDL2 PROPERTIES
+    IMPORTED_LOCATION "${_graphics}/lib/i386-linux-gnu/libSDL2-2.0.so.0"
+    INTERFACE_INCLUDE_DIRECTORIES "${_graphics}/include;${_graphics}/include/SDL2;${_graphics}/include/i386-linux-gnu")
+  # The cross linker also needs SDL2's private X11/audio/Wayland dependencies.
+  # RUNPATH lets the private loader prefer this SDK's newer libc/C++ runtime.
+  add_link_options("LINKER:--enable-new-dtags"
+    "LINKER:-rpath-link,${_graphics}/lib/i386-linux-gnu"
+    "LINKER:-rpath-link,$ENV{SMS_LINUX32_ROOT}/graphics/lib/i386-linux-gnu"
+    "LINKER:-rpath-link,${_graphics}/lib/i386-linux-gnu/pulseaudio")
+  set(CMAKE_DISABLE_FIND_PACKAGE_SDL2 ON)
+  set(SMS_GX_EGL_LIB "${_graphics}/lib/i386-linux-gnu/libEGL.so.1" CACHE FILEPATH "" FORCE)
+  set(SMS_GX_EGL_INCLUDE "${_graphics}/include" CACHE PATH "" FORCE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND SMS_WITH_GX AND SMS_ARCH STREQUAL "32")
   # Only the i386 runtime libraries are installed (no :i386 -dev packages):
   # compile against the amd64 SDL2/EGL headers and link the .so files directly.
   set(_i386 /usr/lib/i386-linux-gnu)
@@ -223,7 +245,10 @@ target_compile_options(sms_game PRIVATE ${SMS_GAME_FLAGS})
 # which would also capture libstdc++ and the platform layer (and crash before
 # the first JKRHeap exists). Rename the game's definitions and every game
 # reference to them, so only game code allocates from JKR heaps.
-if(SMS_ARCH STREQUAL "32")
+if(WIN32 AND SMS_ARCH STREQUAL "64")
+  # MinGW x64 is LLP64: size_t is unsigned long long, mangled as y.
+  set(_sz y)
+elseif(SMS_ARCH STREQUAL "32")
   set(_sz j)
 elseif(WIN32)
   # LLP64: size_t is unsigned long long.
@@ -236,7 +261,7 @@ if(APPLE)
   # rewrite Mach-O archives — use llvm-objcopy (Homebrew llvm).
   set(_object_prefix "_")
   find_program(SMS_OBJCOPY NAMES llvm-objcopy
-    PATHS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin
+    PATHS "$ENV{SMS_LLVM_BIN}" /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin
     NO_DEFAULT_PATH)
   if(NOT SMS_OBJCOPY)
     find_program(SMS_OBJCOPY NAMES llvm-objcopy)
@@ -244,9 +269,13 @@ if(APPLE)
   if(NOT SMS_OBJCOPY)
     message(FATAL_ERROR "llvm-objcopy required on macOS (brew install llvm)")
   endif()
-elseif(WIN32 AND SMS_ARCH STREQUAL "32")
-  # 32-bit COFF adds a leading underscore to each symbol; x64 COFF does not.
-  set(_object_prefix "_")
+elseif(WIN32)
+  # COFF adds a leading underscore to each 32-bit C++ symbol.
+  if(SMS_ARCH STREQUAL "32")
+    set(_object_prefix "_")
+  else()
+    set(_object_prefix "")
+  endif()
   set(SMS_OBJCOPY objcopy)
 else()
   set(_object_prefix "")
@@ -268,6 +297,7 @@ file(GLOB_RECURSE SMS_PLATFORM_SOURCES CONFIGURE_DEPENDS
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/gx/")
 # platform/mods/eclipse is built by cmake/eclipse.cmake, and only with SMS_ECLIPSE.
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/mods/eclipse/")
+list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/tests/")
 if(WIN32 OR APPLE)
   list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/trace/trace\\.cpp$")
 endif()
@@ -285,14 +315,16 @@ target_compile_definitions(sms PRIVATE ${SMS_COMMON_DEFS} SMS_AUDIO_DSP_HLE=1)
 target_compile_options(sms PRIVATE -fno-strict-aliasing -Wno-unused-parameter -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++11>)
 # dsptask.c points a DSP task at the fixed low-memory address 0x80004600.
-if(WIN32 AND SMS_ARCH STREQUAL "32")
-  target_link_options(sms PRIVATE -Wl,--large-address-aware -Wl,--defsym=_lbl_80004600=0x80004600)
-elseif(WIN32)
-  # The game keeps addresses of its globals in 32-bit slots, so the image must
-  # load below 4 GiB (the x64 default base is 0x140000000) and stay there: no
-  # ASLR. Without high-entropy ASLR, Windows also keeps heaps and stacks low.
-  target_link_options(sms PRIVATE -Wl,--image-base=0x10000000 -Wl,--disable-dynamicbase
-    -Wl,--disable-high-entropy-va -Wl,--defsym=lbl_80004600=0x80004600)
+if(WIN32)
+  target_link_options(sms PRIVATE "-Wl,--defsym=${_object_prefix}lbl_80004600=0x80004600")
+  if(SMS_ARCH STREQUAL "32")
+    target_link_options(sms PRIVATE -Wl,--large-address-aware)
+  endif()
+  if(SMS_ARCH STREQUAL "64")
+    # Game pointers pass through u32 slots, including addresses of static
+    # data. Keep the image below 4 GiB, as on the Linux non-PIE build.
+    target_link_options(sms PRIVATE -Wl,--image-base,0x400000 -Wl,--disable-dynamicbase -Wl,--disable-high-entropy-va)
+  endif()
 elseif(APPLE)
   # Apple ld has no --defsym; provide a normal symbol (DSP HLE does not need the GC address).
   target_sources(sms PRIVATE ${SMS_PORT_SRC}/lbl_80004600_darwin.c)
@@ -310,9 +342,24 @@ if(APPLE)
   target_link_options(sms PRIVATE "LINKER:-pagezero_size,0x1000")
 endif()
 find_package(Threads REQUIRED)
+if(WIN32 AND SMS_ARCH STREQUAL "64")
+  add_executable(sms_windows_stack_test EXCLUDE_FROM_ALL
+    platform/os/tests/windows_stack_test.cpp platform/os/windows_stack.cpp)
+  target_include_directories(sms_windows_stack_test PRIVATE ${SMS_PORT_SRC})
+  target_compile_features(sms_windows_stack_test PRIVATE cxx_std_11)
+  target_link_libraries(sms_windows_stack_test PRIVATE Threads::Threads)
+  target_link_options(sms_windows_stack_test PRIVATE -Wl,--image-base,0x400000
+    -Wl,--disable-dynamicbase -Wl,--disable-high-entropy-va)
+endif()
 if(APPLE)
   # Apple ld: -force_load pulls every member (like --whole-archive).
   # force_load does not pull INTERFACE deps, so also link sms_gx normally for SDL2.
+  # Darwin requires even weak imports to be resolved unless explicitly allowed.
+  # These five code-mod symbols are intentionally absent from standard Sunshine.
+  foreach(_optional_mod_symbol IN ITEMS ___start_sms_mod_ctors ___stop_sms_mod_ctors
+          _sPlayerAnimeDatas _sPlayerAnimeInfos _sPlayerAnimeInfosSize)
+    target_link_options(sms PRIVATE "LINKER:-U,${_optional_mod_symbol}")
+  endforeach()
   target_link_libraries(sms PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
   target_link_options(sms PRIVATE "LINKER:-force_load,$<TARGET_FILE:sms_game>")
   add_dependencies(sms sms_game)
@@ -330,9 +377,16 @@ else()
   endif()
 endif()
 
-option(SMS_ECLIPSE "Build Super Mario Eclipse in (32-bit; fetches its sources, see docs/ECLIPSE.md)" OFF)
+option(SMS_ECLIPSE "Build Super Mario Eclipse in (fetches its sources, see docs/ECLIPSE.md)" OFF)
 if(SMS_ECLIPSE)
   include(cmake/eclipse.cmake)
+elseif(WIN32)
+  # COFF x64 does not resolve these optional weak data imports to null.
+  # Only standard Sunshine uses null imports; Eclipse must supply real ones.
+  foreach(_optional_mod_symbol IN ITEMS __start_sms_mod_ctors __stop_sms_mod_ctors
+          sPlayerAnimeDatas sPlayerAnimeInfos sPlayerAnimeInfosSize)
+    target_link_options(sms PRIVATE "-Wl,--defsym=${_object_prefix}${_optional_mod_symbol}=0")
+  endforeach()
 endif()
 
 # --- Standalone executable ------------------------------------------------------

@@ -13,7 +13,7 @@ Every system uses the same scripts from the repository root:
 | [Linux](#linux), 32-bit (default) | any | `build/linux-32/` | `sms` | `sms-standalone` |
 | [Linux](#linux), 64-bit (`SMS_ARCH=64`) | any | `build/linux-64/` | `sms` | `sms-standalone` |
 | [macOS](#macos) | any (Terminal) | `build/macos-64/` | `sms` | [`SMS.app`](#macos-app) |
-| [Windows](#windows-msys2-mingw32) | MSYS2 MINGW32, or PowerShell with `build.cmd` / `run.cmd` | `build/windows-32/` | `sms.exe` | `sms-standalone.exe` |
+| [Windows](#windows-msys2-mingw64) | MSYS2 MINGW64, or PowerShell with `build.cmd` / `run.cmd` | `build/windows-64/` | `sms.exe` | `sms-standalone.exe` |
 
 - **The game comes from your disc image**: Super Mario Sunshine, North America (GMSE01), Rev 0, as `.iso`, `.gcm` or Dolphin `.ciso`.
   Put it in [`rom/`](rom/), pass its path, or set `SMS_DISC_IMAGE`.
@@ -26,7 +26,7 @@ Every system uses the same scripts from the repository root:
   The game source is, in order: an image or extracted `files/` folder passed as argument, `SMS_DISC_IMAGE` or `SMS_DISC_ROOT`; else the standalone executable if it was built; else the image in `rom/`.
   Anything starting with `-` (such as `--headless`) goes to the game.
 - **`SMS_ARCH=32` or `64`** picks the word size for both scripts.
-  Linux builds either (32-bit is the default); macOS builds only 64-bit and Windows only 32-bit so far.
+  Linux builds either (32-bit is the default); macOS builds only 64-bit. The launcher runs on 64-bit computers and offers both 32-bit and 64-bit games on Linux and Windows, defaulting to 64-bit. Its private tools include cross compilers and target libraries, so manual prerequisites below are not needed when using the launcher.
   When both Linux builds exist, `./run.sh` takes 32-bit unless `SMS_ARCH=64` is set; when only one exists, it takes that one.
 - **`./clean.sh`** deletes the build output: every `build/<os>-<arch>/` folder (with its standalone executable or `SMS.app`), captures in `build/`, and the build folders of older layouts (`build-mac/`, `build-64/`, `build32/`).
   It never deletes a disc image: `rom/` is never touched, an image left in an old build folder's `rom/` is moved to `rom/` first, and a folder that still holds an image is skipped.
@@ -140,17 +140,17 @@ On Apple Silicon, macOS offers to install Rosetta 2 on first launch if it is mis
 Saves go to `~/.local/share/sms-port/card-a`, the same place as the terminal build.
 Keep the app private: it contains the whole game and the icon art from your disc, so sharing it is sharing the game.
 
-## Windows (MSYS2 MINGW32)
+## Windows (MSYS2 MINGW64)
 
-Install [MSYS2](https://www.msys2.org/) and open **MSYS2 MINGW32** from the Start menu.
-The Windows build is 32-bit (64-bit Windows is LLP64 and still needs its own pass; see [docs/64-BIT.md](docs/64-BIT.md)).
+Install [MSYS2](https://www.msys2.org/) and open **MSYS2 MINGW64** from the Start menu.
+The default Windows build is native x86_64. Its game memory, executable image, and game thread stacks stay below 4 GiB because retail stores addresses in 32-bit slots. The process itself uses 64-bit pointers and x64 SDL2/compiler runtime DLLs. A 32-bit build is also available with `SMS_ARCH=32` in a MINGW32 shell, or with the launcher’s x64-host cross compiler from MINGW64 (`SMS_WINDOWS_32_CROSS=1`).
 Install the compiler, SDL2, build tools and `patch`:
 
 ```sh
-pacman -S --needed mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-SDL2 mingw-w64-i686-ninja mingw-w64-i686-make mingw-w64-i686-python patch git
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-SDL2 mingw-w64-x86_64-ninja mingw-w64-x86_64-make mingw-w64-x86_64-python patch git
 ```
 
-In the MINGW32 shell, enter this repository (for example `cd /c/path/to/sms-pc-port`), then build and run:
+In the MINGW64 shell, enter this repository (for example `cd /c/path/to/sms-pc-port`), then build and run:
 
 ```sh
 ./build.sh
@@ -158,14 +158,14 @@ In the MINGW32 shell, enter this repository (for example `cd /c/path/to/sms-pc-p
 ```
 
 Use single quotes around paths with spaces or parentheses: `./run.sh '/c/Games/Super Mario Sunshine (US).iso'`.
-Keep the MINGW32 shell open while playing so its SDL2 and compiler runtime DLLs are on `PATH`.
+Keep the MINGW64 shell open while playing so its SDL2 and compiler runtime DLLs are on `PATH`.
 Saves go to `%APPDATA%\sms-port\card-a` (or `SMS_SAVE_DIR`).
 Headless mode (EGL) is not available on Windows; the SDL2 window is the only mode.
 
 ### From PowerShell or Command Prompt
 
 The `.sh` files are Bash scripts, so do not open them through Windows file associations or Git for Windows.
-`build.cmd`, `run.cmd` and `clean.cmd` start MSYS2's MINGW32 Bash for you and put its 32-bit DLLs on `PATH`:
+`build.cmd`, `run.cmd` and `clean.cmd` start MSYS2's MINGW64 Bash for you and put its 64-bit DLLs on `PATH`:
 
 ```powershell
 .\build.cmd
@@ -187,9 +187,9 @@ python configure.py --version GMSE01
 ninja
 ```
 
-If Ninja is installed through MSYS2 but is not on PowerShell's `PATH`, run `C:\msys64\mingw32\bin\ninja.exe` in place of `ninja`.
+If Ninja is installed through MSYS2 but is not on PowerShell's `PATH`, run `C:\msys64\mingw64\bin\ninja.exe` in place of `ninja`.
 The output is `build/GMSE01/mario.dol`; it should match the original disc's DOL byte for byte.
-The decomp downloads its own GameCube toolchain; the MINGW32 GCC compiler is only for the PC port.
+The decomp downloads its own GameCube toolchain; the MINGW64 GCC compiler is only for the PC port.
 The `sms-english` [README](https://github.com/chasem-dev/sms-english/blob/main/README.md) has the native Windows setup details.
 
 ## Standalone executable
@@ -200,7 +200,7 @@ Give the build script your disc image (or leave it in `rom/`) to also get an exe
 | --- | --- |
 | Linux | `build/linux-32/sms-standalone` (`build/linux-64/` with `SMS_ARCH=64`) |
 | macOS | `build/macos-64/SMS.app` (see [macOS app](#macos-app)) |
-| Windows | `build/windows-32/sms-standalone.exe` |
+| Windows | `build/windows-64/sms-standalone.exe` |
 
 `tools/bundle_disc.py` reads the image (`.iso`, `.gcm` or Dolphin `.ciso`), checks that it is GMSE01, and packs the disc's files into a trimmed disc image with no padding (about 1.1 GiB).
 It appends that image to a copy of `sms`, followed by a small trailer that `platform/disc` finds when the program starts.
@@ -252,6 +252,6 @@ cmake --build build/linux-32 --target sms --parallel
 | macOS: `Rosetta 2 is required` | `softwareupdate --install-rosetta` |
 | macOS: `Missing llvm-objcopy` | `brew install llvm` |
 | macOS: "SMS is damaged" / "cannot be verified" on a copied `SMS.app` | `xattr -dr com.apple.quarantine /path/to/SMS.app` |
-| Windows: `Use the MSYS2 MINGW32 shell` | open **MSYS2 MINGW32** (not MSYS or UCRT64), or use `build.cmd` / `run.cmd` |
-| Windows: missing DLL when starting `sms.exe` directly | start it from the MINGW32 shell or with `run.cmd` |
+| Windows: `Use the MSYS2 MINGW64 shell` | open **MSYS2 MINGW64** (not MSYS or UCRT64), or use `build.cmd` / `run.cmd` |
+| Windows: missing DLL when starting `sms.exe` directly | start it from the MINGW64 shell or with `run.cmd` |
 | Stale or broken build after pulling | `./clean.sh` and `./build.sh` again (`rom/` and `build/deps/` are kept) |

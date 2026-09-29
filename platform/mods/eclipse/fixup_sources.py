@@ -116,22 +116,22 @@ SHI_FIXES = [
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.
     ("include/Dolphin/types.h", r"(?<!#else\n)typedef unsigned long u32;\n",
-     "#if defined(__LP64__)\ntypedef unsigned int u32;\n#else\ntypedef unsigned long u32;\n#endif\n",
+     "#if __SIZEOF_POINTER__ == 8\ntypedef unsigned int u32;\n#else\ntypedef unsigned long u32;\n#endif\n",
      "u32 is 32 bits on LP64 hosts"),
     # Counts SunshineHeaderInterface spells size_t are 32-bit words in the game:
     # keep them 32 bits wide on LP64 hosts (the class layouts are fixed up by
     # shi-layout.patch, but templates are not rewritten there).
     ("include/JSystem/JGadget/List.hxx", r"(?m)(?<!#else\n)^([ \t]*)typedef size_t size_type;\n",
-     r"#if defined(__LP64__)\n\1typedef u32 size_type;\n#else\n\1typedef size_t size_type;\n#endif\n",
+     r"#if __SIZEOF_POINTER__ == 8\n\1typedef u32 size_type;\n#else\n\1typedef size_t size_type;\n#endif\n",
      "list sizes are 32-bit in the game"),
     ("include/SMS/SPC/SpcStack.hxx", r"(?m)(?<!#else\n)^([ \t]*)size_t (mMaxSize|mCurSize);\n",
-     r"#if defined(__LP64__)\n\1u32 \2;\n#else\n\1size_t \2;\n#endif\n",
+     r"#if __SIZEOF_POINTER__ == 8\n\1u32 \2;\n#else\n\1size_t \2;\n#endif\n",
      "SunScript stack counts are 32-bit in the game"),
     ("include/SMS/Enemy/SpineBase.hxx", r"(?m)(?<!#else\n)^([ \t]*)size_t (mStackCapacity);\n",
-     r"#if defined(__LP64__)\n\1u32 \2;\n#else\n\1size_t \2;\n#endif\n",
+     r"#if __SIZEOF_POINTER__ == 8\n\1u32 \2;\n#else\n\1size_t \2;\n#endif\n",
      "spine stack counts are 32-bit in the game"),
     ("include/Dolphin/types.h", r"(?<!#else\n)typedef long s32;\n",
-     "#if defined(__LP64__)\ntypedef int s32;\n#else\ntypedef long s32;\n#endif\n",
+     "#if __SIZEOF_POINTER__ == 8\ntypedef int s32;\n#else\ntypedef long s32;\n#endif\n",
      "s32 is 32 bits on LP64 hosts"),
     # The decomp's JUTRect has a user-provided copy constructor, so the port
     # passes it by value through a hidden reference; SunshineHeaderInterface's

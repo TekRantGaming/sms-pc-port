@@ -79,6 +79,7 @@ The renderer reads its state only from that register file, so API calls, GD disp
    If VI should own presentation, call `GXPC_SetAutoPresent(0)` and then `GXPC_Present(xfb)` on retrace.
    - Command line: `GXPC_ParseArgs(&argc, argv)` strips `--headless`, `--window` and `--vsync`.
    - Environment: `SMS_HEADLESS=1`, `SMS_GX_SCALE=n` (internal resolution), `SMS_WINDOW_SCALE=n`, `SMS_VSYNC=1`.
+   - Windows start centered on the pointer's monitor, with a default size of up to 1280×720. The window and its borders fit within 80% of the usable desktop, leaving its title bar and resize edges accessible. Internal resolution does not enlarge the window; `SMS_WINDOW_SCALE` requests a different starting size, still fitted to the screen.
    - Frame dumps: `SMS_GX_DUMP_EVERY=n SMS_GX_DUMP_DIR=dir` writes every n-th XFB as a PPM, which is useful for headless bring-up.
    - If no display or GPU driver works, run with `LIBGL_ALWAYS_SOFTWARE=1`.
 7. **Input.**

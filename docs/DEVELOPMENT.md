@@ -14,7 +14,7 @@ How the port is put together and where changes go. To build and play, see the [R
   Example: `TConductor::isBossDefeated` (98.8%) lacks retail's `default:` arm, so maps other than 2 and 3 fall off the end; g++ then runs the Gesso check for them where retail runs the Hinokuri one.
 - **Pointer-size neutral spellings go in the decomp** (the one kind of PC-motivated change the decomp takes): where the game keeps pointers in 4-byte slots, the decomp spells that so MWCC's output is unchanged and a 64-bit host keeps the layout: `PTR32(T)` (exactly `T*` in the decomp's `dolphin/types.h`) for pointer fields of structs laid over file data, `sizeof` instead of byte counts, and `u32` instead of signed ints in int-to-pointer casts.
   Each such commit keeps the DOL hash and every function's match; one-off 64-bit adaptations that cannot be spelled neutrally are `ptr64-*` patches here (see [64-BIT.md](64-BIT.md)).
-- **PC-specific fixes go in `decomp-patches/`**: byte order (`endian-*`), host compiler leniency (`0001`–`0010`, `0015`, `ret-02..03`), host services (`thp-*`, `audio-*`), port-only features (`port-*`, `SMS_*` switches). Each patch starts with a `Reason:` line saying why it cannot live in the decomp.
+- **PC-specific fixes go in `decomp-patches/`**: byte order (`endian-*`), host compiler leniency (`0001`–`0010`, `0015`, `0018`, `ret-02..03`), host services (`thp-*`, `audio-*`), port-only features (`port-*`, `SMS_*` switches). Each patch starts with a `Reason:` line saying why it cannot live in the decomp.
   A patch never corrects the decomp's behaviour; it only adapts retail's behaviour to the PC.
 - **Emulation of the hardware goes in `platform/`** (GX, DVD, OS, audio), never in game source.
 - Example: the sun-glass tint that stopped part-way down the screen was a decomp bug (`TOrthoProj`'s reconstructed constructor stored its last two edges swapped), so it was fixed in `sms-english` and verified against retail, not patched here.
@@ -103,6 +103,7 @@ Each file in `decomp-patches/` starts with a `Reason:` line; they are applied in
 | 0016 | `SMS_SKIP_MOVIES`. |
 | 0017 | Endian: `J3DTevStage::load` builds its `{reg, op, AB, CD}` BP command words big-endian. |
 | 0018–0019 | Host integer types: `JKRArchive`'s default constructors pass `(s32)0` to its `intptr_t` parameter (ambiguous with the `const char*` constructor under g++), and `TMarDirector::fireStartDemoCamera` is defined with `u32` where `MarDirector.hpp` declares `uintptr_t` (the same type under MWCC, not on the host). |
+| 0020 | Clang: `TTabePuku::init` binds `theNerve()`'s const nerve to a non-const `TNerveBase<TLiveActor>*` (g++ `-fpermissive` only warns): `const_cast`. |
 | `endian-01..16` | Loader-site byte-order fixes (JPA, J2D BLO, BMG, JUTColor, PRM, SPC, streams, DL vertex counts, sequences, card saves, THP headers, J3DSkinDeform/J3DCluster display lists, the plaza shine-shadow sphere, the HUD/map 2D archive swap); see `platform/endian/README.md`. |
 | `port-02` | `SMS_WARP` / `SMS_WARP_MOVIE`: debug warp or movie from a file-select load. |
 | `audio-01..02` | JAudio bitfield/byte-order fixes (`TChannel` mix config, BMS note-on flags); see `platform/audio/README.md`. |

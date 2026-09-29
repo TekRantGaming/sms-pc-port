@@ -87,7 +87,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
 +			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024C88C)) {
 +				SMS_MOD_GPR(28, this);
 +				sms_fence_ = ((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
-+				    mWallPlane, mWallPlane->mBGType);
++				    const_cast<TBGCheckData*>(mWallPlane), mWallPlane->mBGType);
 +			} else {
 +				sms_fence_ = mWallPlane->isFence();
 +			}

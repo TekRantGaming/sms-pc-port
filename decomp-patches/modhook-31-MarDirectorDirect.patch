@@ -58,7 +58,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  {
  	TGameSequence local_3C;
  
-@@ -219,9 +254,90 @@
+@@ -219,9 +254,92 @@
  		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
  		break;
  	}
@@ -93,6 +93,8 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +	case 0:
 +		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
 +		break;
++	case 1:
++	case 2:
 +	default:
 +		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
 +		break;
@@ -149,7 +151,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  // UNUSED, 0x10c.
  // TODO: dead in the shipped game and 67 instructions in the map, with no call
  // site and no literal of its own to read; the body is unrecovered.
-@@ -236,8 +352,24 @@
+@@ -236,8 +354,24 @@
  
  	int i = 0;
  	do {
@@ -174,7 +176,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		++i;
  	} while (i < 7);
  
-@@ -249,13 +381,37 @@
+@@ -249,13 +383,37 @@
  // `li r3, 0` hoisted above the first branch and the separate final zero.
  // Inert: TFlagManager::getInstance()/SMSGetFlagManager() receivers at every
  // site (call receivers keep their register), a compared shadow-Mario result.
@@ -212,7 +214,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		else if (checkDefeatShadowMarioAll())
  			scenario = 9;
  		else if (TFlagManager::smInstance->getBool(0x10389))
-@@ -289,6 +445,16 @@
+@@ -289,6 +447,16 @@
  {
  	const TGameSequence& curArea = gpApplication.mCurrArea;
  	if (SMS_isExMap() || curArea.getStage() == 0 || curArea.getStage() == 60) {
@@ -229,7 +231,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		getNextArea().set(curArea.getStage(), 0, 0);
  	} else {
  		decideNextStage();
-@@ -405,7 +571,11 @@
+@@ -405,7 +573,11 @@
  			unkB4     = TApplication::APP_STATE_DONE;
  			break;
  		case 5:
@@ -241,7 +243,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
  			moveStage();
  			unkE4     = 2;
-@@ -430,6 +600,16 @@
+@@ -430,6 +602,16 @@
  				} else {
  					SMSGetApplication()->mNextArea.set(1, 0xff, 0);
  				}
@@ -258,7 +260,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
  				moveStage();
  				SMSGetApplication()->getFader()->setFadeStatus(
-@@ -496,7 +676,21 @@
+@@ -496,7 +678,21 @@
  		unkB4 = TApplication::APP_STATE_DONE;
  	}
  
@@ -280,7 +282,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		currentStateFinalize(nextState);
  		nextStateInitialize(nextState);
  		mState = nextState;
-@@ -879,6 +1073,54 @@
+@@ -879,6 +1075,54 @@
  				break;
  			}
  
@@ -335,7 +337,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			if (mMap != 15) {
  				if (unk18[0]->testTrigger(0x10)) {
  					r29 = STATE_GUIDE;
-@@ -887,6 +1129,7 @@
+@@ -887,6 +1131,7 @@
  
  				if (unk18[0]->checkFrameMeaning(TMarioGamePad::MEANING_0x1)) {
  					if (gpMarioOriginal->checkActionThing3()) {
@@ -343,7 +345,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  						r29 = STATE_PAUSE_MENU;
  						break;
  					}
-@@ -912,15 +1155,51 @@
+@@ -912,15 +1157,51 @@
  				console->unk47 = 1;
  				MSBgm::startBGM(MSD_BGM_GET_SHINE);
  				TFlagManager::getInstance()->setBool(true, 0x30006);

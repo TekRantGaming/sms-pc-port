@@ -25,7 +25,10 @@ typedef void* (*GXPCGetProcFn)(const char* name);
  *   GXPC_SetHeadless(0) or --window                      force a window
  *   SMS_HEADLESS=1                                       force offscreen
  * Other environment: SMS_GX_SCALE=n (internal EFB scale), SMS_WINDOW_SCALE=n
- * (window size multiple of 640x480), SMS_VSYNC=1 or --vsync (swap interval 1),
+ * (preferred window size multiple of 640x480, fitted to the desktop). By default
+ * the window is at most 1280x720, fitted and centered in the usable desktop on
+ * the pointer's display; render scale does not change its size.
+ * SMS_VSYNC=1 or --vsync (swap interval 1),
  * SMS_OVERLAY=1 (open the debug overlay at start),
  * SMS_GX_DUMP_EVERY=n + SMS_GX_DUMP_DIR=dir (write every n-th XFB as PPM).
  * Every GXCopyDisp presents the copied XFB to the window and swaps (disable

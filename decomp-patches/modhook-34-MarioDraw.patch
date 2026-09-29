@@ -11,9 +11,9 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's extended Ma
 +// BetterSunshineEngine's extended copies of the animation tables
 +// (bse/src/player.cpp), which its patches below point the game at through
 +// PowerPC stubs; weak, as they exist only with the mod linked in.
-+extern TMarioAnimeData sPlayerAnimeDatas[] __attribute__((weak));
-+extern unkTMarioAnimeFilesStruct sPlayerAnimeInfos[] __attribute__((weak));
-+extern size_t sPlayerAnimeInfosSize __attribute__((weak));
++extern TMarioAnimeData sPlayerAnimeDatas[] SMS_MOD_WEAK_IMPORT;
++extern unkTMarioAnimeFilesStruct sPlayerAnimeInfos[] SMS_MOD_WEAK_IMPORT;
++extern size_t sPlayerAnimeInfosSize SMS_MOD_WEAK_IMPORT;
 +
 +// Whether a weak symbol above is linked in.
 +static inline bool sms_mod_linked_(const void* p)

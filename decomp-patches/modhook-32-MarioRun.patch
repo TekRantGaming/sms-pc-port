@@ -95,7 +95,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, 
 +			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025B200)) {
 +				SMS_MOD_GPR(31, this);
 +				((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
-+				    mWallPlane, mWallPlane ? mWallPlane->mBGType : 0);
++				    const_cast<TBGCheckData*>(mWallPlane), mWallPlane ? mWallPlane->mBGType : 0);
 +				sms_cling_ = mWallPlane != nullptr;
 +			} else {
 +				sms_cling_ = mWallPlane != nullptr && mWallPlane->isFence();

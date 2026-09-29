@@ -97,7 +97,7 @@ consteval bool sms_offset_same(const char *a, const char *b) {
 consteval unsigned long sms_offset_lookup(const char *cls, unsigned long retail) {
     for (const sms_offset_entry &e : sms_offset_table)
         if (e.retail == retail && sms_offset_same(e.cls, cls))
-#if defined(__LP64__)
+#if __SIZEOF_POINTER__ == 8
             return e.p64;
 #else
             return e.p32;

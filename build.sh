@@ -4,7 +4,7 @@
 # Builds the port for this computer into build/<os>-<arch>/:
 #   Linux    build/linux-32/sms       (SMS_ARCH=64: build/linux-64/sms)
 #   macOS    build/macos-64/sms       (x86_64, runs under Rosetta on Apple Silicon)
-#   Windows  build/windows-32/sms.exe (MSYS2 MINGW32 shell, or build.cmd)
+#   Windows  build/windows-64/sms.exe (MSYS2 MINGW64 shell, or build.cmd)
 # With a disc image (the argument, SMS_DISC_IMAGE, or the one image in rom/)
 # it also builds a copy that has the game's files inside and needs no image:
 # sms-standalone (sms-standalone.exe on Windows, SMS.app on macOS).
@@ -36,7 +36,7 @@ need() {
 
 setup_linux() {
   need git cmake make patch python3 objcopy g++
-  if [[ "$sms_arch" == 32 ]] && ! echo 'int main(){return 0;}' | g++ -m32 -x c++ - -o /dev/null 2>/dev/null; then
+  if [[ "$sms_arch" == 32 ]] && ! echo 'int main(){return 0;}' | "${CXX:-g++}" -m32 -x c++ - -o /dev/null 2>/dev/null; then
     sms_die "g++ -m32 does not link: install the 32-bit packages (BUILD.md#linux), or build 64-bit with SMS_ARCH=64 ./build.sh."
   fi
 }
@@ -45,12 +45,12 @@ setup_linux() {
 # SDL2.framework (Homebrew's sdl2 is arm64-only on Apple Silicon).
 setup_macos() {
   need git cmake make patch python3 clang++ curl
-  if [[ "$(uname -m)" == arm64 ]] && ! arch -x86_64 true >/dev/null 2>&1; then
+  if [[ "$(uname -m)" == arm64 ]] && ! /usr/bin/arch -x86_64 /usr/bin/true >/dev/null 2>&1; then
     sms_die "Rosetta 2 is required on Apple Silicon (the game is an x86_64 program): softwareupdate --install-rosetta"
   fi
 
   local objcopy="" c
-  for c in "$(brew --prefix llvm 2>/dev/null)/bin/llvm-objcopy" \
+  for c in "${SMS_LLVM_BIN:-}/llvm-objcopy" "$(brew --prefix llvm 2>/dev/null)/bin/llvm-objcopy" \
            /opt/homebrew/opt/llvm/bin/llvm-objcopy /usr/local/opt/llvm/bin/llvm-objcopy; do
     if [[ -x "$c" ]]; then objcopy=$c; break; fi
   done
@@ -93,7 +93,9 @@ setup_macos() {
 
 setup_windows() {
   need git cmake ninja patch python
-  cmake_args+=(-G Ninja)
+  # FindPython otherwise prefers a registered system installation, even when
+  # the portable MSYS2 Python is first on PATH.
+  cmake_args+=(-G Ninja -DPython3_EXECUTABLE="$(cygpath -m "$(command -v python)")")
 }
 
 "setup_$sms_os"

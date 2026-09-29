@@ -1,8 +1,8 @@
 # Decompilation status
 
-Target: `GMSE01`. Decomp checkout: `5e7b48ca4352985439b73fe636a490d505474735`.
-Build report generated: 2026-09-29T16:06:06+00:00.
-Port decomp pin: `5e7b48ca4352985439b73fe636a490d505474735`.
+Target: `GMSE01`. Decomp checkout: `d59c2e8cb77c7dda26d174f4f40563343c45c70d`.
+Build report generated: 2026-09-29T16:24:19+00:00.
+Port decomp pin: `d59c2e8cb77c7dda26d174f4f40563343c45c70d`.
 Completion: **incomplete**.
 
 | Category | Exact code | Source-linked code | Source-linked units |

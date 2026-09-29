@@ -104,10 +104,11 @@ Each file in `decomp-patches/` starts with a `Reason:` line; they are applied in
 | 0017 | Endian: `J3DTevStage::load` builds its `{reg, op, AB, CD}` BP command words big-endian. |
 | 0018–0019 | Host integer types: `JKRArchive`'s default constructors pass `(s32)0` to its `intptr_t` parameter (ambiguous with the `const char*` constructor under g++), and `TMarDirector::fireStartDemoCamera` is defined with `u32` where `MarDirector.hpp` declares `uintptr_t` (the same type under MWCC, not on the host). |
 | 0020 | Clang: `TTabePuku::init` binds `theNerve()`'s const nerve to a non-const `TNerveBase<TLiveActor>*` (g++ `-fpermissive` only warns): `const_cast`. |
+| 0021–0022 | Host integer types for clang (g++ `-fpermissive` only warns): `ARQCallback` takes `uintptr_t` like the callbacks passed to it (`JKRAramPiece::doneDMA`, JASystem's `aramDmaFinish`), and the four `fireStartDemoCamera` callbacks still spelled with `u32` take `uintptr_t` as `MarDirector.hpp` declares. |
 | `endian-01..16` | Loader-site byte-order fixes (JPA, J2D BLO, BMG, JUTColor, PRM, SPC, streams, DL vertex counts, sequences, card saves, THP headers, J3DSkinDeform/J3DCluster display lists, the plaza shine-shadow sphere, the HUD/map 2D archive swap); see `platform/endian/README.md`. |
 | `port-02` | `SMS_WARP` / `SMS_WARP_MOVIE`: debug warp or movie from a file-select load. |
 | `audio-01..02` | JAudio bitfield/byte-order fixes (`TChannel` mix config, BMS note-on flags); see `platform/audio/README.md`. |
-| `ret-02..03` | Explicit returns for the 37 functions that fall off the end of a non-void body and whose value nothing reads (undefined behaviour under g++, harmless under MWCC). |
+| `ret-02..03` | Explicit returns for the 36 functions that fall off the end of a non-void body and whose value nothing reads (undefined behaviour under g++, harmless under MWCC). |
 | `thp-01..02` | Host THP decoder (portable bit reader and IDCT, big-endian audio header); see `platform/thp/README.md`. |
 
 ## Environment variables
@@ -155,6 +156,7 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
   Four (`DSPBuf::mixDSP`, `Dvd::openDvd`, `TMap::intersectLine`, `TLampTrapSpike::receiveMessage`) are fixed in the decomp, where the explicit return compiles to the same bytes.
   `TConductor::isBossDefeated` is not fixed: the decomp's `switch` lacks retail's `default:` arm, every form with it tried so far lowers its match (98.8% to 95.6%), and the port does not patch around the decomp (see [Where a fix goes](#where-a-fix-goes)).
   The other 37 are `ret-02..03`: nothing reads their value, so only g++ needs the return.
+  Since decomp 0085b21c `JUTGamePad::read` is `void` in the decomp itself, so `ret-02..03` now cover 36.
   After the patches, `-Wreturn-type` reports nothing over all units, so the game library no longer depends on `-O0`.
 - **-O1/-O2 are safe as far as the port reaches.**
   With the existing `-fno-strict-aliasing -fwrapv`, a game library built at -O1 or -O2 boots through the logo, the attract movies (THP) and the title to file select, with audio, and showed no crashes over about 10 runs of 60–100 s.

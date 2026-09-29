@@ -1,0 +1,54 @@
+Reason: clang: TMarDirector::fireStartDemoCamera (MarDirector.hpp) takes a s32 (*)(uintptr_t, u32) callback, but four callbacks are defined with u32 first (the same type under MWCC, not on the host; g++ -fpermissive only warns); spell them as declared
+--- a/include/MoveBG/MapObjPinna.hpp
++++ b/include/MoveBG/MapObjPinna.hpp
+@@ -21,7 +21,7 @@
+ 	/// Demo-camera callback. Fired with the wheel address in @p param_1 (the
+ 	/// pointer the camera was started with) once the "back to normal" camera
+ 	/// reaches its end.
+-	static s32 becomeCalmlyCallback(u32 param_1, u32 param_2);
++	static s32 becomeCalmlyCallback(uintptr_t param_1, u32 param_2);
+ 
+ 	virtual void control();
+ 	virtual void initMapObj();
+--- a/src/MoveBG/MapObjMamma.cpp
++++ b/src/MoveBG/MapObjMamma.cpp
+@@ -591,7 +591,7 @@
+ // (the TVec3 sits at 0x30 in retail).  Inert: a `warpCamera(cam, angle)`
+ // wrapper, SMSGetCamera()/getUnk124() at any subset of sites, a named angle.
+ 
+-static s32 SandCastleCallBack(u32 param_1, u32 param_2)
++static s32 SandCastleCallBack(uintptr_t param_1, u32 param_2)
+ {
+ 	if (param_2 == 1) {
+ 		gpTargetArrow->unk14 = 1;
+@@ -834,7 +834,7 @@
+ 	MSBgm::stopTrackBGM(1, 0xA);
+ }
+ 
+-static s32 startCameraShakeSE(u32 param_1, u32 param_2) { return 0; }
++static s32 startCameraShakeSE(uintptr_t param_1, u32 param_2) { return 0; }
+ 
+ static inline J3DModel* LeanMirrorModel(TLeanMirror* self)
+ {
+--- a/src/MoveBG/MapObjPinna.cpp
++++ b/src/MoveBG/MapObjPinna.cpp
+@@ -52,7 +52,7 @@
+ 	return model;
+ }
+ 
+-s32 TFerrisWheel::becomeCalmlyCallback(u32 param_1, u32 param_2)
++s32 TFerrisWheel::becomeCalmlyCallback(uintptr_t param_1, u32 param_2)
+ {
+ 	if (param_2 == 0) {
+ 		TFerrisWheel* wheel = reinterpret_cast<TFerrisWheel*>(param_1);
+--- a/src/NPC/NpcEvent.cpp
++++ b/src/NPC/NpcEvent.cpp
+@@ -447,7 +447,7 @@
+ 	return sound;
+ }
+ 
+-static s32 ReviveSunflowerCallBack(u32 param_1, u32 param_2)
++static s32 ReviveSunflowerCallBack(uintptr_t param_1, u32 param_2)
+ {
+ 	if (param_2 == 0) {
+ 		TBaseNPC* sunflower = (TBaseNPC*)param_1;

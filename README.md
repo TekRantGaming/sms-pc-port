@@ -8,6 +8,13 @@ You build the program from source, and it reads the models, textures, levels, mu
 For guided setup, updates and a Play button, use our dedicated [SMS Launcher](https://github.com/chasem-dev/sms-launcher) for Windows, macOS and Linux.
 The launcher sets up this port on your computer using your own supported disc image; downloads are on its [releases page](https://github.com/chasem-dev/sms-launcher/releases/latest).
 
+## Decompilation progress
+
+![GMSE01 progress: fuzzy similarity, byte-perfect code, and source-linked code](assets/progress.svg)
+
+This card shows the [GMSE01 decompilation](https://github.com/chasem-dev/sms-english) snapshot recorded by the source revision pinned in this port.
+Fuzzy similarity measures approximate code similarity; the other two tracks show byte-perfect code and code linked from matching source.
+
 ## Supported systems
 
 | System | Word size | Status | Output |

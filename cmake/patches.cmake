@@ -27,10 +27,12 @@ foreach(p ${SMS_PATCHES})
       get_filename_component(d ${_scratch}/${f} DIRECTORY)
       file(MAKE_DIRECTORY ${d})
       file(COPY_FILE ${SMS_DECOMP}/${f} ${_scratch}/${f})
+      # A new decomp revision must refresh the generated patched copy.
+      set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SMS_DECOMP}/${f})
       list(APPEND _touched ${f})
     endif()
   endforeach()
-  execute_process(COMMAND patch -p1 --quiet -d ${_scratch} -i ${p}
+  execute_process(COMMAND patch -p1 --batch --fuzz=0 --quiet -d ${_scratch} -i ${p}
                   RESULT_VARIABLE rc)
   if(NOT rc EQUAL 0)
     message(FATAL_ERROR "port patch failed to apply: ${p}")

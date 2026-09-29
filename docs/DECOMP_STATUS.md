@@ -1,21 +1,21 @@
 # Decompilation status
 
-Target: `GMSE01`. Decomp checkout: `0bead89b4d14cca2410e947d556b31eda26536c4`.
-Build report generated: 2026-09-29T15:49:22+00:00.
-Port decomp pin: `0bead89b4d14cca2410e947d556b31eda26536c4`.
+Target: `GMSE01`. Decomp checkout: `5e7b48ca4352985439b73fe636a490d505474735`.
+Build report generated: 2026-09-29T16:06:06+00:00.
+Port decomp pin: `5e7b48ca4352985439b73fe636a490d505474735`.
 Completion: **incomplete**.
 
 | Category | Exact code | Source-linked code | Source-linked units |
 | --- | ---: | ---: | ---: |
-| Game Code | 67.64319% | 19.94550% | 205 / 385 |
+| Game Code | 67.65962% | 20.26703% | 207 / 385 |
 | JSystem Middleware | 93.90541% | 81.21971% | 186 / 198 |
 | SDK Code | 99.71085% | 99.54403% | 148 / 149 |
-| All | 73.55875% | 34.08141% | 539 / 732 |
+| All | 73.57174% | 34.33548% | 541 / 732 |
 
-Exact functions: 12,045 / 12,904.
+Exact functions: 12,047 / 12,904.
 Exact data: 99.84277%.
-Code outside exact functions: 952,876 bytes.
-Units awaiting source linking: 193.
+Code outside exact functions: 952,408 bytes.
+Units awaiting source linking: 191.
 
 Rebuilt DOL SHA-1: `a6782903ef79d4196c8489ecb1b57decb5b3728f`.
 Original DOL hash verification: **PASS**.
@@ -30,12 +30,10 @@ Historical notes can supply hypotheses; new compiler and binary evidence determi
 
 | Unit | Non-exact functions | Code outside exact functions | Exact data |
 | --- | ---: | ---: | ---: |
-| `Player/MarioAccess` | 1 | 72 B | 100.00000% |
 | `M3DUtil/MActorData` | 1 | 100 B | 100.00000% |
 | `THPPlayer/THPAudioDecode` | 1 | 176 B | 100.00000% |
 | `System/PerformList` | 1 | 216 B | 100.00000% |
 | `Player/MarioParticle` | 1 | 388 B | 100.00000% |
-| `MoveBG/MapObjDolpic` | 1 | 396 B | 100.00000% |
 | `JSystem/JDrama/JDREfbSetting` | 1 | 404 B | 100.00000% |
 | `Map/MapWireManager` | 1 | 424 B | 100.00000% |
 | `MoveBG/MapObjTree` | 1 | 432 B | 100.00000% |
@@ -60,6 +58,8 @@ Historical notes can supply hypotheses; new compiler and binary evidence determi
 | `Enemy/BathtubPeach` | 1 | 1,324 B | 100.00000% |
 | `Camera/lensglow` | 1 | 1,328 B | 100.00000% |
 | `Enemy/spider` | 1 | 1,396 B | 100.00000% |
+| `JSystem/JAudio/JALibrary/JALModSe` | 1 | 1,484 B | 100.00000% |
+| `Camera/lensflare` | 1 | 1,512 B | 100.00000% |
 
 Regenerate after a successful build:
 

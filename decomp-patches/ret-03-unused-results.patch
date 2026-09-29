@@ -1,4 +1,4 @@
-Reason: Returns: functions with no return statement whose value is never used: stubs that are UNUSED (stripped) in the retail map, plus JUTGamePad::read, JKRDvdFile::close, TYoshi::getEmitPosDir, PushReadedBuffer and two JGadget templates whose callers ignore the result. Return a neutral value on TARGET_PC (falling off is undefined behaviour at -O1 and above).
+Reason: Returns: functions with no return statement whose value is never used: stubs that are UNUSED (stripped) in the retail map, plus JKRDvdFile::close, TYoshi::getEmitPosDir, PushReadedBuffer and two JGadget templates whose callers ignore the result. Return a neutral value on TARGET_PC (falling off is undefined behaviour at -O1 and above).
 --- a/libs/JSystem/include/JSystem/JGadget/std-list.hpp
 +++ b/libs/JSystem/include/JSystem/JGadget/std-list.hpp
 @@ -198,6 +198,9 @@
@@ -212,18 +212,6 @@ Reason: Returns: functions with no return statement whose value is never used: s
  }
  
  size_t JUTConsole::getLineFromObjectSize(u32 bufferSize, unsigned param_1)
---- a/libs/JSystem/src/JUtility/JUTGamePad.cpp
-+++ b/libs/JSystem/src/JUtility/JUTGamePad.cpp
-@@ -160,6 +160,9 @@
- 	}
- 
- 	checkResetSwitch();
-+#ifdef TARGET_PC
-+	return 0; // retail: r3 left by checkResetSwitch; no caller reads it
-+#endif
- }
- 
- void JUTGamePad::assign()
 --- a/src/M3DUtil/MActor.cpp
 +++ b/src/M3DUtil/MActor.cpp
 @@ -315,7 +315,12 @@

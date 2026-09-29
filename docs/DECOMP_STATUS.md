@@ -1,20 +1,20 @@
 # Decompilation status
 
-Target: `GMSE01`. Decomp checkout: `55e06b5887e29cf0ad254c1df616cdcd7ad4e6c5`.
-Build report generated: 2026-09-29T16:41:18+00:00.
-Port decomp pin: `55e06b5887e29cf0ad254c1df616cdcd7ad4e6c5`.
+Target: `GMSE01`. Decomp checkout: `acf0436f62580dafc72711b070ae483a48be8a53`.
+Build report generated: 2026-09-29T17:00:18+00:00.
+Port decomp pin: `acf0436f62580dafc72711b070ae483a48be8a53`.
 Completion: **incomplete**.
 
 | Category | Exact code | Source-linked code | Source-linked units |
 | --- | ---: | ---: | ---: |
-| Game Code | 67.65962% | 20.26703% | 207 / 385 |
+| Game Code | 67.69446% | 20.26703% | 207 / 385 |
 | JSystem Middleware | 93.94745% | 81.21971% | 186 / 198 |
 | SDK Code | 99.71085% | 99.54403% | 148 / 149 |
-| All | 73.57762% | 34.33548% | 541 / 732 |
+| All | 73.60514% | 34.33548% | 541 / 732 |
 
-Exact functions: 12,048 / 12,904.
+Exact functions: 12,051 / 12,904.
 Exact data: 99.84277%.
-Code outside exact functions: 952,196 bytes.
+Code outside exact functions: 951,204 bytes.
 Units awaiting source linking: 191.
 
 Rebuilt DOL SHA-1: `a6782903ef79d4196c8489ecb1b57decb5b3728f`.
@@ -41,6 +41,7 @@ Historical notes can supply hypotheses; new compiler and binary evidence determi
 | `NPC/NpcCollision` | 1 | 536 B | 100.00000% |
 | `JSystem/JDrama/JDRFrmGXSet` | 1 | 548 B | 100.00000% |
 | `MSound/MAnmSound` | 1 | 600 B | 100.00000% |
+| `Enemy/enemyAttachment` | 1 | 640 B | 100.00000% |
 | `MarioUtil/MathUtil` | 1 | 676 B | 100.00000% |
 | `Enemy/wireBinder` | 1 | 696 B | 100.00000% |
 | `MoveBG/MapObjFlag` | 1 | 696 B | 100.00000% |
@@ -59,7 +60,6 @@ Historical notes can supply hypotheses; new compiler and binary evidence determi
 | `Camera/lensglow` | 1 | 1,328 B | 100.00000% |
 | `Enemy/spider` | 1 | 1,396 B | 100.00000% |
 | `JSystem/JAudio/JALibrary/JALModSe` | 1 | 1,484 B | 100.00000% |
-| `Camera/lensflare` | 1 | 1,512 B | 100.00000% |
 
 Regenerate after a successful build:
 

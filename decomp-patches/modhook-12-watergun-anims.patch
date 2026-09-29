@@ -11,21 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's 
  
  TNozzleBmdData nozzleBmdData = {
  	{
-@@ -1284,7 +1287,13 @@
- 	// useful
- 	// TODO: Check if already exists
- 	MActorAnmData* watergunAnmData = new MActorAnmData();
-+#ifdef TARGET_PC
-+	SMS_MOD_CALLM(0x8026A550, MActorAnmData, init,
-+	              watergunAnmData->init("/mario/watergun2/body", nullptr), watergunAnmData,
-+	              "/mario/watergun2/body", (const char**)nullptr);
-+#else
- 	watergunAnmData->init("/mario/watergun2/body", nullptr);
-+#endif
- 	mFluddModel = new MActor(watergunAnmData);
- 
- 	void* fluddModelData
-@@ -1334,7 +1343,13 @@
+@@ -1321,7 +1324,13 @@
  			// function-scope local, a named MActor, an anm-data or MActor
  			// helper. The frame is also 0x100 short.
  			MActorAnmData* nozzleData = new MActorAnmData();
@@ -39,3 +25,17 @@ Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's 
  			mNozzleList[i]->unk380 = new MActor(nozzleData);
  
  			void* nozzleModelData
+@@ -1432,7 +1441,13 @@
+ void TWaterGun::createGunBody()
+ {
+ 	MActorAnmData* watergunAnmData = new MActorAnmData();
++#ifdef TARGET_PC
++	SMS_MOD_CALLM(0x8026A550, MActorAnmData, init,
++	              watergunAnmData->init("/mario/watergun2/body", nullptr), watergunAnmData,
++	              "/mario/watergun2/body", (const char**)nullptr);
++#else
+ 	watergunAnmData->init("/mario/watergun2/body", nullptr);
++#endif
+ 	mFluddModel = new MActor(watergunAnmData);
+ 
+ 	void* fluddModelData

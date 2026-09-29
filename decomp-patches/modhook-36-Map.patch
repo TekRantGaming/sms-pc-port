@@ -56,8 +56,8 @@ Reason: port: code-mod hooks (sms_modhook.h): exotic wall check in TMap::isTouch
  	if (SMSGetMarDirector()->getCurrentMap() == 4
  	    || SMSGetMarDirector()->getCurrentMap() == 3
  	    || SMSGetMarDirector()->getCurrentMap() == 0xD
-@@ -360,6 +401,17 @@
- // forwarding helper costs 14% of match.
+@@ -356,6 +397,17 @@
+ 
  bool TMap::isTouchedOneWall(f32 x, f32 y, f32 z, f32 radius) const
  {
 +#ifdef TARGET_PC

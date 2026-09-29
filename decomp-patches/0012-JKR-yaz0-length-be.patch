@@ -1,6 +1,6 @@
 Reason: endian: read the Yaz0 header's decompressed length as big-endian
---- a/src/JSystem/JKernel/JKRDvdRipper.cpp
-+++ b/src/JSystem/JKernel/JKRDvdRipper.cpp
+--- a/libs/JSystem/src/JKernel/JKRDvdRipper.cpp
++++ b/libs/JSystem/src/JKernel/JKRDvdRipper.cpp
 @@ -319,7 +319,7 @@
  		return -1;
  	}
@@ -10,8 +10,8 @@ Reason: endian: read the Yaz0 header's decompressed length as big-endian
  	if (endPtr > dest + maxDest) {
  		endPtr = dest + maxDest;
  	}
---- a/src/JSystem/JKernel/JKRAram.cpp
-+++ b/src/JSystem/JKernel/JKRAram.cpp
+--- a/libs/JSystem/src/JKernel/JKRAram.cpp
++++ b/libs/JSystem/src/JKernel/JKRAram.cpp
 @@ -387,7 +387,7 @@
  		return -1;
  	}
@@ -21,8 +21,8 @@ Reason: endian: read the Yaz0 header's decompressed length as big-endian
  	if (endPtr > dest + maxDest) {
  		endPtr = dest + maxDest;
  	}
---- a/src/JSystem/JKernel/JKRDvdAramRipper.cpp
-+++ b/src/JSystem/JKernel/JKRDvdAramRipper.cpp
+--- a/libs/JSystem/src/JKernel/JKRDvdAramRipper.cpp
++++ b/libs/JSystem/src/JKernel/JKRDvdAramRipper.cpp
 @@ -328,7 +328,7 @@
  		return -1;
  	}

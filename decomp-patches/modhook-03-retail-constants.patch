@@ -1,9 +1,9 @@
 Reason: port: three retail constants code mods overwrite become variables with the retail values: the 1.0 JASChannel's pitch and pan code reads (gAudioPitch), the 1.0 JASTrack's timing code reads (gAudioSpeed), and the shine shadow sphere's position in ModelWaterManager (gShineShadowPos); unchanged, they behave as the constants
---- a/src/JSystem/JAudio/JASystem/JASChannel.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASChannel.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASChannel.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASChannel.cpp
 @@ -10,6 +10,15 @@
  #include <JSystem/JUtility/JUTAssert.hpp>
- #include <types.h>
+ #include <dolphin/types.h>
  
 +#ifdef TARGET_PC
 +// Port: the retail code reads this 1.0 from one pooled constant (@324), which
@@ -88,8 +88,8 @@ Reason: port: three retail constants code mods overwrite become variables with t
  
  	updateEffectorParam();
  	Driver::__UpdateJcToDSPInit(this);
---- a/src/JSystem/JAudio/JASystem/JASTrack.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASTrack.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
 @@ -14,6 +14,15 @@
  #include <JSystem/JMath.hpp>
  #include <dolphin/os.h>
@@ -209,7 +209,7 @@ Reason: port: three retail constants code mods overwrite become variables with t
  TModelWaterManager* gpModelWaterManager;
  TWaterHitActor TModelWaterManager::mStaticHitActor;
  GXColor gModelWaterManagerWaterColor[4] = {
-@@ -1805,7 +1811,11 @@
+@@ -1815,7 +1821,11 @@
  #endif
  		}
  

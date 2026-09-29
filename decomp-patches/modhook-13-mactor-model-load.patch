@@ -4,7 +4,7 @@ Reason: port: code-mod hook (sms_modhook.h): BetterSunshineEngine redirects the 
 @@ -8,6 +8,9 @@
  #include <M3DUtil/SDLModel.hpp>
  #include <stdio.h>
- #include <types.h>
+ #include <dolphin/types.h>
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif

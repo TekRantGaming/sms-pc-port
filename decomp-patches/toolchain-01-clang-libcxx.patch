@@ -1,20 +1,8 @@
-Apple Clang / libc++ (macOS): a template called before its declaration (g++
-defers the lookup), and fake_tgmath.h float overloads that libc++ already
-declares at global scope. Pointer-to-int truncations are handled by
--fms-extensions in CMakeLists.txt rather than per site.
+Apple Clang / libc++ (macOS): fake_tgmath.h float overloads that libc++
+already declares at global scope. Pointer-to-int truncations are handled by
+-fms-extensions in CMakeLists.txt rather than per site. (The template called
+before its declaration in cameralib.hpp is declared first in the decomp now.)
 
---- a/include/Camera/cameralib.hpp
-+++ b/include/Camera/cameralib.hpp
-@@ -81,6 +81,9 @@
- 	return true;
- }
- 
-+template <class T>
-+T CLBTwoDegreeGeneralInbetween(T param_1, T param_2, f32 param_3, f32 param_4);
-+
- template <class T> T CLBEaseInInbetween(T param_1, T param_2, f32 param_3)
- {
- 	return CLBTwoDegreeGeneralInbetween(param_1, param_2, param_3,
 --- a/include/fake_tgmath.h
 +++ b/include/fake_tgmath.h
 @@ -19,6 +19,9 @@

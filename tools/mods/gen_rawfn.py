@@ -100,13 +100,13 @@ def header_for(quals, name):
     global _hdr_files
     if _hdr_files is None:
         _hdr_files = []
-        inc = os.path.join(gh.DECOMP, "include")
-        for dp, _, fs in os.walk(inc):
-            for f in sorted(fs):
-                if f.endswith((".hpp", ".h")):
-                    path = os.path.join(dp, f)
-                    _hdr_files.append((os.path.relpath(path, inc),
-                                       gh.blank_comments_strings(open(path, encoding="utf-8", errors="replace").read())))
+        for inc in gh.include_roots():
+            for dp, _, fs in os.walk(inc):
+                for f in sorted(fs):
+                    if f.endswith((".hpp", ".h")):
+                        path = os.path.join(dp, f)
+                        _hdr_files.append((os.path.relpath(path, inc),
+                                           gh.blank_comments_strings(open(path, encoding="utf-8", errors="replace").read())))
     if quals and not gh.is_namespace(quals):
         cls = re.sub(r"<.*", "", quals[-1])
         pat = r"\b(?:class|struct)\s+%s\b[^;{()]*\{" % re.escape(cls)

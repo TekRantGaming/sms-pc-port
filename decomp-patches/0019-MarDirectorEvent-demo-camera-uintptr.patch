@@ -1,0 +1,14 @@
+Reason: g++: TMarDirector::fireStartDemoCamera is declared (MarDirector.hpp) with a uintptr_t callback argument and a callback taking uintptr_t, but defined with u32 for both; MWCC's uintptr_t is u32, the host's is not (i386: unsigned int vs unsigned long; LP64: 8 bytes), so the definition matches no declaration; spell it as declared
+
+--- a/src/System/MarDirectorEvent.cpp
++++ b/src/System/MarDirectorEvent.cpp
+@@ -250,7 +250,8 @@
+ void TMarDirector::fireStartDemoCamera(const char* param_1,
+                                        const JGeometry::TVec3<f32>* param_2,
+                                        s32 param_3, f32 param_4, bool param_5,
+-                                       s32 (*param_6)(u32, u32), u32 param_7,
++                                       s32 (*param_6)(uintptr_t, u32),
++                                       uintptr_t param_7,
+                                        JDrama::TActor* param_8,
+                                        JDrama::TFlagT<u16> param_9)
+ {

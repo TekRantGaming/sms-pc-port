@@ -1,6 +1,6 @@
 Reason: port: code-mod hooks (sms_modhook.h): heap of JKRArchive::getFirstFile's finder (Eclipse)
---- a/src/JSystem/JKernel/JKRArchivePub.cpp
-+++ b/src/JSystem/JKernel/JKRArchivePub.cpp
+--- a/libs/JSystem/src/JKernel/JKRArchivePub.cpp
++++ b/libs/JSystem/src/JKernel/JKRArchivePub.cpp
 @@ -7,6 +7,9 @@
  #include <JSystem/JKernel/JKRMemArchive.hpp>
  #include <JSystem/JUtility/JUTAssert.hpp>
@@ -9,7 +9,7 @@ Reason: port: code-mod hooks (sms_modhook.h): heap of JKRArchive::getFirstFile's
 +#include <sms_modhook.h>
 +#endif
  
- JKRArchive* JKRArchive::check_mount_already(s32 entryNum)
+ JKRArchive* JKRArchive::check_mount_already(intptr_t entryNum)
  {
 @@ -396,8 +399,25 @@
  	}

@@ -1,6 +1,6 @@
 Reason: port: code-mod hooks (sms_modhook.h): movie gamma in THPPlayerPlay and THPPlayerStop (BetterSunshineEngine)
---- a/src/THPPlayer/THPPlayer.c
-+++ b/src/THPPlayer/THPPlayer.c
+--- a/libs/THPPlayer/src/THPPlayer.c
++++ b/libs/THPPlayer/src/THPPlayer.c
 @@ -14,6 +14,9 @@
  
  // NOTE: customization of the library by SMS devs

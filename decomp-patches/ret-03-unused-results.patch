@@ -1,6 +1,6 @@
 Reason: Returns: functions with no return statement whose value is never used: stubs that are UNUSED (stripped) in the retail map, plus JUTGamePad::read, JKRDvdFile::close, TYoshi::getEmitPosDir, PushReadedBuffer and two JGadget templates whose callers ignore the result. Return a neutral value on TARGET_PC (falling off is undefined behaviour at -O1 and above).
---- a/include/JSystem/JGadget/std-list.hpp
-+++ b/include/JSystem/JGadget/std-list.hpp
+--- a/libs/JSystem/include/JSystem/JGadget/std-list.hpp
++++ b/libs/JSystem/include/JSystem/JGadget/std-list.hpp
 @@ -198,6 +198,9 @@
  	bool Confirm()
  	{
@@ -11,8 +11,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
  	}
  
  	/* 0x0 */ TAllocator<T> mAllocator;
---- a/include/JSystem/JGadget/std-vector.hpp
-+++ b/include/JSystem/JGadget/std-vector.hpp
+--- a/libs/JSystem/include/JSystem/JGadget/std-vector.hpp
++++ b/libs/JSystem/include/JSystem/JGadget/std-vector.hpp
 @@ -350,6 +350,9 @@
  			ResizeNotLarger(new_size);
  			return end();
@@ -147,8 +147,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
  
  void TTelesa::forceKill()
  {
---- a/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
-+++ b/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIBasic.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIBasic.cpp
 @@ -717,7 +717,12 @@
  
  void JAIBasic::startSoundVec(u32, JAISoundHandle*, Vec*, u32, u32, u8) { }
@@ -163,8 +163,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
  
  void JAIBasic::startSoundActor(u32 id, JAISoundHandle* out_handle,
                                 JAIActor* actor, u32 fade, u8 camera_idx)
---- a/src/JSystem/JAudio/JAInterface/JAIEntry.cpp
-+++ b/src/JSystem/JAudio/JAInterface/JAIEntry.cpp
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIEntry.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIEntry.cpp
 @@ -59,6 +59,11 @@
  	*out_handle = sound;
  }
@@ -178,8 +178,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
 +}
  
  void JAIEntry::checkAllSoundHandle(JAISoundHandle*) { }
---- a/src/JSystem/JKernel/JKRDvdFile.cpp
-+++ b/src/JSystem/JKernel/JKRDvdFile.cpp
+--- a/libs/JSystem/src/JKernel/JKRDvdFile.cpp
++++ b/libs/JSystem/src/JKernel/JKRDvdFile.cpp
 @@ -86,6 +86,9 @@
  			    212, "cannot close DVD file\n"); /* JKRDvdFile.cpp line 212 */
  		}
@@ -190,8 +190,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
  }
  
  int JKRDvdFile::readData(void* data, s32 length, s32 ofs)
---- a/src/JSystem/JUtility/JUTConsole.cpp
-+++ b/src/JSystem/JUtility/JUTConsole.cpp
+--- a/libs/JSystem/src/JUtility/JUTConsole.cpp
++++ b/libs/JSystem/src/JUtility/JUTConsole.cpp
 @@ -12,6 +12,9 @@
  JUTConsole* JUTConsole::create(unsigned param_0, unsigned param_1,
                                 JKRHeap* pHeap)
@@ -212,8 +212,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
  }
  
  size_t JUTConsole::getLineFromObjectSize(u32 bufferSize, unsigned param_1)
---- a/src/JSystem/JUtility/JUTGamePad.cpp
-+++ b/src/JSystem/JUtility/JUTGamePad.cpp
+--- a/libs/JSystem/src/JUtility/JUTGamePad.cpp
++++ b/libs/JSystem/src/JUtility/JUTGamePad.cpp
 @@ -160,6 +160,9 @@
  	}
  
@@ -346,8 +346,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
  
  s32 TCardManager::getWriteCount(TCardManager::TCriteria* criteria)
  {
---- a/src/THPPlayer/THPRead.c
-+++ b/src/THPPlayer/THPRead.c
+--- a/libs/THPPlayer/src/THPRead.c
++++ b/libs/THPPlayer/src/THPRead.c
 @@ -109,6 +109,9 @@
  void* PushReadedBuffer(void* buffer)
  {

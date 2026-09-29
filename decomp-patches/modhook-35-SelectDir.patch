@@ -8,10 +8,10 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
+ #include <System/DummyStrings.hpp>
  
  extern OSThread gSetupThread;
- extern u8* gpSetupThreadStack;
-@@ -351,11 +354,28 @@
+@@ -352,11 +355,28 @@
  			return TApplication::APP_STATE_DONE;
  
  		if (unk20->mCloseMenu) {
@@ -24,23 +24,23 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
 +				((void (*)(TSelectMenu*))sms_mod_t_)(unk20);
 +			if (!sms_mod_word(0x80176044, &sms_mod_w_))
 +#endif
- 			gpApplication.mNextArea.unk1 = unk20->mSelectedShine;
+ 			SMSGetApplication()->mNextArea.unk1 = unk20->mSelectedShine;
  			TFlagManager::smInstance->setFlag(0x40003, unk20->mSelectedShine);
- 			gpApplication.mFader->startWipe(0xf, 1.0f, 0.0f);
+ 			SMSGetApplication()->getFader()->startWipe(0xf, 1.0f, 0.0f);
 +#ifdef TARGET_PC
 +			// Eclipse (character_select.cpp): the `li r0, 0xff` word at
 +			// 0x8017606C gives the fade colour's four bytes.
 +			u8 sms_mod_c_ = (u8)SMS_MOD_WORD(0x8017606C, 0x380000FF);
-+			gpApplication.mFader->setColor(
++			SMSGetApplication()->getFader()->setColor(
 +			    JUtility::TColor(sms_mod_c_, sms_mod_c_, sms_mod_c_, sms_mod_c_));
 +#else
- 			gpApplication.mFader->setColor(
+ 			SMSGetApplication()->getFader()->setColor(
  			    JUtility::TColor(0xff, 0xff, 0xff, 0xff));
 +#endif
  			SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec());
  		}
  		break;
-@@ -373,6 +393,13 @@
+@@ -374,6 +394,13 @@
  		gpMSound->stopAllSound();
  		if (unk18->isSomethingPushed())
  			return TApplication::APP_STATE_DONE;

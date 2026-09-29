@@ -32,6 +32,31 @@ PATCHES = os.path.join(ROOT, "decomp-patches")
 OUT_NAME = "zz-modhook-50-calls.patch"  # after every other patch: its edits are made on their result
 
 
+# The decomp keeps game code in src/ and include/ and each library in
+# libs/<name>/src and libs/<name>/include; unit names (and the asm files)
+# stay JSystem/..., dolphin/... either way.
+def include_roots():
+    roots = [os.path.join(DECOMP, "include")]
+    libs = os.path.join(DECOMP, "libs")
+    if os.path.isdir(libs):
+        for d in sorted(os.listdir(libs)):
+            if os.path.isdir(os.path.join(libs, d, "include")):
+                roots.append(os.path.join(libs, d, "include"))
+    return roots
+
+
+def unit_source(base):
+    """The decomp source file (relative to decomp/) of unit base, or None."""
+    lib, _, rest = base.partition("/")
+    for cand in ("src/" + base, "libs/%s/src/%s" % (lib, rest) if rest else None):
+        if cand is None:
+            continue
+        for ext in (".cpp", ".c", ".cp"):
+            if os.path.exists(os.path.join(DECOMP, cand + ext)):
+                return cand + ext
+    return None
+
+
 # --- CodeWarrior demangling (just enough: qualified name, ctor/dtor) ---------
 def parse_qual(s, i):
     """Parse a qualified name at s[i:]; return (list of parts, index after)."""
@@ -231,8 +256,70 @@ def cw_signature(sym):
 
 
 # --- Source scanning ----------------------------------------------------------
+# The port builds the US version. Conditionals on the region macros alone
+# (#ifdef VERSION_GMSP01, #if defined(VERSION_GMSJ01) || ...) are resolved so
+# that another region's calls are not counted; any other condition keeps
+# every branch.
+PORT_VERSION = "VERSION_GMSE01"
+
+
+def _region_condition(kind, expr):
+    """True/False for a condition on VERSION_* macros only, else None."""
+    expr = re.sub(r"/\*.*?\*/|//.*", "", expr).strip()
+    if kind in ("ifdef", "ifndef"):
+        if not re.fullmatch(r"VERSION_\w+", expr):
+            return None
+        return (expr == PORT_VERSION) == (kind == "ifdef")
+    py = re.sub(r"defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)",
+                lambda m: "D_" + (m.group(1) or m.group(2)), expr)
+    names = set(re.findall(r"[A-Za-z_]\w*", py))
+    if not names or any(not n.startswith("D_VERSION_") for n in names):
+        return None
+    py = py.replace("&&", " and ").replace("||", " or ")
+    py = re.sub(r"!(?!=)", " not ", py)
+    try:
+        return bool(eval(py, {"__builtins__": {}}, {n: n == "D_" + PORT_VERSION for n in names}))
+    except Exception:
+        return None
+
+
+def blank_other_regions(src):
+    """Same length, with the branches of region conditionals the US build
+    does not compile blanked out."""
+    lines = src.split("\n")
+    stack = []  # per open #if: [known, taken, active]
+    for i, line in enumerate(lines):
+        m = re.match(r"\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)", line)
+        outer = all(s[2] for s in stack)
+        if m:
+            kind, rest = m.group(1), m.group(2)
+            if kind in ("ifdef", "ifndef", "if"):
+                v = _region_condition(kind, rest)
+                stack.append([v is not None, bool(v), v is None or v])
+            elif kind == "elif" and stack:
+                s = stack[-1]
+                if s[0]:
+                    v = _region_condition("if", rest)
+                    if v is None:
+                        s[0], s[2] = False, True
+                    else:
+                        s[2] = not s[1] and v
+                        s[1] = s[1] or v
+            elif kind == "else" and stack:
+                s = stack[-1]
+                if s[0]:
+                    s[2] = not s[1]
+            elif kind == "endif" and stack:
+                stack.pop()
+            continue
+        if not outer:
+            lines[i] = " " * len(line)
+    return "\n".join(lines)
+
+
 def blank_comments_strings(src):
     """Same length, with comments and string/char literals blanked out."""
+    src = blank_other_regions(src)
     out = list(src)
     i, n = 0, len(src)
     while i < n:
@@ -432,10 +519,11 @@ def headers_text():
     global _header_text
     if _header_text is None:
         parts = []
-        for root, _, fs in os.walk(os.path.join(DECOMP, "include")):
-            for f in fs:
-                if f.endswith((".hpp", ".h")):
-                    parts.append(open(os.path.join(root, f), encoding="utf-8", errors="replace").read())
+        for inc in include_roots():
+            for root, _, fs in os.walk(inc):
+                for f in fs:
+                    if f.endswith((".hpp", ".h")):
+                        parts.append(open(os.path.join(root, f), encoding="utf-8", errors="replace").read())
         _header_text = blank_comments_strings("\n".join(parts))
     return _header_text
 
@@ -866,11 +954,9 @@ def main():
 
     srcs = {}
     for p in uniq + entries:
-        base = os.path.splitext(p["asmfile"])[0]
-        for ext in (".cpp", ".c", ".cp"):
-            if os.path.exists(os.path.join(DECOMP, "src", base + ext)):
-                srcs[p["addr"]] = "src/" + base + ext
-                break
+        src = unit_source(os.path.splitext(p["asmfile"])[0])
+        if src:
+            srcs[p["addr"]] = src
 
     work = tempfile.mkdtemp()
     a, b = patched_state(sorted(set(srcs.values())), work)

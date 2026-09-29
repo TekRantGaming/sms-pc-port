@@ -3,6 +3,8 @@ project(sms_gx C CXX)
 
 # GX/GD for the Super Mario Sunshine PC port: OpenGL 3.3 core backend.
 set(SMS_DECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../decomp" CACHE PATH "Path to the decompilation")
+# The decomp's game headers and the SDK's (libs/dolphin/include).
+set(SMS_GX_DECOMP_INCLUDE ${SMS_DECOMP_DIR}/include ${SMS_DECOMP_DIR}/libs/dolphin/include)
 option(SMS_GX_BUILD_TESTS "Build the headless self-test" ON)
 
 set(SMS_GX_SOURCES
@@ -20,12 +22,12 @@ set(SMS_GX_SOURCES
 
 # GD is compiled from the decompiled SDK sources: it only emits command bytes.
 set(SMS_GX_GD_SOURCES
-    ${SMS_DECOMP_DIR}/src/dolphin/gd/GDBase.c
-    ${SMS_DECOMP_DIR}/src/dolphin/gd/GDGeometry.c
-    ${SMS_DECOMP_DIR}/src/dolphin/gd/GDLight.c
-    ${SMS_DECOMP_DIR}/src/dolphin/gd/GDPixel.c
-    ${SMS_DECOMP_DIR}/src/dolphin/gd/GDTev.c
-    ${SMS_DECOMP_DIR}/src/dolphin/gd/GDTransform.c)
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDBase.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDGeometry.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDLight.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDPixel.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDTev.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDTransform.c)
 set_source_files_properties(${SMS_GX_GD_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/src/gd_host_prefix.h;-w;-fcommon")
 
@@ -44,7 +46,7 @@ endif()
 add_library(sms_gx STATIC ${SMS_GX_SOURCES} ${SMS_GX_GD_SOURCES})
 target_include_directories(sms_gx
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/port_include ${SMS_GX_TYPES_INCLUDE} ${SMS_DECOMP_DIR}/include)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/port_include ${SMS_GX_TYPES_INCLUDE} ${SMS_GX_DECOMP_INCLUDE})
 # macOS has no system GL/glcorearb.h; ship Khronos headers under third_party/.
 if(APPLE)
     target_include_directories(sms_gx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
@@ -105,7 +107,7 @@ endif()
 
 if(SMS_GX_BUILD_TESTS)
     add_executable(gx_selftest tests/gx_selftest.cpp)
-    target_include_directories(gx_selftest PRIVATE ${SMS_DECOMP_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_include_directories(gx_selftest PRIVATE ${SMS_GX_DECOMP_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(gx_selftest PRIVATE sms_gx)
     target_compile_features(gx_selftest PRIVATE cxx_std_17)
     enable_testing()

@@ -1,6 +1,6 @@
 Reason: port: endianness: JAudio's direct disc loads (loadDVDFile, loadTmpDVDFile) convert what they read by name, as archive loads do; the retail game only reaches them when a disc carries its own /AudioRes/msound.aaf
---- a/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
-+++ b/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIBasic.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIBasic.cpp
 @@ -1321,6 +1321,13 @@
  		return new (JASDram, 0) JAISound[count];
  }

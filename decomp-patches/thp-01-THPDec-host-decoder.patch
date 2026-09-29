@@ -1,6 +1,6 @@
 Reason: port: THP video decoder for the host: portable C Huffman bit reader (big-endian words) and AAN float IDCT in place of the PowerPC asm, locked cache as a plain buffer; output layout unchanged (GX I8 tiles)
---- a/src/dolphin/thp/THPDec.c
-+++ b/src/dolphin/thp/THPDec.c
+--- a/libs/dolphin/src/thp/THPDec.c
++++ b/libs/dolphin/src/thp/THPDec.c
 @@ -1,6 +1,20 @@
  #include <dolphin/thp.h>
  #include <dolphin/os.h>

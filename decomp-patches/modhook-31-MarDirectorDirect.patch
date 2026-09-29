@@ -11,15 +11,16 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  
  extern OSThread gSetupThread;
  
-@@ -90,6 +93,31 @@
+@@ -102,6 +105,32 @@
  			}
- 			gpMSound->unkA8 = bVar7;
+ 			SMSGetMSound()->mSeGateMask = seGateMask;
  
 +#ifdef TARGET_PC
 +			// BetterSunshineEngine (animationFreezeCheck, retail 0x802999D8,
 +			// and the word at 0x802999DC, `b 0x80299A10`): the mod's function
 +			// takes over this switch. It is PowerPC assembly (empty on the
-+			// port), reading this from r26 and setting bits of uVar8 (r27):
++			// port), reading this from r26 and setting bits of blacklistedCues
++			// (r27):
 +			// states 5, 10 and 12 freeze as before, 11 only while Mario's
 +			// status is not 0x1302.
 +			bool sms_mod_skip_switch_ = false;
@@ -35,15 +36,15 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +				else
 +					freeze = st != 11;
 +				if (freeze)
-+					uVar8 |= 3;
++					blacklistedCues |= 3;
 +				sms_mod_skip_switch_ = SMS_MOD_WORD(0x802999DC, 0) == 0x48000034;
 +			}
 +			if (!sms_mod_skip_switch_)
 +#endif
  			switch (mState) {
- 			case STATE_UNK5:
- 			case STATE_UNK11:
-@@ -202,7 +230,13 @@
+ 			case STATE_PAUSE_MENU:
+ 			case STATE_CARD_SAVE:
+@@ -204,7 +233,13 @@
  // +0x10). Spelling the copy as `gpApplication.mNextArea = local_3C` or a
  // direct three-argument `set` is worse (84%) and breaks the expanded copies
  // in changeState/updateGameMode.
@@ -57,7 +58,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  {
  	TGameSequence local_3C;
  
-@@ -217,9 +251,90 @@
+@@ -219,9 +254,90 @@
  		local_3C.set(1, 0xff, JDrama::TFlagT<u16>());
  		break;
  	}
@@ -77,7 +78,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +		}
 +	}
 +#endif
- 	MDDApp().setNextArea(local_3C);
+ 	SMSGetApplication()->setNextArea(local_3C);
  }
  
 +#ifdef TARGET_PC
@@ -148,7 +149,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  // UNUSED, 0x10c.
  // TODO: dead in the shipped game and 67 instructions in the map, with no call
  // site and no literal of its own to read; the body is unrecovered.
-@@ -234,8 +349,24 @@
+@@ -236,8 +352,24 @@
  
  	int i = 0;
  	do {
@@ -173,7 +174,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		++i;
  	} while (i < 7);
  
-@@ -247,13 +378,37 @@
+@@ -249,13 +381,37 @@
  // `li r3, 0` hoisted above the first branch and the separate final zero.
  // Inert: TFlagManager::getInstance()/SMSGetFlagManager() receivers at every
  // site (call receivers keep their register), a compared shadow-Mario result.
@@ -211,7 +212,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		else if (checkDefeatShadowMarioAll())
  			scenario = 9;
  		else if (TFlagManager::smInstance->getBool(0x10389))
-@@ -287,6 +442,16 @@
+@@ -289,6 +445,16 @@
  {
  	const TGameSequence& curArea = gpApplication.mCurrArea;
  	if (SMS_isExMap() || curArea.getStage() == 0 || curArea.getStage() == 60) {
@@ -228,7 +229,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		getNextArea().set(curArea.getStage(), 0, 0);
  	} else {
  		decideNextStage();
-@@ -393,7 +558,11 @@
+@@ -405,7 +571,11 @@
  			unkB4     = TApplication::APP_STATE_DONE;
  			break;
  		case 5:
@@ -237,12 +238,12 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +#else
  			decideNextStage();
 +#endif
- 			offUnk4CFlag(0x100);
+ 			unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
  			moveStage();
  			unkE4     = 2;
-@@ -418,6 +587,16 @@
+@@ -430,6 +600,16 @@
  				} else {
- 					getNextArea().set(1, 0xff, 0);
+ 					SMSGetApplication()->mNextArea.set(1, 0xff, 0);
  				}
 +#ifdef TARGET_PC
 +				// Eclipse (assignGameOverDestination, retail 0x8029932C, with
@@ -254,10 +255,10 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +					((void (*)())sms_mod_t_)();
 +				} else
 +#endif
- 				offUnk4CFlag(0x100);
+ 				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
  				moveStage();
- 				gpApplication.mFader->setFadeStatus(
-@@ -481,7 +660,21 @@
+ 				SMSGetApplication()->getFader()->setFadeStatus(
+@@ -496,7 +676,21 @@
  		unkB4 = TApplication::APP_STATE_DONE;
  	}
  
@@ -279,7 +280,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		currentStateFinalize(nextState);
  		nextStateInitialize(nextState);
  		mState = nextState;
-@@ -864,6 +1057,54 @@
+@@ -879,6 +1073,54 @@
  				break;
  			}
  
@@ -311,12 +312,12 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +				    && ((sms_mod_w_ >> 6) & 31) == ((sms_mod_w_ >> 1) & 31))
 +					sms_mod_mask_ = 0x80000000u >> ((sms_mod_w_ >> 6) & 31);
 +				bool sms_mod_never_ = sms_mod_word(0x80297A64, &sms_mod_w_) && sms_mod_w_ == 0x4800000C;
-+				if (!sms_mod_never_ && (unk18[0]->mButton.mTrigger & sms_mod_mask_)) {
-+					r29 = STATE_UNK10;
++				if (!sms_mod_never_ && unk18[0]->testTrigger(sms_mod_mask_)) {
++					r29 = STATE_GUIDE;
 +					break;
 +				}
 +
-+				if (unk18[0]->mEnabledFrameMeaning & 0x1) {
++				if (unk18[0]->checkFrameMeaning(TMarioGamePad::MEANING_0x1)) {
 +					// Eclipse (checkForPauseValidFilter, retail 0x80297AA8,
 +					// over the mStatus load; the word at 0x80297AAC tests its
 +					// result, `cmpwi r3, 0`): the mod gets gpMarioOriginal
@@ -332,17 +333,17 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +					if (sms_mod_act_) {
 +#else
  			if (mMap != 15) {
- 				if (unk18[0]->mButton.mTrigger & 0x10) {
- 					r29 = STATE_UNK10;
-@@ -872,6 +1113,7 @@
+ 				if (unk18[0]->testTrigger(0x10)) {
+ 					r29 = STATE_GUIDE;
+@@ -887,6 +1129,7 @@
  
- 				if (unk18[0]->mEnabledFrameMeaning & 0x1) {
+ 				if (unk18[0]->checkFrameMeaning(TMarioGamePad::MEANING_0x1)) {
  					if (gpMarioOriginal->checkActionThing3()) {
 +#endif
- 						r29 = STATE_UNK5;
+ 						r29 = STATE_PAUSE_MENU;
  						break;
  					}
-@@ -897,14 +1139,48 @@
+@@ -912,15 +1155,51 @@
  				console->unk47 = 1;
  				MSBgm::startBGM(MSD_BGM_GET_SHINE);
  				TFlagManager::getInstance()->setBool(true, 0x30006);
@@ -367,10 +368,9 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +#else
  				TFlagManager::getInstance()->setShineFlag(unk25C->getEventId());
 +#endif
- 				// The fade lengths go through an inline seconds-to-frames
- 				// helper, which is what keeps retail's real `fmuls` by 1.0f.
- 				u16 fadeInFrames = secToFrame(1.0f, unkDC);
- 				unkDC->registFadeout(fadeInFrames, secToFrame(5.3333333f, unkDC));
+ 				f32 fVar3     = unkDC->mRate;
+ 				f32 fadeInSec = 1.0f;
+ 				unkDC->registFadeout(fadeInSec * fVar3, fVar3 * 5.3333333f);
 +#ifdef TARGET_PC
 +				{
 +					// BetterSunshineEngine (word at retail 0x80297BE8: another
@@ -379,12 +379,16 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +					if (sms_mod_word(0x80297BE8, &sms_mod_w_) && (sms_mod_w_ >> 16) == 0x6084)
 +						onUnk4CFlag(sms_mod_w_ & 0xFFFF);
 +					else
-+						onUnk4CFlag(0x8202);
++						onFlag(DIRECTOR_FLAG_SHINE_TAKEN
++						       | DIRECTOR_FLAG_CARD_SAVE_PENDING
++						       | DIRECTOR_FLAG_STAGE_TRANSITION_PENDING);
 +				}
 +				unk261 = 6;
 +				decideNextStageOfShineGet();
 +#else
- 				onUnk4CFlag(0x8202);
+ 				onFlag(DIRECTOR_FLAG_SHINE_TAKEN
+ 				       | DIRECTOR_FLAG_CARD_SAVE_PENDING
+ 				       | DIRECTOR_FLAG_STAGE_TRANSITION_PENDING);
  				unk261 = 6;
  				decideNextStage();
 +#endif

@@ -1,6 +1,6 @@
 Reason: port: THP audio decoder reads the big-endian THPAudioRecordHeader through a host-order copy
---- a/src/dolphin/thp/THPAudio.c
-+++ b/src/dolphin/thp/THPAudio.c
+--- a/libs/dolphin/src/thp/THPAudio.c
++++ b/libs/dolphin/src/thp/THPAudio.c
 @@ -16,7 +16,26 @@
  		return 0;
  	}

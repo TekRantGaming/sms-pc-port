@@ -1,6 +1,6 @@
 Reason: port: code-mod hooks (sms_modhook.h): GPR page of JUTException::printContext (BetterSunshineEngine)
---- a/src/JSystem/JUtility/JUTException.cpp
-+++ b/src/JSystem/JUtility/JUTException.cpp
+--- a/libs/JSystem/src/JUtility/JUTException.cpp
++++ b/libs/JSystem/src/JUtility/JUTException.cpp
 @@ -10,6 +10,9 @@
  #include <dolphin/vi.h>
  #include <dolphin/base/PPCArch.h>

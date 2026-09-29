@@ -4,6 +4,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SMS_DECOMP ${CMAKE_CURRENT_SOURCE_DIR}/decomp)
 set(SMS_PORT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# The decomp's header roots, in configure.py's order: the game's include/,
+# then each library's libs/<name>/include. (MSL's C and C++ headers,
+# libs/PowerPC_EABI_Support/.../MSL_Common, are not used: the port builds
+# against the host C and C++ libraries.)
+set(SMS_DECOMP_INCLUDE_SUBDIRS include
+  libs/dolphin/include libs/JSystem/include libs/THPPlayer/include
+  libs/PowerPC_EABI_Support/include libs/TRK_MINNOW_DOLPHIN/include
+  libs/OdemuExi2/include)
+set(SMS_DECOMP_INCLUDE_DIRS "")
+foreach(d ${SMS_DECOMP_INCLUDE_SUBDIRS})
+  list(APPEND SMS_DECOMP_INCLUDE_DIRS ${SMS_DECOMP}/${d})
+endforeach()
 
 # Default: optimised with debug info. -DNDEBUG is left to the decomp's own
 # NDEBUG=1 definition, so the stock RelWithDebInfo flags are replaced.
@@ -103,7 +115,8 @@ if(APPLE)
   endif()
 endif()
 
-set(SMS_GAME_INCLUDE_DIR ${SMS_DECOMP}/include)
+set(SMS_GAME_INCLUDE_DIRS ${SMS_DECOMP_INCLUDE_DIRS})
+set(SMS_GAME_PCH_DIR ${SMS_DECOMP}/include)
 if(NOT SMS_HAVE_CP932)
   set(SMS_CP932_ROOT ${CMAKE_BINARY_DIR}/cp932)
   execute_process(
@@ -115,7 +128,11 @@ if(NOT SMS_HAVE_CP932)
   if(NOT _cp932_rc EQUAL 0)
     message(FATAL_ERROR "tools/darwin_cp932_mirror.py failed")
   endif()
-  set(SMS_GAME_INCLUDE_DIR ${SMS_CP932_ROOT}/include)
+  set(SMS_GAME_INCLUDE_DIRS "")
+  foreach(d ${SMS_DECOMP_INCLUDE_SUBDIRS})
+    list(APPEND SMS_GAME_INCLUDE_DIRS ${SMS_CP932_ROOT}/${d})
+  endforeach()
+  set(SMS_GAME_PCH_DIR ${SMS_CP932_ROOT}/include)
   list(APPEND SMS_GAME_FLAGS -Wno-invalid-source-encoding)
   foreach(lst SMS_DECOMP_CXX_SOURCES SMS_DECOMP_C_SOURCES SMS_DECOMP_PCH_SOURCES)
     set(_retargeted "")
@@ -138,8 +155,8 @@ endif()
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} PROPERTIES LANGUAGE CXX)
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES} PROPERTIES
   OBJECT_DEPENDS ${SMS_PATCH_HEADER_STAMP})
-if(EXISTS "${SMS_GAME_INCLUDE_DIR}/SMS.pch")
-  set(_sms_pch ${SMS_GAME_INCLUDE_DIR}/SMS.pch)
+if(EXISTS "${SMS_GAME_PCH_DIR}/SMS.pch")
+  set(_sms_pch ${SMS_GAME_PCH_DIR}/SMS.pch)
 else()
   set(_sms_pch ${SMS_DECOMP}/include/SMS.pch)
 endif()
@@ -184,16 +201,16 @@ add_library(sms_game STATIC ${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES})
 # Host THP decoders (the decomp's SDK decoder, patched; platform/thp).
 include(${CMAKE_CURRENT_SOURCE_DIR}/platform/thp/thp.cmake)
 # The SDK's PADClamp (dead zone / octagon), built from the decomp as C.
-target_sources(sms_game PRIVATE ${SMS_DECOMP}/src/dolphin/pad/Padclamp.c)
+target_sources(sms_game PRIVATE ${SMS_DECOMP}/libs/dolphin/src/pad/Padclamp.c)
 # port_include must stay ahead of the game headers: its dolphin/types.h
 # overrides the decomp's (LP64 integer widths, weak AT_ADDRESS globals).
 if(DEFINED SMS_CP932_ROOT)
   # CP932 mirror already merges patched headers.
   target_include_directories(sms_game BEFORE PRIVATE
-    ${SMS_PORT_SRC}/port_include ${SMS_GAME_INCLUDE_DIR})
+    ${SMS_PORT_SRC}/port_include ${SMS_GAME_INCLUDE_DIRS})
 else()
   target_include_directories(sms_game BEFORE PRIVATE
-    ${SMS_PORT_SRC}/port_include ${SMS_PATCHED_INCLUDE_DIR} ${SMS_GAME_INCLUDE_DIR})
+    ${SMS_PORT_SRC}/port_include ${SMS_PATCHED_INCLUDE_DIRS} ${SMS_GAME_INCLUDE_DIRS})
 endif()
 if(TARGET sms_gx AND SMS_GX_OVERRIDE_INCLUDE_DIR)
   # GXVert.h vertex writers become functions implemented by sms_gx.
@@ -263,7 +280,7 @@ if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
 endif()
 target_include_directories(sms PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/platform ${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/include ${SMS_PORT_SRC}
-  ${SMS_PORT_SRC}/port_include ${SMS_DECOMP}/include)
+  ${SMS_PORT_SRC}/port_include ${SMS_DECOMP_INCLUDE_DIRS})
 target_compile_definitions(sms PRIVATE ${SMS_COMMON_DEFS} SMS_AUDIO_DSP_HLE=1)
 target_compile_options(sms PRIVATE -fno-strict-aliasing -Wno-unused-parameter -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++11>)

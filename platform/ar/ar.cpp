@@ -4,6 +4,7 @@
 #include "port_os.h"
 #include "port_platform.h"
 #include <dolphin/ar.h>
+#include <dolphin/arq.h>
 
 namespace {
 const u32 kAramSize = 16u << 20;

@@ -76,25 +76,31 @@ def main() -> int:
     patched_root: Path = args.patched
     decomp: Path = args.decomp
 
-    include_src = decomp / "include"
-    for path in include_src.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(include_src)
-        patched = patched_root / "include" / rel
-        src = patched if patched.is_file() else path
-        mirror(src, out / "include" / rel)
+    # The game's include/ and src/, and each library's libs/<name>/include
+    # and libs/<name>/src, each mirrored at its own path.
+    libs = sorted(p for p in (decomp / "libs").iterdir() if p.is_dir()) if (decomp / "libs").is_dir() else []
+    include_roots = [Path("include")] + [p.relative_to(decomp) / "include" for p in libs]
+    src_roots = [Path("src")] + [p.relative_to(decomp) / "src" for p in libs]
 
-    src_root = decomp / "src"
-    for path in src_root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix.lower() not in {".c", ".cpp", ".cc", ".h", ".hpp"}:
-            continue
-        rel = path.relative_to(src_root)
-        patched = patched_root / "src" / rel
-        src = patched if patched.is_file() else path
-        mirror(src, out / "src" / rel)
+    for sub in include_roots:
+        for path in (decomp / sub).rglob("*"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(decomp)
+            patched = patched_root / rel
+            src = patched if patched.is_file() else path
+            mirror(src, out / rel)
+
+    for sub in src_roots:
+        for path in (decomp / sub).rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".c", ".cpp", ".cc", ".h", ".hpp"}:
+                continue
+            rel = path.relative_to(decomp)
+            patched = patched_root / rel
+            src = patched if patched.is_file() else path
+            mirror(src, out / rel)
 
     if patched_root.is_dir():
         for path in patched_root.rglob("*"):

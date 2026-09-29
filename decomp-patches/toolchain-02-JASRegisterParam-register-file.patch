@@ -3,8 +3,8 @@ unk0..unk1A). Indexing unk0[] past its 6 elements is undefined, and Clang
 removes the paths that do it: writeRegParam then stores register 0x2E to
 unk0[46], over TTrack::mChildren (crash in TTrack::mainProc on macOS).
 
---- a/include/JSystem/JAudio/JASystem/JASRegisterParam.hpp
-+++ b/include/JSystem/JAudio/JASystem/JASRegisterParam.hpp
+--- a/libs/JSystem/include/JSystem/JAudio/JASystem/JASRegisterParam.hpp
++++ b/libs/JSystem/include/JSystem/JAudio/JASystem/JASRegisterParam.hpp
 @@ -27,6 +27,11 @@
  	u16 getFlag() const { return unk0[3]; }
  	void setFlag(u16 flag) { unk0[3] = flag; }
@@ -17,8 +17,8 @@ unk0[46], over TTrack::mChildren (crash in TTrack::mainProc on macOS).
  	int getAddress(int i) const { return unk20[i]; }
  	void setAddress(int i, u32 value) { unk20[i] = value; }
  
---- a/src/JSystem/JAudio/JASystem/JASTrack.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASTrack.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
 @@ -1091,7 +1091,7 @@
  		break;
  	}

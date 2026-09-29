@@ -1,7 +1,7 @@
 Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the edges of a widescreen frame: TGCConsole2 marks its drawing as HUD (and brackets the message ticker, drawn outside its pane), and J2D panes report their extent as they draw, so sms_gx moves each piece (the outermost pane narrower than three quarters of the screen, with all it contains) as one
 --- a/src/GC2D/GCConsole2.cpp
 +++ b/src/GC2D/GCConsole2.cpp
-@@ -569,6 +569,15 @@
+@@ -577,6 +577,15 @@
  // rogue include
  #include <M3DUtil/InfectiousStrings.hpp>
  
@@ -17,7 +17,7 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  TGCConsole2::TGCConsole2(const char* name)
      : JDrama::TViewObj(name)
      , unk10(0)
-@@ -4770,6 +4779,9 @@
+@@ -4790,6 +4799,9 @@
  static inline void drawConsole(TGCConsole2* console,
                                 JDrama::TGraphics* graphics)
  {
@@ -27,7 +27,7 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  	J2DOrthoGraph graph(graphics->getViewport());
  #ifdef TARGET_PC
  	// BetterSunshineEngine (drawStageCallbacks, retail 0x80143F14 in
-@@ -4790,6 +4802,9 @@
+@@ -4810,6 +4822,9 @@
  
  	if (console->unk44 && !console->unk43 && !console->unk42
  	    && console->unk520->getPane()->isVisible()) {
@@ -37,7 +37,7 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  		graphics->setScissor(JDrama::TRect(console->unk544.x1,
  		                                   console->unk544.y1,
  		                                   console->unk544.x2,
-@@ -4801,6 +4816,9 @@
+@@ -4821,6 +4836,9 @@
  		console->unk528->draw(console->unk534.x1, console->unk534.y1);
  		console->unk528->hide();
  		console->unk52C->hide();
@@ -47,7 +47,7 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  	}
  
  	graphics->setScissor(graphics->mViewportRect);
-@@ -4834,6 +4852,9 @@
+@@ -4854,6 +4872,9 @@
  	} else if (console->unk2F8->getPane()->isVisible()) {
  		console->drawWater(graph);
  	}
@@ -57,11 +57,11 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  }
  
  // Retail's stack objects place each flag pass in one inlined callee: the
---- a/src/JSystem/J2D/J2DPane.cpp
-+++ b/src/JSystem/J2D/J2DPane.cpp
-@@ -5,6 +5,14 @@
- #include <dolphin/gx/GXGeometry.h>
+--- a/libs/JSystem/src/J2D/J2DPane.cpp
++++ b/libs/JSystem/src/J2D/J2DPane.cpp
+@@ -7,6 +7,14 @@
  #include <math.h>
+ #include <macros.h>
  
 +#ifdef TARGET_PC
 +// sms_gx widescreen: panes report their extent as they are drawn, so the HUD
@@ -74,7 +74,7 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  J2DPane::J2DPane()
      : mBounds()
      , mGlobalBounds()
-@@ -205,6 +213,9 @@
+@@ -207,6 +215,9 @@
  			mColorAlpha = mAlpha;
  		}
  
@@ -84,7 +84,7 @@ Reason: port: SMS_WIDESCREEN_HUD=edges moves the gameplay HUD's pieces to the ed
  		if (isOrthoGraf) {
  			((J2DOrthoGraph*)p_grafCtx)
  			    ->scissorBounds(&mScissorBounds, &mClipRect);
-@@ -224,6 +235,9 @@
+@@ -226,6 +237,9 @@
  				iter.getObject()->draw(0, 0, p_grafCtx, isOrthoGraf);
  			}
  		}

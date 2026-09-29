@@ -9,7 +9,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse exit-area option and BSE s
  #include <GC2D/GCConsole2.hpp>
  #include <GC2D/MessageUtil.hpp>
  #include <GC2D/PauseMenu2.hpp>
-@@ -95,7 +98,23 @@
+@@ -112,7 +115,23 @@
  	mScreen          = new J2DSetScreen("pause_1.blo", arch);
  	mScreen->setCullBack(GX_CULL_BACK);
  
@@ -34,8 +34,8 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse exit-area option and BSE s
  		// Hide "Exit Area" option in Delfino Plaza.
  		mNumItems = 2;
  	}
-@@ -136,12 +155,28 @@
- 		    = JKRFileLoader::getGlbResource("/common/2d/scenarioname.bmg");
+@@ -167,12 +186,28 @@
+ 		                   GMSE01("/common/2d/scenarioname.bmg")));
  		s16 shineID = SMS_getShineID(shineStage, flag, false);
  		const char* scenarioName;
 +#ifdef TARGET_PC

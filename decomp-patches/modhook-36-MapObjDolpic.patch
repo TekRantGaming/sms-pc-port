@@ -8,10 +8,10 @@ Reason: port: code-mod hooks (sms_modhook.h): turbo nozzle door in TTurboNozzleD
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
+ #include <macros.h>
  
  // TMonumentShine
- 
-@@ -592,7 +595,14 @@
+@@ -610,7 +613,14 @@
  	if (!SMS_IsMarioDashing())
  		return;
  

@@ -1,0 +1,24 @@
+Reason: g++: JKRArchive's (intptr_t, EMountMode) constructor is called with (s32)0, which on the host is also a null pointer constant for the (const char*, EMountMode) one, and s32 is not intptr_t there (i386: long vs int; LP64: int vs long), so the call is ambiguous; cast to the parameter's own type (MWCC: the same long)
+
+--- a/libs/JSystem/src/JKernel/JKRDvdArchive.cpp
++++ b/libs/JSystem/src/JKernel/JKRDvdArchive.cpp
+@@ -9,7 +9,7 @@
+ #include <dolphin/os.h>
+ 
+ JKRDvdArchive::JKRDvdArchive()
+-    : JKRArchive((s32)0, MOUNT_DVD)
++    : JKRArchive((intptr_t)0, MOUNT_DVD)
+ {
+ 	JUT_ASSERT_F(false, "UNIMPLEMENTED");
+ }
+--- a/libs/JSystem/src/JKernel/JKRMemArchive.cpp
++++ b/libs/JSystem/src/JKernel/JKRMemArchive.cpp
+@@ -38,7 +38,7 @@
+ }
+ 
+ JKRMemArchive::JKRMemArchive(const char* path, EMountDirection mountDirection)
+-    : JKRArchive((s32)0, MOUNT_MEM)
++    : JKRArchive((intptr_t)0, MOUNT_MEM)
+ {
+ 	JUT_ASSERT_F(false, "UNIMPLEMENTED");
+ }

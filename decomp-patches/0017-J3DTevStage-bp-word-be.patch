@@ -1,6 +1,6 @@
 Reason: endian: J3DTevStage::load reads its {reg,op,AB,CD} bytes as one u32 BP command; build it big-endian
---- a/include/JSystem/J3D/J3DGraphBase/Components/J3DTevStage.hpp
-+++ b/include/JSystem/J3D/J3DGraphBase/Components/J3DTevStage.hpp
+--- a/libs/JSystem/include/JSystem/J3D/J3DGraphBase/Components/J3DTevStage.hpp
++++ b/libs/JSystem/include/JSystem/J3D/J3DGraphBase/Components/J3DTevStage.hpp
 @@ -150,8 +150,14 @@
  	void load(u32) const
  	{

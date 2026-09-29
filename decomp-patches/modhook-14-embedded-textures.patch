@@ -1,6 +1,6 @@
 Reason: port: code mods: textures a mod builds into its code (BetterSunshineEngine's icons) are converted to host byte order when first stored
---- a/src/JSystem/JUtility/JUTTexture.cpp
-+++ b/src/JSystem/JUtility/JUTTexture.cpp
+--- a/libs/JSystem/src/JUtility/JUTTexture.cpp
++++ b/libs/JSystem/src/JUtility/JUTTexture.cpp
 @@ -50,9 +50,20 @@
  		delete mEmbPalette;
  }
@@ -20,5 +20,5 @@ Reason: port: code mods: textures a mod builds into its code (BetterSunshineEngi
 +			port_endian_bti_embedded(const_cast<ResTIMG*>(param_0));
 +#endif
  		mTexInfo = param_0;
- 		mTexData = (void*)((u32)mTexInfo + mTexInfo->imageDataOffset);
+ 		mTexData = (void*)((intptr_t)mTexInfo + mTexInfo->imageDataOffset);
  

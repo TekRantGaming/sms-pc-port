@@ -32,8 +32,8 @@ Reason: 64-bit: objects holding pointers are up to twice their GameCube size, so
  	if (param_2 != nullptr) {
  		JAInter::TDebugHeap::currentHeap = param_2;
  		JADHioNode::smCurrentHeap        = param_2;
---- a/src/JSystem/JAudio/JASystem/JASSystemHeap.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASSystemHeap.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASSystemHeap.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASSystemHeap.cpp
 @@ -9,7 +9,7 @@
  namespace JASystem {
  namespace Kernel {

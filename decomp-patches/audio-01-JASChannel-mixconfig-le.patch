@@ -1,6 +1,6 @@
 Reason: Audio: TChannel::MixConfig and playLogicalChannel read the bus number and pan/fx selectors through a big-endian byte/bitfield view of a u16; on little-endian hosts the bus came out as the low byte (connect_table[0x50], out of range). Lay the fields out so they name the same bits.
---- a/include/JSystem/JAudio/JASystem/JASChannel.hpp
-+++ b/include/JSystem/JAudio/JASystem/JASChannel.hpp
+--- a/libs/JSystem/include/JSystem/JAudio/JASystem/JASChannel.hpp
++++ b/libs/JSystem/include/JSystem/JAudio/JASystem/JASChannel.hpp
 @@ -93,9 +93,17 @@
  	union MixConfig {
  		u16 mWhole;
@@ -19,8 +19,8 @@ Reason: Audio: TChannel::MixConfig and playLogicalChannel read the bus number an
  		} mParts;
  	};
  
---- a/src/JSystem/JAudio/JASystem/JASChannel.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASChannel.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASChannel.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASChannel.cpp
 @@ -874,8 +874,13 @@
  		union {
  			u16 asS16;

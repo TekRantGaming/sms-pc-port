@@ -20,7 +20,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  
  extern OSThread gSetupThread;
  
-@@ -209,7 +221,19 @@
+@@ -216,7 +228,19 @@
  			    || gpCamera->unk2C8 != -1) {
  				mPerformListSilhouette->perform(CUE_ALL, &local_140);
  			}
@@ -41,10 +41,10 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  			GXInvalidateTexAll();
  		}
  		desiredAppState = changeState();
-@@ -564,7 +588,11 @@
+@@ -577,7 +601,11 @@
  			decideNextStage();
  #endif
- 			offUnk4CFlag(0x100);
+ 			unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
 +#ifdef TARGET_PC
 +			SMS_MOD_MOVE_STAGE(0x80299244);
 +#else
@@ -53,31 +53,31 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  			unkE4     = 2;
  			nextState = STATE_UNK9;
  			break;
-@@ -598,7 +626,11 @@
+@@ -611,7 +639,11 @@
  				} else
  #endif
- 				offUnk4CFlag(0x100);
+ 				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
 +#ifdef TARGET_PC
 +				SMS_MOD_MOVE_STAGE(0x8029933C);
 +#else
  				moveStage();
 +#endif
- 				gpApplication.mFader->setFadeStatus(
+ 				SMSGetApplication()->getFader()->setFadeStatus(
  				    TSMSFader::FADE_STATUS_FULLY_FADED_OUT);
  				desiredAppState = TApplication::APP_STATE_GAMEPLAY;
-@@ -628,7 +660,11 @@
- 				TFlagManager::smInstance->setBool(true, 0x30002);
+@@ -641,7 +673,11 @@
+ 				TFlagManager::getInstance()->setBool(true, 0x30002);
  				decideNextStageOfClear();
- 				offUnk4CFlag(0x100);
+ 				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
 +#ifdef TARGET_PC
 +				SMS_MOD_MOVE_STAGE(0x8029946C);
 +#else
  				moveStage();
 +#endif
  				unkE4 = 0xf;
- 				gpApplication.mFader->setColor(JUtility::TColor(0, 0, 0, 0xff));
- 				nextState = STATE_UNK12;
-@@ -676,6 +712,13 @@
+ 				SMSGetApplication()->getFader()->setColor(
+ 				    JUtility::TColor(0, 0, 0, 0xff));
+@@ -692,6 +728,13 @@
  	if (nextState != mState) {
  #endif
  		currentStateFinalize(nextState);
@@ -91,10 +91,10 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  		nextStateInitialize(nextState);
  		mState = nextState;
  	}
-@@ -1233,7 +1276,11 @@
+@@ -1252,7 +1295,11 @@
  			}
  
- 			if (checkUnk4CFlag(0x2)) {
+ 			if (checkFlag(DIRECTOR_FLAG_STAGE_TRANSITION_PENDING)) {
 +#ifdef TARGET_PC
 +				SMS_MOD_MOVE_STAGE(0x80297E40);
 +#else

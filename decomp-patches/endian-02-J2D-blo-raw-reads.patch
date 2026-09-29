@@ -1,6 +1,6 @@
 Reason: endian: .blo screens stay big-endian (typed reads convert, 0013); convert the raw peek/read of the SCRN magic, block magic and size, old-format tags and pane kind
---- a/src/JSystem/J2D/J2DScreen.cpp
-+++ b/src/JSystem/J2D/J2DScreen.cpp
+--- a/libs/JSystem/src/J2D/J2DScreen.cpp
++++ b/libs/JSystem/src/J2D/J2DScreen.cpp
 @@ -24,6 +24,9 @@
  	if (we_are_root) {
  		u32 magic;
@@ -32,8 +32,8 @@ Reason: endian: .blo screens stay big-endian (typed reads convert, 0013); conver
  			switch (tag) {
  			case 0:
  				return;
---- a/src/JSystem/J2D/J2DPane.cpp
-+++ b/src/JSystem/J2D/J2DPane.cpp
+--- a/libs/JSystem/src/J2D/J2DPane.cpp
++++ b/libs/JSystem/src/J2D/J2DPane.cpp
 @@ -88,6 +88,9 @@
  {
  	if (isEx) {

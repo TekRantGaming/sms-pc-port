@@ -1,6 +1,6 @@
 Reason: MinGW's _tolower assumes an uppercase input; resource volume paths are already lowercase, so it corrupts names such as subtitle.
---- a/src/JSystem/JKernel/JKRFileLoader.cpp
-+++ b/src/JSystem/JKernel/JKRFileLoader.cpp
+--- a/libs/JSystem/src/JKernel/JKRFileLoader.cpp
++++ b/libs/JSystem/src/JKernel/JKRFileLoader.cpp
 @@ -186,7 +186,7 @@
  		path++;
  		while (*path != 0 && *path != '/') {

@@ -1,6 +1,6 @@
 Reason: endian: TColor(u32)/set(u32)/toUInt32 treat the u32 as 0xRRGGBBAA by value (typed stream reads and colour literals are host-order values); a raw store reversed the channels on little-endian hosts
---- a/include/JSystem/JUtility/JUTColor.hpp
-+++ b/include/JSystem/JUtility/JUTColor.hpp
+--- a/libs/JSystem/include/JSystem/JUtility/JUTColor.hpp
++++ b/libs/JSystem/include/JSystem/JUtility/JUTColor.hpp
 @@ -77,7 +77,11 @@
  	// temporary versus an inlined local (see the TODO above it in MarioMain.cpp).
  

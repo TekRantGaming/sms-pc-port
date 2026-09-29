@@ -1,17 +1,17 @@
 Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags and save data
 --- a/src/System/FlagManager.cpp
 +++ b/src/System/FlagManager.cpp
-@@ -1,6 +1,9 @@
- #include <System/FlagManager.hpp>
+@@ -2,6 +2,9 @@
  #include <System/StageUtil.hpp>
  #include <dolphin/os.h>
+ #include <string.h>
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
  
  #ifdef TARGET_PC
  // Memory-card data keeps retail's big-endian layout.
-@@ -30,6 +33,31 @@
+@@ -31,6 +34,31 @@
  
  TFlagManager* TFlagManager::start(JKRHeap* heap)
  {
@@ -43,7 +43,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  	if (smInstance == nullptr)
  		smInstance = new (heap, 0) TFlagManager;
  
-@@ -58,6 +86,24 @@
+@@ -59,6 +87,24 @@
  	mLastSaveTime       = 0;
  	mLastSaveTimeBackup = 0;
  
@@ -68,7 +68,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  	resetGame();
  }
  
-@@ -322,18 +368,58 @@
+@@ -323,18 +369,58 @@
  
  bool TFlagManager::getShineFlag(u8 shine) const
  {
@@ -127,7 +127,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  	if (getFlag(flag) == 0) {
  		incFlag(0x40000, 1);
  		setFlag(flag, 1);
-@@ -446,6 +532,14 @@
+@@ -447,6 +533,14 @@
  #ifdef TARGET_PC
  		port_swap_in_place(mCardInts, sizeof(mCardInts), 4);
  #endif
@@ -142,7 +142,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  		in.skip(0x200 - sizeof(mCardInts));
  	}
  
-@@ -492,7 +586,17 @@
+@@ -493,7 +587,17 @@
  	setBool(true, 0x1039D);
  
  	int shines = 0;
@@ -160,7 +160,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  		if (getFlag(flag) != 0) {
  			++shines;
  		}
-@@ -566,6 +670,14 @@
+@@ -567,6 +671,14 @@
  #else
  	out.write(mCardInts, sizeof(mCardInts));
  #endif

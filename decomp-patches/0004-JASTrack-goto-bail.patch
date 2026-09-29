@@ -1,6 +1,6 @@
 Reason: g++: goto bail jumps over u32 r31 = 0; hoist the declaration above the loop
---- a/src/JSystem/JAudio/JASystem/JASTrack.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASTrack.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
 @@ -744,6 +744,7 @@
  	mIntrMgr.timerProcess();
  

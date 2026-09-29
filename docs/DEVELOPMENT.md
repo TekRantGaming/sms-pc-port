@@ -27,8 +27,10 @@ How the port is put together and where changes go. To build and play, see the [R
   `-DSMS_ARCH=64` is a native 64-bit build that keeps game memory, static data and thread stacks below 4 GiB ([64-BIT.md](64-BIT.md)); it is what macOS builds.
 - Default build type `RelWithDebInfo` = `-O2 -g` for all targets (the fall-off-the-end functions got explicit returns, `ret-*` patches).
 - The 32-bit Linux build compiles against the amd64 SDL2/EGL headers and links the i386 runtime libraries (`/usr/lib/i386-linux-gnu/libSDL2-2.0.so.0`, `libEGL.so.1`) directly, so no `:i386` `-dev` packages are needed.
-- Game units: every `.c`/`.cpp` in `decomp/src` except `dolphin/`, `PowerPC_EABI_Support/`, `TRK_MINNOW_DOLPHIN/` and `OdemuExi2/` (588 units, listed by `tools/gen_sources.py` from `configure.py`, including which get `SMS.pch`), plus the decomp's THP decoder (`platform/thp/thp.cmake`).
-- `decomp-patches/` are applied in name order to copies under `build/<os>-<arch>/patched/`; `decomp/` itself is never modified.
+- The decomp keeps the game in `src/` and `include/`, and each library in `libs/<name>/src` and `libs/<name>/include` (`dolphin`, `JSystem`, `THPPlayer`, `PowerPC_EABI_Support`, `TRK_MINNOW_DOLPHIN`, `OdemuExi2`), as upstream `doldecomp/sms` does.
+  The game sees the headers through the same roots in `configure.py`'s order (`include`, then each `libs/<name>/include`), except MSL's C and C++ headers: the port uses the host's.
+- Game units: every `.c`/`.cpp` in `decomp/src`, `decomp/libs/JSystem/src` and `decomp/libs/THPPlayer/src` (588 units, listed by `tools/gen_sources.py`, which reads `configure.py` for the ones that get `SMS.pch`), plus the SDK's pad clamp and the decomp's THP decoder (`platform/thp/thp.cmake`); the rest of the SDK, MSL, the runtime, MetroTRK and OdemuExi2 are left out.
+- `decomp-patches/` are applied in name order to copies under `build/<os>-<arch>/patched/`, at the same paths as in the decomp (`patched/src/...`, `patched/libs/JSystem/include/...`); `decomp/` itself is never modified.
 - Flags: `-std=gnu++03 -fno-gnu-keywords -fpermissive -fno-strict-aliasing -fwrapv -finput-charset=UTF-8 -fexec-charset=CP932 -DGEKKO -DTARGET_PC -DVERSION_GMSE01 -DBUILD_VERSION=2 -DNDEBUG=1`, host libc/libstdc++ instead of MSL, `-include src/port_compat.h`.
   String literals are Shift-JIS, as in the MWCC build (archive object names are matched against them); clang has no CP932 execution charset, so on macOS the sources are mirrored as CP932 first (`tools/darwin_cp932_mirror.py`).
 - The game's global `operator new/delete` (JKRHeap) are renamed in `libsms_game.a` with `objcopy --redefine-syms` (`llvm-objcopy` on macOS), so only game code allocates from JKR heaps; libstdc++ and `platform/` use the host allocator.
@@ -56,6 +58,7 @@ Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
 
 - **Moving the decomp pin:** `tools/update-decomp.sh [--64] [REF]` fetches the decomp, moves `decomp/` to REF (default `origin/main`), checks that every `decomp-patches/` patch applies in order with no failed hunk and no fuzz, and builds 32-bit (and 64-bit with `--64`).
   It keeps the new pin, staged for a commit, only when all of that passes; otherwise it restores the old pin and says what failed.
+  Patches name files by their path in the decomp, so a decomp change that moves files (as the upstream merge that moved the libraries to `libs/` did) needs their `--- a/`/`+++ b/` lines rewritten, and the include roots in `CMakeLists.txt` and the source roots in `tools/gen_sources.py` updated with it.
   The submodule is always pinned to an exact decomp commit.
 
 ## Platform layer

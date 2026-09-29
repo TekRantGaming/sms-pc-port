@@ -1,6 +1,6 @@
 // J3D resources: models/material tables (J3D2 bmd*/bdl*/bmt*) and animations
 // (J3D1 b?k1/b?a1), plus the ResNTAB and ResTIMG structures they embed.
-// Layouts follow the decomp headers (include/JSystem/J3D/J3DGraphLoader/*,
+// Layouts follow the decomp headers (libs/JSystem/include/JSystem/J3D/J3DGraphLoader/*,
 // J3DGraphBase/J3DStruct.hpp, JUtility/JUTDataHeader.hpp, ResTIMG.hpp).
 #include "endian_util.h"
 #include "port_endian.h"

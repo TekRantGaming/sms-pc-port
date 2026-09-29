@@ -136,7 +136,7 @@ Checked for `JUTGamePad` against retail's constructor (`__ct__10JUTGamePadFQ210J
 - `stb 0x98` → `mButtonReset` 0x98.
 
 The resolver computes exactly this.
-Only the offset *comments* in `decomp/include/JSystem/JUtility/JUTGamePad.hpp` are wrong from `mPortNum` on:
+Only the offset *comments* in `decomp/libs/JSystem/include/JSystem/JUtility/JUTGamePad.hpp` are wrong from `mPortNum` on:
 - `mPortNum` 0x78, not 0x7C.
 - `mErrorStatus` 0x7A, not 0x7E.
 - `mLink` 0x7C, not 0x80.
@@ -188,7 +188,7 @@ Findings against `runs/play-r9`, with `play-symbolic.txt` and the re-syncs `app+
    - **`TMario::mFlag` bit 0:** 9 native vs 8 retail from the re-sync on.
    - **`mHeadMtx` (head look):** differs by about 1e-3.
 4. **`PADClamp` is a no-op in `platform/pad`.**
-   Retail clamps sticks and triggers (the SDK clamp is in `decomp/src/dolphin/pad/Padclamp.c`).
+   Retail clamps sticks and triggers (the SDK clamp is in `decomp/libs/dolphin/src/pad/Padclamp.c`).
    A trace-worktree build with it applied changed nothing up to 5773 for this movie, since it only uses full deflections.
    It should still be linked for movie fidelity.
 

@@ -1,6 +1,6 @@
 /* Host-side entry points of sms_gx that have no GameCube equivalent.
  *
- * The GX and GD API itself is the one declared by decomp/include/dolphin/gx*.h
+ * The GX and GD API itself is the one declared by decomp/libs/dolphin/include/dolphin/gx*.h
  * and gd*.h; sms_gx implements those symbols with C linkage.  This header only
  * adds what a PC host needs: context bring-up, the physical-address window,
  * cache-flush hooks, the write-gather pipe and XFB presentation.

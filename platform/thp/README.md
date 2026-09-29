@@ -1,8 +1,8 @@
 # platform/thp — THP movie decoding on the host
 
-The game's THP player (`decomp/src/THPPlayer/*`) calls the Dolphin SDK decoders `THPInit`, `THPVideoDecode` and `THPAudioDecode`.
+The game's THP player (`decomp/libs/THPPlayer/src/*`) calls the Dolphin SDK decoders `THPInit`, `THPVideoDecode` and `THPAudioDecode`.
 The port used to stub them in `platform/sdk_stubs.cpp`.
-They now come from the decomp's own SDK decoder source, `decomp/src/dolphin/thp/THPDec.c` and `THPAudio.c`.
+They now come from the decomp's own SDK decoder source, `decomp/libs/dolphin/src/thp/THPDec.c` and `THPAudio.c`.
 Two patches make that source run on the host.
 
 | Patch | Change (all under `#ifdef TARGET_PC`) |

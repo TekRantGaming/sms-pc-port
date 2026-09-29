@@ -4,7 +4,7 @@ This is what the game's CPU side expects of the audio DSP task, and how `platfor
 Every fact here comes from the decomp's own source (file names below), the linker map, or the disc data.
 Where the microcode's behaviour cannot be read from the CPU side, the choice made is marked **assumed**, with the evidence used to pick it.
 
-Sources: `src/JSystem/dsptask.c` (DspBoot, DSPSendCommands2, DspStartWork/DspFinishWork), `src/JSystem/dspproc.c` (DsetupTable, DsyncFrame, DSPReleaseHalt), `src/JSystem/osdsp_task.c` (__DSPHandler, DsyncFrame2), `JASAudioThread.cpp`, `JASDSPBuf.cpp`, `JASAiCtrl.cpp`, `JASDSPInterface.{hpp,cpp}`, `JASDSPChannel.cpp`, `JASChannel.cpp`, `JASDriverIF.cpp`, `JASDriverTables.cpp`, `JASRate.cpp`, `JAIGFrameStream.cpp`, `JAIData.cpp`.
+Sources: `libs/JSystem/src/dsptask.c` (DspBoot, DSPSendCommands2, DspStartWork/DspFinishWork), `libs/JSystem/src/dspproc.c` (DsetupTable, DsyncFrame, DSPReleaseHalt), `libs/JSystem/src/osdsp_task.c` (__DSPHandler, DsyncFrame2), `JASAudioThread.cpp`, `JASDSPBuf.cpp`, `JASAiCtrl.cpp`, `JASDSPInterface.{hpp,cpp}`, `JASDSPChannel.cpp`, `JASChannel.cpp`, `JASDriverIF.cpp`, `JASDriverTables.cpp`, `JASRate.cpp`, `JAIGFrameStream.cpp`, `JAIData.cpp`.
 
 ## Timing
 

@@ -5,7 +5,7 @@
 // GX/GD entry point, every byte written through the write-gather pipe and every
 // display list ends up as one of those register writes, so the renderer reads
 // its state from one register file and nothing else.  Register layouts are
-// hardware facts, cross-checked against the decompiled SDK in decomp/src/dolphin.
+// hardware facts, cross-checked against the decompiled SDK in decomp/libs/dolphin/src.
 #ifndef SMS_GX_INTERNAL_H
 #define SMS_GX_INTERNAL_H
 

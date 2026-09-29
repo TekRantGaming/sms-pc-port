@@ -1,6 +1,6 @@
 // The GX API: every call is translated into the BP/CP/XF register writes the
 // hardware would receive.  Field layouts follow the decompiled SDK
-// (decomp/src/dolphin/gx) so that display lists built by GD/J3D and the API
+// (decomp/libs/dolphin/src/gx) so that display lists built by GD/J3D and the API
 // agree bit for bit.
 #include "gx_internal.h"
 #include "sms_gx/gx_pc.h"

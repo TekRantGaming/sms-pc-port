@@ -67,6 +67,7 @@ bad_patches=()
 n=0
 for p in decomp-patches/*.patch; do
   n=$((n + 1))
+  missing=()
   while IFS= read -r f; do
     if [[ ! -e "$scratch/$f" ]]; then
       mkdir -p "$scratch/$(dirname "$f")"
@@ -74,9 +75,17 @@ for p in decomp-patches/*.patch; do
         cp "decomp/$f" "$scratch/$f"
       else
         : > "$scratch/$f"
+        missing+=("$f")
       fi
     fi
   done < <(sed -n 's#^+++ b/\([^\t ]*\).*#\1#p' "$p")
+  if (( ${#missing[@]} )); then
+    # A file the decomp moved (e.g. the libraries' move to libs/<name>/src
+    # and libs/<name>/include): the patch's paths need rewriting.
+    bad_patches+=("$(basename "$p") (not in the decomp: ${missing[*]})")
+    for f in "${missing[@]}"; do rm -f "$scratch/$f"; done
+    continue
+  fi
   if out=$(patch -p1 --dry-run -d "$scratch" -i "$PWD/$p" 2>&1); then
     patch -p1 --quiet -d "$scratch" -i "$PWD/$p" >/dev/null
     if grep -q fuzz <<<"$out"; then

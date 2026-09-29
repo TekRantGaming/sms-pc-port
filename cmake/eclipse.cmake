@@ -113,10 +113,15 @@ target_link_options(sms PRIVATE
   -Wl,--defsym=gStageBGM=_ZN10MSMainProc11MSStageInfo8stageBgmE
   -Wl,--defsym=gAudioVolume=_ZN5MSBgm12smMainVolumeE
   -Wl,--defsym=waterColor=gModelWaterManagerWaterColor)
+# TMarDirector::fireStartDemoCamera's callback argument (and the callback's
+# first parameter) is uintptr_t in the decomp and u32 in the mods' headers;
+# the mods pass their own callbacks and 0 through it, and the game only hands
+# the argument back to the callback.
 if(SMS_ARCH STREQUAL "32")
   target_link_options(sms PRIVATE
     -Wl,--defsym=_ZN7JKRHeap5allocEjiPS_=_ZN7JKRHeap5allocEmiPS_
-    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag)
+    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag
+    -Wl,--defsym=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFlmmEmPN6JDrama6TActorENS9_6TFlagTItEE=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFljmEjPN6JDrama6TActorENS9_6TFlagTItEE)
 else()
   # On LP64 hosts it is the other way round: the game's u32 is unsigned int,
   # and these declarations (size_t, unsigned long) say unsigned long.
@@ -126,6 +131,7 @@ else()
     -Wl,--defsym=_ZN6JStage6TActor11JSGSetShapeEm=_ZN6JStage6TActor11JSGSetShapeEj
     -Wl,--defsym=_ZN6JStage6TActor15JSGSetAnimationEm=_ZN6JStage6TActor15JSGSetAnimationEj
     -Wl,--defsym=_ZN6JStage7TSystem16JSGGetSystemDataEm=_ZN6JStage7TSystem16JSGGetSystemDataEj
-    -Wl,--defsym=_ZN6JStage7TSystem16JSGSetSystemDataEmm=_ZN6JStage7TSystem16JSGSetSystemDataEjj)
+    -Wl,--defsym=_ZN6JStage7TSystem16JSGSetSystemDataEmm=_ZN6JStage7TSystem16JSGSetSystemDataEjj
+    -Wl,--defsym=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFijjEjPN6JDrama6TActorENS9_6TFlagTItEE=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFimjEmPN6JDrama6TActorENS9_6TFlagTItEE)
 endif()
 message(STATUS "SMS port: Super Mario Eclipse built in (sources in ${SMS_ECLIPSE_SRC_DIR})")

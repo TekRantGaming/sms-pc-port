@@ -1,20 +1,20 @@
 # Decompilation status
 
-Target: `GMSE01`. Decomp checkout: `acccc4cdfc0b92d427a761e2ccf083605ba714fe`.
-Build report generated: 2026-09-29T14:52:06+00:00.
-Port decomp pin: `acccc4cdfc0b92d427a761e2ccf083605ba714fe`.
+Target: `GMSE01`. Decomp checkout: `b8f762e7cdd1feec15578c61227a52f12a84ac2e`.
+Build report generated: 2026-09-29T15:16:11+00:00.
+Port decomp pin: `b8f762e7cdd1feec15578c61227a52f12a84ac2e`.
 Completion: **incomplete**.
 
 | Category | Exact code | Source-linked code | Source-linked units |
 | --- | ---: | ---: | ---: |
-| Game Code | 67.58700% | 19.87077% | 204 / 385 |
+| Game Code | 67.59262% | 19.87077% | 204 / 385 |
 | JSystem Middleware | 93.90541% | 81.21971% | 186 / 198 |
 | SDK Code | 99.71085% | 99.54403% | 148 / 149 |
-| All | 73.51435% | 34.02236% | 538 / 732 |
+| All | 73.51879% | 34.02236% | 538 / 732 |
 
-Exact functions: 12,038 / 12,904.
+Exact functions: 12,039 / 12,904.
 Exact data: 99.84277%.
-Code outside exact functions: 954,476 bytes.
+Code outside exact functions: 954,316 bytes.
 Units awaiting source linking: 194.
 
 Rebuilt DOL SHA-1: `a6782903ef79d4196c8489ecb1b57decb5b3728f`.

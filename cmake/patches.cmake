@@ -1,13 +1,17 @@
 # Applies decomp-patches/*.patch (unified diffs against decomp/, -p1) to copies
 # of the touched files in ${CMAKE_BINARY_DIR}/patched, at configure time.
 # Patched sources replace their originals in the source lists; patched headers
-# live under patched/include, which is searched before decomp/include.
+# keep their game/library include roots, searched before the original headers.
 #
 # Patches are applied in a scratch tree and copied over only when the result
 # differs, so reconfiguring does not touch unchanged files (and does not force
 # a rebuild of everything that includes a patched header).
 set(SMS_PATCH_ROOT ${CMAKE_BINARY_DIR}/patched)
 set(SMS_PATCHED_INCLUDE_DIR ${SMS_PATCH_ROOT}/include)
+set(SMS_PATCHED_INCLUDE_DIRS ${SMS_PATCHED_INCLUDE_DIR})
+foreach(lib ${SMS_MIDDLEWARE_LIBS})
+  list(APPEND SMS_PATCHED_INCLUDE_DIRS ${SMS_PATCH_ROOT}/libs/${lib}/include)
+endforeach()
 set(_scratch ${CMAKE_BINARY_DIR}/patched.new)
 file(GLOB SMS_PATCHES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/decomp-patches/*.patch)
 list(SORT SMS_PATCHES)
@@ -50,7 +54,7 @@ foreach(f ${_touched})
   get_filename_component(d ${SMS_PATCH_ROOT}/${f} DIRECTORY)
   file(MAKE_DIRECTORY ${d})
   file(COPY_FILE ${_scratch}/${f} ${SMS_PATCH_ROOT}/${f} ONLY_IF_DIFFERENT)
-  if(f MATCHES "^include/")
+  if(f MATCHES "^(include/|libs/[^/]+/include/)")
     list(APPEND _headers ${f})
   endif()
 endforeach()
@@ -71,7 +75,7 @@ if(NOT _old_stamp STREQUAL _stamp_text)
 endif()
 
 foreach(f ${_touched})
-  if(f MATCHES "^src/")
+  if(f MATCHES "^(src/|libs/[^/]+/src/)")
     foreach(lst SMS_DECOMP_CXX_SOURCES SMS_DECOMP_C_SOURCES SMS_DECOMP_PCH_SOURCES)
       list(FIND ${lst} ${SMS_DECOMP}/${f} idx)
       if(NOT idx EQUAL -1)

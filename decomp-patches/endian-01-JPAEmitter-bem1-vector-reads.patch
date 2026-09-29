@@ -1,6 +1,6 @@
 Reason: endian: JPA BEM1 is read big-endian through JSU typed reads (0013); read its raw Vec/S16Vec fields per component so they convert too
---- a/src/JSystem/JParticle/JPAEmitter.cpp
-+++ b/src/JSystem/JParticle/JPAEmitter.cpp
+--- a/libs/JSystem/src/JParticle/JPAEmitter.cpp
++++ b/libs/JSystem/src/JParticle/JPAEmitter.cpp
 @@ -279,9 +279,17 @@
  
  	JSUInputStream& stream = stream2;

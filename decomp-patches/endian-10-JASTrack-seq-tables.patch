@@ -1,6 +1,6 @@
 Reason: endian: sequence (.bms) data stays big-endian; oscillator tables it points at (opcodes 0xD7/0xF2) become host-order copies from platform/endian, FIR coefficients (0xED) are converted when copied
---- a/src/JSystem/JAudio/JASystem/JASTrack.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASTrack.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASTrack.cpp
 @@ -1,3 +1,7 @@
 +#ifdef TARGET_PC
 +// platform/endian: host-order copy of a big-endian s16 oscillator table.
@@ -52,8 +52,8 @@ Reason: endian: sequence (.bms) data stays big-endian; oscillator tables it poin
  		break;
  	}
  }
---- a/src/JSystem/JAudio/JASystem/JASSeqParser.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASSeqParser.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASSeqParser.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASSeqParser.cpp
 @@ -523,7 +523,14 @@
  
  int TSeqParser::cmdFIRSet(TTrack* track, u32* args)

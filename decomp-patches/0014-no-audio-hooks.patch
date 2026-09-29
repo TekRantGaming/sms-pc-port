@@ -24,8 +24,8 @@ Reason: port: SMS_NO_AUDIO substitutes an empty sound configuration and makes JA
  	if (param_4 != nullptr)
  		JAIGlobalParameter::setParamInitDataPointer(param_4);
  	if (param_5 != nullptr)
---- a/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
-+++ b/src/JSystem/JAudio/JAInterface/JAIBasic.cpp
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIBasic.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIBasic.cpp
 @@ -564,6 +564,10 @@
  
  bool JAIBasic::checkSceneWaveOnMemory(s32 bank_id, s32 group_no)

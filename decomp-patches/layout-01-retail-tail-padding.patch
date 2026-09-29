@@ -1,6 +1,6 @@
 Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a derived class's small members in its base's tail padding (TViewObj's flags inside TNameRef, shifting every actor by 4 bytes), which CodeWarrior never does, so these bases fill theirs. Code mods written against the retail layout (SunshineHeaderInterface) need it
---- a/include/JSystem/J3D/J3DGraphBase/J3DShape.hpp
-+++ b/include/JSystem/J3D/J3DGraphBase/J3DShape.hpp
+--- a/libs/JSystem/include/JSystem/J3D/J3DGraphBase/J3DShape.hpp
++++ b/libs/JSystem/include/JSystem/J3D/J3DGraphBase/J3DShape.hpp
 @@ -43,6 +43,11 @@
  
  private:
@@ -13,8 +13,8 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  };
  
  /**
---- a/include/JSystem/JAudio/JASystem/JASInstEffect.hpp
-+++ b/include/JSystem/JAudio/JASystem/JASInstEffect.hpp
+--- a/libs/JSystem/include/JSystem/JAudio/JASystem/JASInstEffect.hpp
++++ b/libs/JSystem/include/JSystem/JAudio/JASystem/JASInstEffect.hpp
 @@ -19,6 +19,11 @@
  
  public:
@@ -27,8 +27,8 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  };
  
  } // namespace JASystem
---- a/include/JSystem/JDrama/JDRNameRef.hpp
-+++ b/include/JSystem/JDrama/JDRNameRef.hpp
+--- a/libs/JSystem/include/JSystem/JDrama/JDRNameRef.hpp
++++ b/libs/JSystem/include/JSystem/JDrama/JDRNameRef.hpp
 @@ -90,6 +90,11 @@
  protected:
  	/* 0x4 */ const char* mName;
@@ -41,8 +41,8 @@ Reason: port: 32-bit builds lay classes out as the GameCube does: g++ puts a der
  };
  
  } // namespace JDrama
---- a/include/JSystem/JDrama/JDRViewObj.hpp
-+++ b/include/JSystem/JDrama/JDRViewObj.hpp
+--- a/libs/JSystem/include/JSystem/JDrama/JDRViewObj.hpp
++++ b/libs/JSystem/include/JSystem/JDrama/JDRViewObj.hpp
 @@ -76,6 +76,11 @@
  
  public:

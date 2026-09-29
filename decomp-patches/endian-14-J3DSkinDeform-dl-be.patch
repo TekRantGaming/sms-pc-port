@@ -1,6 +1,6 @@
 Reason: endian: GX display lists stay big-endian; J3DSkinDeform::initMtxIndexArray parses them on the CPU, so read the vertex count and the position/normal indices big-endian (read natively they overflow useMtxIdxBuf: stack smash on the airstrip)
---- a/src/JSystem/J3D/J3DGraphAnimator/J3DCluster.cpp
-+++ b/src/JSystem/J3D/J3DGraphAnimator/J3DCluster.cpp
+--- a/libs/JSystem/src/J3D/J3DGraphAnimator/J3DCluster.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphAnimator/J3DCluster.cpp
 @@ -391,7 +391,11 @@
  				if (cmd != GX_TRIANGLEFAN && cmd != GX_TRIANGLESTRIP)
  					break;

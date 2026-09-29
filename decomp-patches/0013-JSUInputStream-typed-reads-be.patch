@@ -1,6 +1,6 @@
 Reason: endian: JSU stream typed reads (16/32/64-bit ints, f32) convert from big-endian
---- a/include/JSystem/JSupport/JSUInputStream.hpp
-+++ b/include/JSystem/JSupport/JSUInputStream.hpp
+--- a/libs/JSystem/include/JSystem/JSupport/JSUInputStream.hpp
++++ b/libs/JSystem/include/JSystem/JSupport/JSUInputStream.hpp
 @@ -12,6 +12,22 @@
  	virtual int readData(void* buf, s32 size) = 0;
  

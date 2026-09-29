@@ -4,6 +4,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SMS_DECOMP ${CMAKE_CURRENT_SOURCE_DIR}/decomp)
 set(SMS_PORT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set(SMS_MIDDLEWARE_LIBS JSystem dolphin THPPlayer PowerPC_EABI_Support TRK_MINNOW_DOLPHIN OdemuExi2)
+set(SMS_DECOMP_INCLUDE_DIRS ${SMS_DECOMP}/include)
+foreach(lib ${SMS_MIDDLEWARE_LIBS})
+  if(EXISTS ${SMS_DECOMP}/libs/${lib}/include)
+    list(APPEND SMS_DECOMP_INCLUDE_DIRS ${SMS_DECOMP}/libs/${lib}/include)
+  endif()
+endforeach()
+if(EXISTS ${SMS_DECOMP}/libs/dolphin/src)
+  set(SMS_DOLPHIN_SRC_DIR ${SMS_DECOMP}/libs/dolphin/src)
+else()
+  set(SMS_DOLPHIN_SRC_DIR ${SMS_DECOMP}/src/dolphin)
+endif()
 
 # Default: optimised with debug info. -DNDEBUG is left to the decomp's own
 # NDEBUG=1 definition, so the stock RelWithDebInfo flags are replaced.
@@ -111,6 +123,7 @@ if(APPLE)
 endif()
 
 set(SMS_GAME_INCLUDE_DIR ${SMS_DECOMP}/include)
+set(_sms_game_header_root ${SMS_DECOMP})
 if(NOT SMS_HAVE_CP932)
   set(SMS_CP932_ROOT ${CMAKE_BINARY_DIR}/cp932)
   execute_process(
@@ -123,6 +136,7 @@ if(NOT SMS_HAVE_CP932)
     message(FATAL_ERROR "tools/darwin_cp932_mirror.py failed")
   endif()
   set(SMS_GAME_INCLUDE_DIR ${SMS_CP932_ROOT}/include)
+  set(_sms_game_header_root ${SMS_CP932_ROOT})
   list(APPEND SMS_GAME_FLAGS -Wno-invalid-source-encoding)
   foreach(lst SMS_DECOMP_CXX_SOURCES SMS_DECOMP_C_SOURCES SMS_DECOMP_PCH_SOURCES)
     set(_retargeted "")
@@ -141,6 +155,12 @@ if(NOT SMS_HAVE_CP932)
   endforeach()
   message(STATUS "SMS port: compiling game sources from CP932 mirror")
 endif()
+set(SMS_GAME_INCLUDE_DIRS ${SMS_GAME_INCLUDE_DIR})
+foreach(lib ${SMS_MIDDLEWARE_LIBS})
+  if(EXISTS ${SMS_DECOMP}/libs/${lib}/include)
+    list(APPEND SMS_GAME_INCLUDE_DIRS ${_sms_game_header_root}/libs/${lib}/include)
+  endif()
+endforeach()
 
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} PROPERTIES LANGUAGE CXX)
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES} PROPERTIES
@@ -206,22 +226,23 @@ add_library(sms_game STATIC ${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES})
 # Host THP decoders (the decomp's SDK decoder, patched; platform/thp).
 include(${CMAKE_CURRENT_SOURCE_DIR}/platform/thp/thp.cmake)
 # The SDK's PADClamp (dead zone / octagon), built from the decomp as C.
-target_sources(sms_game PRIVATE ${SMS_DECOMP}/src/dolphin/pad/Padclamp.c)
+target_sources(sms_game PRIVATE ${SMS_DOLPHIN_SRC_DIR}/pad/Padclamp.c)
 # port_include must stay ahead of the game headers: its dolphin/types.h
 # overrides the decomp's (LP64 integer widths, weak AT_ADDRESS globals).
 if(DEFINED SMS_CP932_ROOT)
   # CP932 mirror already merges patched headers.
   target_include_directories(sms_game BEFORE PRIVATE
-    ${SMS_PORT_SRC}/port_include ${SMS_GAME_INCLUDE_DIR})
+    ${SMS_PORT_SRC}/port_include ${SMS_GAME_INCLUDE_DIRS})
 else()
   target_include_directories(sms_game BEFORE PRIVATE
-    ${SMS_PORT_SRC}/port_include ${SMS_PATCHED_INCLUDE_DIR} ${SMS_GAME_INCLUDE_DIR})
+    ${SMS_PORT_SRC}/port_include ${SMS_PATCHED_INCLUDE_DIRS} ${SMS_GAME_INCLUDE_DIRS})
 endif()
 if(TARGET sms_gx AND SMS_GX_OVERRIDE_INCLUDE_DIR)
   # GXVert.h vertex writers become functions implemented by sms_gx.
   target_include_directories(sms_game BEFORE PRIVATE ${SMS_GX_OVERRIDE_INCLUDE_DIR})
 endif()
-target_compile_definitions(sms_game PRIVATE ${SMS_COMMON_DEFS})
+target_compile_definitions(sms_game PRIVATE ${SMS_COMMON_DEFS}
+  $<$<COMPILE_LANGUAGE:CXX>:nullptr=0>)
 target_compile_options(sms_game PRIVATE ${SMS_GAME_FLAGS})
 
 # The game replaces the global operator new/delete with JKRHeap allocation,
@@ -293,7 +314,7 @@ if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
 endif()
 target_include_directories(sms PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/platform ${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/include ${SMS_PORT_SRC}
-  ${SMS_PORT_SRC}/port_include ${SMS_DECOMP}/include)
+  ${SMS_PORT_SRC}/port_include ${SMS_DECOMP_INCLUDE_DIRS})
 target_compile_definitions(sms PRIVATE ${SMS_COMMON_DEFS} SMS_AUDIO_DSP_HLE=1)
 target_compile_options(sms PRIVATE -fno-strict-aliasing -Wno-unused-parameter -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++11>)

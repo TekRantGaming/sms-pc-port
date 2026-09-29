@@ -76,25 +76,21 @@ def main() -> int:
     patched_root: Path = args.patched
     decomp: Path = args.decomp
 
-    include_src = decomp / "include"
-    for path in include_src.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(include_src)
-        patched = patched_root / "include" / rel
-        src = patched if patched.is_file() else path
-        mirror(src, out / "include" / rel)
-
-    src_root = decomp / "src"
-    for path in src_root.rglob("*"):
-        if not path.is_file():
-            continue
-        if path.suffix.lower() not in {".c", ".cpp", ".cc", ".h", ".hpp"}:
-            continue
-        rel = path.relative_to(src_root)
-        patched = patched_root / "src" / rel
-        src = patched if patched.is_file() else path
-        mirror(src, out / "src" / rel)
+    roots = [decomp / "include", decomp / "src"]
+    libs = decomp / "libs"
+    if libs.is_dir():
+        for library in sorted(libs.iterdir()):
+            roots.extend([library / "include", library / "src"])
+    for source_root in roots:
+        for path in source_root.rglob("*"):
+            if not path.is_file():
+                continue
+            if source_root.name == "src" and path.suffix.lower() not in {".c", ".cpp", ".cc", ".h", ".hpp"}:
+                continue
+            rel = path.relative_to(decomp)
+            patched = patched_root / rel
+            src = patched if patched.is_file() else path
+            mirror(src, out / rel)
 
     if patched_root.is_dir():
         for path in patched_root.rglob("*"):

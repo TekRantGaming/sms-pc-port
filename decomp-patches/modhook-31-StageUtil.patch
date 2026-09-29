@@ -20,6 +20,6 @@ Reason: port: code-mod hooks (sms_modhook.h): SMS_isExMap replacement
 +	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802A8B58))
 +		return ((bool (*)())sms_mod_t_)();
 +#endif
- 	return (gpApplication.mCurrArea.unk0 > 0x14
- 	        && gpApplication.mCurrArea.unk0 < 0x35);
+ 	return (SMSGetApplication()->mCurrArea.getStage() > 0x14
+ 	        && SMSGetApplication()->mCurrArea.getStage() < 0x35);
  }

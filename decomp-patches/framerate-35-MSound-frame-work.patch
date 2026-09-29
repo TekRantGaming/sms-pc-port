@@ -1,7 +1,7 @@
 Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop: JAI fades and volume moves, sound-set repeat intervals, dummy-position lifetimes) keeps its 30 fps timing; it counts displayed frames, so every fade, interval and lifetime ran twice as fast; the stage-exit fade, the one gameplay caller that scales its length by the frame rate, is given in 30 fps frames
 --- a/src/MSound/MSound.cpp
 +++ b/src/MSound/MSound.cpp
-@@ -599,8 +599,37 @@ MSound::MSound(JKRHeap* param_1, JKRHeap* param_2, u32 param_3, u8* param_4,
+@@ -597,8 +597,37 @@
  
  void MSound::requestShineAppearFanfare() { }
  
@@ -36,7 +36,7 @@ Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop
 +	if (MSoundPortSkipFrame())
 +		return;
 +#endif
- 	if (unkCF == 0 && unkA8 == 0)
+ 	if (unkCF == 0 && mSeGateMask == 0)
  		return;
  
 --- a/src/System/MarDirectorDirect.cpp
@@ -58,10 +58,10 @@ Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop
 +}
 +#endif
 +
- // TODO: 98.5%, frame 0x150 vs retail 0x198 (TGraphics sits 0x48 higher, a
- // dead low region) and the saved GPRs are permuted (retail: this r26, uVar8
- // r27, i r28, desiredAppState r29, the pad offset and ~uVar8 in r31).
-@@ -772,7 +785,12 @@ void TMarDirector::nextStateInitialize(u8 next_state)
+ // TODO: 99.7%, frame 0x158 vs retail 0x198 (TGraphics sits 0x40 higher, a
+ // dead low region) and r29/r30 swapped. Body from upstream (98.5 -> 99.7).
+ int TMarDirector::direct()
+@@ -774,7 +787,12 @@
  			SMSGetMSound()->startSoundSystemSE(MSD_SE_MA_INTO_DOKAN, 0, nullptr,
  			                                   0);
  		MSound* sound = gpMSound;

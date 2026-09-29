@@ -1,0 +1,31 @@
+Reason: port: convert the PTR32 vertex-colour index slot through its pointer view before extracting its signed 32-bit file offset. The wrapper keeps the on-disc slot four bytes on 64-bit hosts.
+--- a/libs/JSystem/src/J3D/J3DGraphLoader/J3DAnmLoader.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphLoader/J3DAnmLoader.cpp
+@@ -217,11 +217,11 @@
+ 	for (s32 i = 0; i < dst->mAnmTableNum[0]; i++)
+ 		dst->mAnmVtxColorIndexData[0][i].mpData
+ 		    = (void*)((intptr_t)indexPtr0
+-		              + (s32)dst->mAnmVtxColorIndexData[0][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[0][i].mpData * 2);
+ 	for (s32 i = 0; i < dst->mAnmTableNum[1]; i++)
+ 		dst->mAnmVtxColorIndexData[1][i].mpData
+ 		    = (void*)((intptr_t)indexPtr1
+-		              + (s32)dst->mAnmVtxColorIndexData[1][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[1][i].mpData * 2);
+ 
+ 	dst->mColorR = JSUConvertOffsetToPtr<u8>(data, (void*)data->mRValuesOffset);
+ 	dst->mColorG = JSUConvertOffsetToPtr<u8>(data, (void*)data->mGValuesOffset);
+@@ -435,11 +435,11 @@
+ 	for (s32 i = 0; i < dst->mAnmTableNum[0]; i++)
+ 		dst->mAnmVtxColorIndexData[0][i].mpData
+ 		    = (void*)((intptr_t)indexPtr0
+-		              + (s32)dst->mAnmVtxColorIndexData[0][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[0][i].mpData * 2);
+ 	for (s32 i = 0; i < dst->mAnmTableNum[1]; i++)
+ 		dst->mAnmVtxColorIndexData[1][i].mpData
+ 		    = (void*)((intptr_t)indexPtr1
+-		              + (s32)dst->mAnmVtxColorIndexData[1][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[1][i].mpData * 2);
+ 
+ 	dst->mColorR
+ 	    = JSUConvertOffsetToPtr<s16>(data, (void*)data->mRValuesOffset);

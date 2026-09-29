@@ -1,6 +1,6 @@
 Reason: endian: convert the 0x20-byte .afc/stream header after it is copied into StreamHeader (read from disc or from the AAF stream list, which platform/endian leaves big-endian)
---- a/src/JSystem/JAudio/JAInterface/JAIGFrameStream.cpp
-+++ b/src/JSystem/JAudio/JAInterface/JAIGFrameStream.cpp
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIGFrameStream.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIGFrameStream.cpp
 @@ -668,6 +668,18 @@
  
  		adpcm_loadpoint = 0x20;

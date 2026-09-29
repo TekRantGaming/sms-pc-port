@@ -1,6 +1,6 @@
 Reason: g++: TVec2/TVec3 operator+/- (and two TU-local scale helpers) return a reference to a local, which g++ turns into a NULL return; return by value on the port
---- a/include/JSystem/JGeometry/JGVec3.hpp
-+++ b/include/JSystem/JGeometry/JGVec3.hpp
+--- a/libs/JSystem/include/JSystem/JGeometry/JGVec3.hpp
++++ b/libs/JSystem/include/JSystem/JGeometry/JGVec3.hpp
 @@ -1,6 +1,17 @@
  #ifndef JG_VEC3_HPP
  #define JG_VEC3_HPP
@@ -53,8 +53,8 @@ Reason: g++: TVec2/TVec3 operator+/- (and two TU-local scale helpers) return a r
  	{
  		fst += snd;
  		return fst;
---- a/include/JSystem/JGeometry/JGVec2.hpp
-+++ b/include/JSystem/JGeometry/JGVec2.hpp
+--- a/libs/JSystem/include/JSystem/JGeometry/JGVec2.hpp
++++ b/libs/JSystem/include/JSystem/JGeometry/JGVec2.hpp
 @@ -1,6 +1,17 @@
  #ifndef JG_VEC2_HPP
  #define JG_VEC2_HPP

@@ -1,6 +1,6 @@
 Reason: port: code-mod hooks (sms_modhook.h): seed of JALCalc::getRandom_0_1 (BetterSunshineEngine)
---- a/src/JSystem/JAudio/JALibrary/JALCalc.cpp
-+++ b/src/JSystem/JAudio/JALibrary/JALCalc.cpp
+--- a/libs/JSystem/src/JAudio/JALibrary/JALCalc.cpp
++++ b/libs/JSystem/src/JAudio/JALibrary/JALCalc.cpp
 @@ -1,6 +1,33 @@
  #include <JSystem/JAudio/JALibrary/JALCalc.hpp>
  #include <JSystem/JMath.hpp>

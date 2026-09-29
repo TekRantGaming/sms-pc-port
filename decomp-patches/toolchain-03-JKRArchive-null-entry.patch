@@ -1,0 +1,23 @@
+Reason: port: archive constructors select the integral entry-number overload. Host intptr_t can differ from s32, making a cast zero ambiguous with the const char* overload; use the declared entry-number type.
+--- a/libs/JSystem/src/JKernel/JKRDvdArchive.cpp
++++ b/libs/JSystem/src/JKernel/JKRDvdArchive.cpp
+@@ -9,7 +9,7 @@
+ #include <dolphin/os.h>
+ 
+ JKRDvdArchive::JKRDvdArchive()
+-    : JKRArchive((s32)0, MOUNT_DVD)
++    : JKRArchive((intptr_t)0, MOUNT_DVD)
+ {
+ 	JUT_ASSERT_F(false, "UNIMPLEMENTED");
+ }
+--- a/libs/JSystem/src/JKernel/JKRMemArchive.cpp
++++ b/libs/JSystem/src/JKernel/JKRMemArchive.cpp
+@@ -38,7 +38,7 @@
+ }
+ 
+ JKRMemArchive::JKRMemArchive(const char* path, EMountDirection mountDirection)
+-    : JKRArchive((s32)0, MOUNT_MEM)
++    : JKRArchive((intptr_t)0, MOUNT_MEM)
+ {
+ 	JUT_ASSERT_F(false, "UNIMPLEMENTED");
+ }

@@ -5,8 +5,8 @@ and sampleCount and the 0x180 voice stride: every voice started with no
 samples and zero volume, so the 64-bit build played no JAudio sound (THP
 movie audio has its own path). PTR32 keeps them 4-byte slots.
 
---- a/include/JSystem/JAudio/JASystem/JASDSPInterface.hpp
-+++ b/include/JSystem/JAudio/JASystem/JASDSPInterface.hpp
+--- a/libs/JSystem/include/JSystem/JAudio/JASystem/JASDSPInterface.hpp
++++ b/libs/JSystem/include/JSystem/JAudio/JASystem/JASDSPInterface.hpp
 @@ -101,9 +101,9 @@
  		/* 0x108 */ s16 filterMode;
  		/* 0x10A */ u16 endRequested;

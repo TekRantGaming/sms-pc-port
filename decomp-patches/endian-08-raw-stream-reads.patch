@@ -32,8 +32,8 @@ Reason: endian: scene .bin object data stays big-endian (typed reads convert, 00
  
  	if (eventID >= 0)
  		mItem = TMapObjBaseManager::newAndRegisterObjByEventID(eventID, "鳥用");
---- a/src/JSystem/JDrama/JDRViewport.cpp
-+++ b/src/JSystem/JDrama/JDRViewport.cpp
+--- a/libs/JSystem/src/JDrama/JDRViewport.cpp
++++ b/libs/JSystem/src/JDrama/JDRViewport.cpp
 @@ -28,8 +28,24 @@
  void TViewport::load(JSUMemoryInputStream& stream)
  {

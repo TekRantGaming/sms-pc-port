@@ -541,12 +541,12 @@ extern "C" void OSCancelThread(OSThread* t)
 	OSWakeupThread(&t->queueJoin);
 }
 
-extern "C" int OSJoinThread(OSThread* t, void* val)
+extern "C" int OSJoinThread(OSThread* t, void** val)
 {
 	while (t->state != OS_THREAD_STATE_MORIBUND && t->state != 0)
 		OSSleepThread(&t->queueJoin);
 	if (val)
-		*(void**)val = t->val;
+		*val = t->val;
 	return TRUE;
 }
 

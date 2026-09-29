@@ -4,7 +4,8 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
 @@ -2,6 +2,30 @@
  #include <System/StageUtil.hpp>
  #include <dolphin/os.h>
- 
+ #include <string.h>
++
 +#ifdef TARGET_PC
 +// Memory-card data keeps retail's big-endian layout.
 +static void port_write_be(JSUMemoryOutputStream& out, const void* p, int size, int width)
@@ -28,11 +29,10 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
 +}
 +#define PORT_WRITE_BE(out, p, size, width) port_write_be(out, p, size, width)
 +#endif
-+
+ 
  TFlagManager* TFlagManager::smInstance = 0;
  
- TFlagManager* TFlagManager::start(JKRHeap* heap)
-@@ -389,9 +413,15 @@
+@@ -390,9 +414,15 @@
  
  	u32 magic;
  	in.read(&magic, sizeof(magic));
@@ -48,7 +48,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  
  		u64 padding1 = 0;
  		in.read(&padding1, sizeof(padding1));
-@@ -413,6 +443,9 @@
+@@ -414,6 +444,9 @@
  		in.read(&mCardBools, sizeof(mCardBools));
  		in.skip(0x200 - sizeof(mCardBools));
  		in.read(&mCardInts, sizeof(mCardInts));
@@ -58,7 +58,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  		in.skip(0x200 - sizeof(mCardInts));
  	}
  
-@@ -488,19 +521,35 @@
+@@ -489,19 +522,35 @@
  	incFlag(0x20000, 1);
  
  	u32 magic = 4;
@@ -94,7 +94,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  
  	u16 padding2 = 0;
  	out.write(&padding2, sizeof(padding2));
-@@ -512,7 +561,11 @@
+@@ -513,7 +562,11 @@
  
  	out.write(mCardBools, sizeof(mCardBools));
  	out.skip(0x200 - sizeof(mCardBools), 0);
@@ -106,7 +106,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	out.skip(0x200 - sizeof(mCardInts), 0);
  }
  
-@@ -560,9 +613,15 @@
+@@ -561,9 +614,15 @@
  
  	u32 magic;
  	in.read(&magic, sizeof(magic));
@@ -122,7 +122,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	}
  
  	correctOptFlag();
-@@ -571,7 +630,11 @@
+@@ -572,7 +631,11 @@
  void TFlagManager::saveOption(JSUMemoryOutputStream& out)
  {
  	u32 magic = 2;
@@ -134,7 +134,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	setBool(!getBool(0x90000), 0x70000);
  	switch (getFlag(0xA0000)) {
  	case 0:
-@@ -589,5 +652,9 @@
+@@ -590,5 +653,9 @@
  	setFlag(0x80000, getFlag(0xA0001));
  	setBool(getBool(0x90001), 0x70002);
  	out.write(mSavedOptionBools, sizeof(mSavedOptionBools));
@@ -142,11 +142,12 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
 +	PORT_WRITE_BE(out, mSavedOptionInts, sizeof(mSavedOptionInts), 4);
 +#else
  	out.write(mSavedOptionInts, sizeof(mSavedOptionInts));
+-}
 +#endif
- }
++}
 --- a/src/System/CardManager.cpp
 +++ b/src/System/CardManager.cpp
-@@ -30,8 +30,14 @@
+@@ -31,8 +31,14 @@
  	u32 top, bottom;
  	top = bottom = 0;
  	for (u32 i = 0; i < size / 2; ++i, ++ptr) {
@@ -161,7 +162,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	}
  	return (top << 16) | bottom & 0xffff;
  }
-@@ -80,6 +86,18 @@
+@@ -81,6 +87,18 @@
  // costs getWriteStream/getOptionWriteStream ~7.
  void TCardSector::setCheckSum(u32 write_count)
  {
@@ -180,7 +181,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  	mWriteCount = write_count;
  	u16* ptr    = (u16*)this;
  	u32 top, bottom;
-@@ -89,6 +107,7 @@
+@@ -90,6 +108,7 @@
  		bottom += ~ptr[0];
  	}
  	mCheckSum = (top << 16) | bottom & 0xffff;
@@ -188,7 +189,7 @@ Reason: endian: keep retail's big-endian memory-card layout: TFlagManager writes
  }
  
  // TODO: incorrect
-@@ -103,9 +122,15 @@
+@@ -104,9 +123,15 @@
  	s32 errc = CARDRead(file, this, sizeof(TCardSector),
  	                    index * sizeof(TCardSector));
  	if (errc == CARD_RESULT_READY) {

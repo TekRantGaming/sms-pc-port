@@ -4,6 +4,7 @@
 #include "port_stub.h"
 #include <dolphin/ai.h>
 #include <dolphin/ar.h>
+#include <dolphin/arq.h>
 #include <dolphin/base/PPCArch.h>
 #include <dolphin/card.h>
 #include <dolphin/card/CARDCheck.h>
@@ -140,7 +141,7 @@ SDK_WEAK void GXSetTevKColor(GXTevKColorID id, GXColor color) { SDK_STUB(GXSetTe
 SDK_WEAK void GXSetTexCoordCylWrap(GXTexCoordID coord, u8 s_enable, u8 t_enable) { SDK_STUB(GXSetTexCoordCylWrap); }
 SDK_WEAK void GXSetTexCoordScaleManually(GXTexCoordID coord, u8 enable, u16 ss, u16 ts) { SDK_STUB(GXSetTexCoordScaleManually); }
 SDK_WEAK OSTime OSGetTime(void) { SDK_STUB(OSGetTime); return stub_default<OSTime >(); }
-SDK_WEAK int OSJoinThread(OSThread* thread, void* val) { SDK_STUB(OSJoinThread); return stub_default<int >(); }
+SDK_WEAK int OSJoinThread(OSThread* thread, void** val) { SDK_STUB(OSJoinThread); return stub_default<int >(); }
 SDK_WEAK void PADControlMotor(s32 chan, u32 command) { SDK_STUB(PADControlMotor); }
 SDK_WEAK void PSMTXConcat(Mtx mA, Mtx mB, Mtx mAB) { SDK_STUB(PSMTXConcat); }
 SDK_WEAK u32 DSPCheckMailToDSP(void) { SDK_STUB(DSPCheckMailToDSP); return stub_default<u32 >(); }

@@ -2,13 +2,15 @@
 """Generate platform/sdk_stubs.cpp: a weak, logging stub for every Dolphin SDK
 function the game/JSystem/THPPlayer call (decomp/docs/progress/port-scope/
 api-surface.tsv, plus tools/extra_stubs.txt), with the signature taken from
-its declaration in decomp/include/dolphin/**. Real implementations elsewhere in
+its declaration in decomp/libs/dolphin/include/dolphin/**. Real implementations elsewhere in
 platform/ override the weak stubs at link time. Functions defined inline in
 the SDK headers (GD writers, GXVert WG-pipe writers) are skipped."""
 import os, re, sys
 here = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(here)
-inc = os.path.join(root, 'decomp', 'include')
+inc = os.path.join(root, 'decomp', 'libs', 'dolphin', 'include')
+if not os.path.isdir(inc):
+    inc = os.path.join(root, 'decomp', 'include')
 tsv = os.path.join(root, 'decomp', 'docs', 'progress', 'port-scope', 'api-surface.tsv')
 
 names = []

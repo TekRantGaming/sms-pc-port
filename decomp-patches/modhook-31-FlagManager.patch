@@ -1,17 +1,17 @@
 Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags and save data
 --- a/src/System/FlagManager.cpp
 +++ b/src/System/FlagManager.cpp
-@@ -1,6 +1,9 @@
- #include <System/FlagManager.hpp>
+@@ -2,6 +2,9 @@
  #include <System/StageUtil.hpp>
  #include <dolphin/os.h>
+ #include <string.h>
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
  
  #ifdef TARGET_PC
  // Memory-card data keeps retail's big-endian layout.
-@@ -30,6 +33,31 @@
+@@ -31,6 +34,31 @@
  
  TFlagManager* TFlagManager::start(JKRHeap* heap)
  {
@@ -43,7 +43,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  	if (smInstance == nullptr)
  		smInstance = new (heap, 0) TFlagManager;
  
-@@ -58,6 +86,24 @@
+@@ -59,6 +87,24 @@
  	mLastSaveTime       = 0;
  	mLastSaveTimeBackup = 0;
  
@@ -68,7 +68,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  	resetGame();
  }
  
-@@ -322,18 +368,58 @@
+@@ -323,18 +369,58 @@
  
  bool TFlagManager::getShineFlag(u8 shine) const
  {
@@ -128,9 +128,10 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  		incFlag(0x40000, 1);
  		setFlag(flag, 1);
 @@ -446,6 +532,14 @@
+ 		in.read(&mCardInts, sizeof(mCardInts));
  #ifdef TARGET_PC
  		port_swap_in_place(mCardInts, sizeof(mCardInts), 4);
- #endif
++#endif
 +#ifdef TARGET_PC
 +		// BetterSunshineEngine (extendFlagManagerLoad, retail 0x80294334;
 +		// the word at 0x80294338 branches over the skip call): the mod gets
@@ -138,11 +139,10 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
 +		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80294334))
 +			((void (*)(JSUMemoryInputStream*))sms_mod_t_)(&in);
 +		else
-+#endif
+ #endif
  		in.skip(0x200 - sizeof(mCardInts));
  	}
- 
-@@ -492,7 +586,17 @@
+@@ -493,7 +587,17 @@
  	setBool(true, 0x1039D);
  
  	int shines = 0;
@@ -161,9 +161,10 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
  			++shines;
  		}
 @@ -566,6 +670,14 @@
+ 	PORT_WRITE_BE(out, mCardInts, sizeof(mCardInts), 4);
  #else
  	out.write(mCardInts, sizeof(mCardInts));
- #endif
++#endif
 +#ifdef TARGET_PC
 +	// BetterSunshineEngine (extendFlagManagerSave, retail 0x802939B8; the
 +	// word at 0x802939BC branches over the skip call): the mod gets the
@@ -171,7 +172,6 @@ Reason: port: code-mod hooks (sms_modhook.h): TFlagManager extended shine flags 
 +	if (void* sms_mod_t_ = SMS_MOD_SITE(0x802939B8))
 +		((void (*)(JSUMemoryOutputStream*))sms_mod_t_)(&out);
 +	else
-+#endif
+ #endif
  	out.skip(0x200 - sizeof(mCardInts), 0);
  }
- 

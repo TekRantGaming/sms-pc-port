@@ -1,6 +1,6 @@
 Reason: endian: convert RARC metadata to host order when a memory archive is opened, and each resource (by magic or file name) when first fetched
---- a/src/JSystem/JKernel/JKRMemArchive.cpp
-+++ b/src/JSystem/JKernel/JKRMemArchive.cpp
+--- a/libs/JSystem/src/JKernel/JKRMemArchive.cpp
++++ b/libs/JSystem/src/JKernel/JKRMemArchive.cpp
 @@ -138,6 +138,7 @@
  	if (!mArcHeader) {
  		mMountMode = UNKNOWN_MOUNT_MODE;

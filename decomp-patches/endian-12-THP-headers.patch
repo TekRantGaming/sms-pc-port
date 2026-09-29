@@ -1,6 +1,6 @@
 Reason: endian: THP movies are streamed; convert the header, component info and video/audio info after each copy, the frame-offset words, and each frame's size and component-size words right after the disc read (component payloads stay big-endian for the decoders)
---- a/src/THPPlayer/THPPlayer.c
-+++ b/src/THPPlayer/THPPlayer.c
+--- a/libs/THPPlayer/src/THPPlayer.c
++++ b/libs/THPPlayer/src/THPPlayer.c
 @@ -141,6 +141,14 @@
  	}
  
@@ -62,8 +62,8 @@ Reason: endian: THP movies are streamed; convert the header, component info and 
  				ActivePlayer.initOffset
  				    = ActivePlayer.header.movieDataOffsets + WorkBuffer[0];
  				ActivePlayer.initReadFrame = frame;
---- a/src/THPPlayer/THPRead.c
-+++ b/src/THPPlayer/THPRead.c
+--- a/libs/THPPlayer/src/THPRead.c
++++ b/libs/THPPlayer/src/THPRead.c
 @@ -72,6 +72,15 @@
  			OSSuspendThread(&ReadThread);
  		}

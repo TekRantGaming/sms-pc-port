@@ -1,6 +1,6 @@
 Reason: Audio: TDSPChannel::updateAll steals the lowest active voice when OSGetTick gaps between subframe updates suggest the DSP is overloaded; on the port those gaps are host scheduling, and the guard cut most music notes to a third of their retail length (measured against Dolphin LLE voice-block traces). Skip it on TARGET_PC.
---- a/src/JSystem/JAudio/JASystem/JASDSPChannel.cpp
-+++ b/src/JSystem/JAudio/JASystem/JASDSPChannel.cpp
+--- a/libs/JSystem/src/JAudio/JASystem/JASDSPChannel.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASDSPChannel.cpp
 @@ -255,9 +255,17 @@
  		old_time      = time;
  		u32 var2      = 7 - AudioThread::getDSPSyncCount();

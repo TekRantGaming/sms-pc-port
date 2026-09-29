@@ -27,9 +27,9 @@ How the port is put together and where changes go. To build and play, see the [R
   `-DSMS_ARCH=64` is a native 64-bit build that keeps game memory, static data and thread stacks below 4 GiB ([64-BIT.md](64-BIT.md)); it is what macOS builds.
 - Default build type `RelWithDebInfo` = `-O2 -g` for all targets (the fall-off-the-end functions got explicit returns, `ret-*` patches).
 - The 32-bit Linux build compiles against the amd64 SDL2/EGL headers and links the i386 runtime libraries (`/usr/lib/i386-linux-gnu/libSDL2-2.0.so.0`, `libEGL.so.1`) directly, so no `:i386` `-dev` packages are needed.
-- Game units: every `.c`/`.cpp` in `decomp/src` except `dolphin/`, `PowerPC_EABI_Support/`, `TRK_MINNOW_DOLPHIN/` and `OdemuExi2/` (588 units, listed by `tools/gen_sources.py` from `configure.py`, including which get `SMS.pch`), plus the decomp's THP decoder (`platform/thp/thp.cmake`).
+- Game units: every `.c`/`.cpp` in `decomp/src`, plus JSystem and THPPlayer sources in `decomp/libs/<library>/src` (588 units, listed by `tools/gen_sources.py` from `configure.py`, including which get `SMS.pch`). SDK, MSL and debugger sources are excluded except the host THP decoder and PAD clamp; GD is compiled by the GX backend.
 - `decomp-patches/` are applied in name order to copies under `build/<os>-<arch>/patched/`; `decomp/` itself is never modified.
-- Flags: `-std=gnu++03 -fno-gnu-keywords -fpermissive -fno-strict-aliasing -fwrapv -finput-charset=UTF-8 -fexec-charset=CP932 -DGEKKO -DTARGET_PC -DVERSION_GMSE01 -DBUILD_VERSION=2 -DNDEBUG=1`, host libc/libstdc++ instead of MSL, `-include src/port_compat.h`.
+- Flags: `-std=gnu++03 -fno-gnu-keywords -fpermissive -fno-strict-aliasing -fwrapv -finput-charset=UTF-8 -fexec-charset=CP932 -DGEKKO -DTARGET_PC -DVERSION_GMSE01 -DBUILD_VERSION=2 -DNDEBUG=1`, host libc/libstdc++ instead of MSL, `-include src/port_compat.h`. Game C++03 sources define `nullptr=0`, as the original MWCC build does; modern platform C++ retains the language keyword.
   String literals are Shift-JIS, as in the MWCC build (archive object names are matched against them); clang has no CP932 execution charset, so on macOS the sources are mirrored as CP932 first (`tools/darwin_cp932_mirror.py`).
 - The game's global `operator new/delete` (JKRHeap) are renamed in `libsms_game.a` with `objcopy --redefine-syms` (`llvm-objcopy` on macOS), so only game code allocates from JKR heaps; libstdc++ and `platform/` use the host allocator.
 - `rand()` is MSL's (RAND_MAX 32767, same LCG) via `port_compat.h`; glibc's 2^31 range overflows the game's `1.f / (RAND_MAX + 1)`.
@@ -38,6 +38,7 @@ How the port is put together and where changes go. To build and play, see the [R
 
 | Tool | Use |
 | --- | --- |
+| `tools/decomp_status.py --decomp ../sms` | read a verified decomp build report, distinguish exact matching from source linking, check the DOL hash, and export the remaining function queue with `--queue build/decomp-remaining.tsv` |
 | `tools/common.sh` | shared by `build.sh`, `run.sh` and `clean.sh`: host detection, `SMS_ARCH`, build folder, `rom/` lookup, moving files out of older layouts |
 | `tools/bundle_disc.py` | packs the disc's files into `sms-standalone` (or `SMS.app`'s `disc.gcm`) |
 | `tools/make_mac_app.sh`, `tools/extract_icon.py` | assemble and sign `SMS.app`; the app / `.exe` icon from the disc's memory-card icon |

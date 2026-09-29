@@ -12,7 +12,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarioEffect::perform turbo nozzle
  // TODO: init is the last non-exact function: a one-step rotation of the
  // callee-saved GPRs (retail `this` r31, loop offset r30, `.rodata` base r29;
  // ours base r31, `this` r30, offset r29) plus one `addi r4, r25, 0` where we
-@@ -229,12 +233,34 @@
+@@ -217,12 +221,34 @@
  		case 0:
  			if (PerformMario(this)->checkFlag(MARIO_FLAG_FLUDD_EMITTING)) {
  				startDashEffect();
@@ -45,6 +45,6 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarioEffect::perform turbo nozzle
 +			if (
 +#endif
 +			    unk68->checkFlag(MARIO_FLAG_FLUDD_EMITTING) == true) {
- 				if (PerformGun(this)->getEmitMtx(0) != nullptr) {
+ 				if (unk68->getFludd()->getEmitMtx(0) != nullptr) {
  					gpMarioParticleManager->emitAndBindToMtxPtr(
- 					    0xFE, PerformGun(this)->getEmitMtx(0), 1, this);
+ 					    0xFE, unk68->getFludd()->getEmitMtx(0), 1, this);

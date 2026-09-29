@@ -1,4 +1,4 @@
-Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's animations from /common when a disc has them there, by redirecting TWaterGun::init's two MActorAnmData::init calls (retail 0x8026A550, 0x8026A6E8)
+Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's animations and models from /common when a disc has them there, by redirecting TWaterGun::init's two MActorAnmData::init calls (retail 0x8026A550, 0x8026A6E8) and its two JKRFileLoader::getGlbResource calls (0x8026A578, 0x8026A71C); the gun body's pair sits in createGunBody, which retail inlines into init
 --- a/src/Player/WaterGun.cpp
 +++ b/src/Player/WaterGun.cpp
 @@ -38,6 +38,9 @@
@@ -11,21 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's 
  
  TNozzleBmdData nozzleBmdData = {
  	{
-@@ -1284,7 +1287,13 @@
- 	// useful
- 	// TODO: Check if already exists
- 	MActorAnmData* watergunAnmData = new MActorAnmData();
-+#ifdef TARGET_PC
-+	SMS_MOD_CALLM(0x8026A550, MActorAnmData, init,
-+	              watergunAnmData->init("/mario/watergun2/body", nullptr), watergunAnmData,
-+	              "/mario/watergun2/body", (const char**)nullptr);
-+#else
- 	watergunAnmData->init("/mario/watergun2/body", nullptr);
-+#endif
- 	mFluddModel = new MActor(watergunAnmData);
- 
- 	void* fluddModelData
-@@ -1334,7 +1343,13 @@
+@@ -1313,11 +1316,23 @@
  			// function-scope local, a named MActor, an anm-data or MActor
  			// helper. The frame is also 0x100 short.
  			MActorAnmData* nozzleData = new MActorAnmData();
@@ -38,4 +24,40 @@ Reason: port: code-mod hooks (sms_modhook.h): Super Mario Eclipse loads FLUDD's 
 +#endif
  			mNozzleList[i]->unk380 = new MActor(nozzleData);
  
++#ifdef TARGET_PC
++			void* nozzleModelData = SMS_MOD_CALL_R(0x8026A71C, void* (*)(const char*),
++			    JKRFileLoader::getGlbResource(nozzleBmdData.getBmdPath(i)),
++			    nozzleBmdData.getBmdPath(i));
++#else
  			void* nozzleModelData
+ 			    = JKRFileLoader::getGlbResource(nozzleBmdData.getBmdPath(i));
++#endif
+ 			mNozzleList[i]->unk380->setModel(
+ 			    new J3DModel(J3DModelLoaderDataBase::load(
+ 			                     nozzleModelData,
+@@ -1424,11 +1439,25 @@
+ void TWaterGun::createGunBody()
+ {
+ 	MActorAnmData* watergunAnmData = new MActorAnmData();
++#ifdef TARGET_PC
++	// Retail inlines createGunBody into TWaterGun::init: this call is at
++	// 0x8026A550 and the getGlbResource below at 0x8026A578.
++	SMS_MOD_CALLM(0x8026A550, MActorAnmData, init,
++	              watergunAnmData->init("/mario/watergun2/body", nullptr), watergunAnmData,
++	              "/mario/watergun2/body", (const char**)nullptr);
++#else
+ 	watergunAnmData->init("/mario/watergun2/body", nullptr);
++#endif
+ 	mFluddModel = new MActor(watergunAnmData);
+ 
++#ifdef TARGET_PC
++	void* fluddModelData = SMS_MOD_CALL_R(0x8026A578, void* (*)(const char*),
++	    JKRFileLoader::getGlbResource("/mario/watergun2/body/wg_mdl1.bmd"),
++	    "/mario/watergun2/body/wg_mdl1.bmd");
++#else
+ 	void* fluddModelData
+ 	    = JKRFileLoader::getGlbResource("/mario/watergun2/body/wg_mdl1.bmd");
++#endif
+ 	mFluddModel->setModel(
+ 	    new J3DModel(
+ 	        J3DModelLoaderDataBase::load(fluddModelData,

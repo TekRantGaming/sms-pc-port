@@ -1,16 +1,4 @@
-Reason: Returns: functions with no return statement whose value is never used: stubs that are UNUSED (stripped) in the retail map, plus JKRDvdFile::close, TYoshi::getEmitPosDir, PushReadedBuffer and two JGadget templates whose callers ignore the result. Return a neutral value on TARGET_PC (falling off is undefined behaviour at -O1 and above).
---- a/libs/JSystem/include/JSystem/JGadget/std-list.hpp
-+++ b/libs/JSystem/include/JSystem/JGadget/std-list.hpp
-@@ -198,6 +198,9 @@
- 	bool Confirm()
- 	{
- 		// TODO
-+#ifdef TARGET_PC
-+		return true; // not called by SMS
-+#endif
- 	}
- 
- 	/* 0x0 */ TAllocator<T> mAllocator;
+Reason: Returns: functions with no return statement whose value is never used: stubs that are UNUSED (stripped) in the retail map, plus JKRDvdFile::close, TYoshi::getEmitPosDir and a JGadget template whose callers ignore the result. Return a neutral value on TARGET_PC (falling off is undefined behaviour at -O1 and above).
 --- a/libs/JSystem/include/JSystem/JGadget/std-vector.hpp
 +++ b/libs/JSystem/include/JSystem/JGadget/std-vector.hpp
 @@ -350,6 +350,9 @@
@@ -334,15 +322,3 @@ Reason: Returns: functions with no return statement whose value is never used: s
  
  s32 TCardManager::getWriteCount(TCardManager::TCriteria* criteria)
  {
---- a/libs/THPPlayer/src/THPRead.c
-+++ b/libs/THPPlayer/src/THPRead.c
-@@ -109,6 +109,9 @@
- void* PushReadedBuffer(void* buffer)
- {
- 	OSSendMessage(&ReadedBufferQueue, buffer, 1);
-+#ifdef TARGET_PC
-+	return NULL; /* retail: OSSendMessage's BOOL in r3; the caller ignores it */
-+#endif
- }
- 
- void* PopFreeReadBuffer(void)

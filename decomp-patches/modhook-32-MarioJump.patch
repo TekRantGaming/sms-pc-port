@@ -77,7 +77,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
 @@ -239,7 +292,23 @@
  			}
  		}
- 		if (mWallPlane != nullptr) {
+ 		if (getWallPlane() != nullptr) {
 +#ifdef TARGET_PC
 +			// BetterSunshineEngine canJumpClingWall, retail 0x8024C88C (with
 +			// the words at 0x8024C888, 0x8024C890, 0x8024C894, 0x8024C898,
@@ -87,15 +87,15 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
 +			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024C88C)) {
 +				SMS_MOD_GPR(28, this);
 +				sms_fence_ = ((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
-+				    const_cast<TBGCheckData*>(mWallPlane), mWallPlane->mBGType);
++				    const_cast<TBGCheckData*>(getWallPlane()), getWallPlane()->mBGType);
 +			} else {
-+				sms_fence_ = mWallPlane->isFence();
++				sms_fence_ = getWallPlane()->isFence();
 +			}
 +			if (sms_fence_) {
 +#else
- 			if (mWallPlane->isFence()) {
+ 			if (getWallPlane()->isFence()) {
 +#endif
- 				const JGeometry::TVec3<f32>& normal = mWallPlane->getNormal();
+ 				const JGeometry::TVec3<f32>& normal = getWallPlane()->getNormal();
  				mFaceAngle.y    = matan(normal.z, normal.x) + 0x8000;
  				mModelFaceAngle = mFaceAngle.y;
 @@ -349,6 +418,15 @@

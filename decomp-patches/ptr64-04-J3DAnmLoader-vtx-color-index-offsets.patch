@@ -1,0 +1,36 @@
+Reason: 64-bit: readAnmVtxColor casts each J3DAnmVtxColorIndexData::mpData (a PTR32(void) still holding the file's index offset) straight to s32; on a 64-bit host PTR32 is a class with only a pointer conversion, so go through void* and intptr_t (the decomp's former (u32)(void*) spelling did the same). On 32-bit, where PTR32 is void*, the result is the same.
+
+--- a/libs/JSystem/src/J3D/J3DGraphLoader/J3DAnmLoader.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphLoader/J3DAnmLoader.cpp
+@@ -217,11 +217,13 @@
+ 	for (s32 i = 0; i < dst->mAnmTableNum[0]; i++)
+ 		dst->mAnmVtxColorIndexData[0][i].mpData
+ 		    = (void*)((intptr_t)indexPtr0
+-		              + (s32)dst->mAnmVtxColorIndexData[0][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[0][i].mpData
++		                  * 2);
+ 	for (s32 i = 0; i < dst->mAnmTableNum[1]; i++)
+ 		dst->mAnmVtxColorIndexData[1][i].mpData
+ 		    = (void*)((intptr_t)indexPtr1
+-		              + (s32)dst->mAnmVtxColorIndexData[1][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[1][i].mpData
++		                  * 2);
+ 
+ 	dst->mColorR = JSUConvertOffsetToPtr<u8>(data, (void*)data->mRValuesOffset);
+ 	dst->mColorG = JSUConvertOffsetToPtr<u8>(data, (void*)data->mGValuesOffset);
+@@ -435,11 +437,13 @@
+ 	for (s32 i = 0; i < dst->mAnmTableNum[0]; i++)
+ 		dst->mAnmVtxColorIndexData[0][i].mpData
+ 		    = (void*)((intptr_t)indexPtr0
+-		              + (s32)dst->mAnmVtxColorIndexData[0][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[0][i].mpData
++		                  * 2);
+ 	for (s32 i = 0; i < dst->mAnmTableNum[1]; i++)
+ 		dst->mAnmVtxColorIndexData[1][i].mpData
+ 		    = (void*)((intptr_t)indexPtr1
+-		              + (s32)dst->mAnmVtxColorIndexData[1][i].mpData * 2);
++		              + (s32)(intptr_t)(void*)dst->mAnmVtxColorIndexData[1][i].mpData
++		                  * 2);
+ 
+ 	dst->mColorR
+ 	    = JSUConvertOffsetToPtr<s16>(data, (void*)data->mRValuesOffset);

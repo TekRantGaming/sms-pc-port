@@ -1,8 +1,8 @@
 Reason: port: with frame_rate = 60 the Pinna Park Ferris wheel turns at its 30 fps speed; control() advances it per 1/120 s tick by SMSGetAnmFrameRate() / 4, a per-frame rate that halves at 60 while the tick rate does not, so the per-tick half of its turning halved and the wheel and its gondolas turned at three quarters of their speed
 --- a/src/MoveBG/MapObjPinna.cpp
 +++ b/src/MoveBG/MapObjPinna.cpp
-@@ -77,12 +77,39 @@ static inline void MapObjPinnaAdvance(TMapObjBase* p, f32 rate)
- 	MapObjPinnaFrameCtrl(p)->setFrame(rate + MapObjPinnaFrameCtrl(p)->getFrame());
+@@ -86,12 +86,39 @@
+ 	                       &sound->unk80, 0, 4);
  }
  
 +#ifdef TARGET_PC
@@ -41,15 +41,15 @@ Reason: port: with frame_rate = 60 the Pinna Park Ferris wheel turns at its 30 f
  	if (isState(2) && !isStateTimerEngaged()) {
  		if (mAnmRate > SMSGetAnmFrameRate() / 4.0f)
  			mAnmRate -= 0.015f;
-@@ -91,6 +118,7 @@ void TFerrisWheel::control()
+@@ -100,6 +127,7 @@
  	}
  
  	if (mAnmRate > SMSGetAnmFrameRate() / 4.0f) {
 +#endif
- 		MSound* sound = MapObjPinnaGetMSound();
- 		sound->startSoundActor(MSD_SE_OBJ_MAHRE_GATE_LIGHT, &mPosition, 0,
- 		                       &sound->unk80, 0, 4);
-@@ -129,7 +157,11 @@ void TFerrisWheel::initMapObj()
+ 		MapObjPinnaPlayWheelSound(MapObjPinnaGetMSound(), &mPosition);
+ 	}
+ 
+@@ -131,7 +159,11 @@
  	if (SMSGetMarDirector()->getCurrentStage() == 2)
  		mAnmRate = 10.0f;
  	else

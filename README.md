@@ -5,6 +5,9 @@ A native PC port of **Super Mario Sunshine** (GameCube, North America, GMSE01), 
 No game data is included.
 You build the program from source, and it reads the models, textures, levels, music and movies from **your own disc image** at run time.
 
+For guided setup, updates and a Play button, use our dedicated [SMS Launcher](https://github.com/chasem-dev/sms-launcher) for Windows, macOS and Linux.
+The launcher sets up this port on your computer using your own supported disc image; downloads are on its [releases page](https://github.com/chasem-dev/sms-launcher/releases/latest).
+
 ## Supported systems
 
 | System | Word size | Status | Output |

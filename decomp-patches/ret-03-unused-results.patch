@@ -230,7 +230,7 @@ Reason: Returns: functions with no return statement whose value is never used: s
  {
 --- a/src/MSound/MSoundSE.cpp
 +++ b/src/MSound/MSoundSE.cpp
-@@ -55,7 +55,12 @@
+@@ -51,7 +51,12 @@
  	mAmplitudes[3] = 1.0f;
  }
  
@@ -242,8 +242,8 @@ Reason: Returns: functions with no return statement whose value is never used: s
 +#endif
 +}
  
- // TODO: instructions exact but for scheduling; retail computes the CSlope
- // index before the PSlope one (and swaps their registers). Named u32 indices,
+ // Apply the random offset and clamp after reading the three profile inputs.
+ static inline f32 MSRandVolumeFromSlopes(f32 amplitude, f32 curveSlope, f32 plusSlope)
 --- a/src/MarioUtil/DLUtil.cpp
 +++ b/src/MarioUtil/DLUtil.cpp
 @@ -118,7 +118,12 @@

@@ -1,21 +1,21 @@
 # Decompilation status
 
-Target: `GMSE01`. Decomp checkout: `b8f762e7cdd1feec15578c61227a52f12a84ac2e`.
-Build report generated: 2026-09-29T15:16:11+00:00.
-Port decomp pin: `b8f762e7cdd1feec15578c61227a52f12a84ac2e`.
+Target: `GMSE01`. Decomp checkout: `0bead89b4d14cca2410e947d556b31eda26536c4`.
+Build report generated: 2026-09-29T15:49:22+00:00.
+Port decomp pin: `0bead89b4d14cca2410e947d556b31eda26536c4`.
 Completion: **incomplete**.
 
 | Category | Exact code | Source-linked code | Source-linked units |
 | --- | ---: | ---: | ---: |
-| Game Code | 67.59262% | 19.87077% | 204 / 385 |
+| Game Code | 67.64319% | 19.94550% | 205 / 385 |
 | JSystem Middleware | 93.90541% | 81.21971% | 186 / 198 |
 | SDK Code | 99.71085% | 99.54403% | 148 / 149 |
-| All | 73.51879% | 34.02236% | 538 / 732 |
+| All | 73.55875% | 34.08141% | 539 / 732 |
 
-Exact functions: 12,039 / 12,904.
+Exact functions: 12,045 / 12,904.
 Exact data: 99.84277%.
-Code outside exact functions: 954,316 bytes.
-Units awaiting source linking: 194.
+Code outside exact functions: 952,876 bytes.
+Units awaiting source linking: 193.
 
 Rebuilt DOL SHA-1: `a6782903ef79d4196c8489ecb1b57decb5b3728f`.
 Original DOL hash verification: **PASS**.
@@ -32,7 +32,6 @@ Historical notes can supply hypotheses; new compiler and binary evidence determi
 | --- | ---: | ---: | ---: |
 | `Player/MarioAccess` | 1 | 72 B | 100.00000% |
 | `M3DUtil/MActorData` | 1 | 100 B | 100.00000% |
-| `MoveBG/MapObjPollution` | 1 | 172 B | 100.00000% |
 | `THPPlayer/THPAudioDecode` | 1 | 176 B | 100.00000% |
 | `System/PerformList` | 1 | 216 B | 100.00000% |
 | `Player/MarioParticle` | 1 | 388 B | 100.00000% |
@@ -60,6 +59,7 @@ Historical notes can supply hypotheses; new compiler and binary evidence determi
 | `MoveBG/MapObjItem2` | 1 | 1,300 B | 100.00000% |
 | `Enemy/BathtubPeach` | 1 | 1,324 B | 100.00000% |
 | `Camera/lensglow` | 1 | 1,328 B | 100.00000% |
+| `Enemy/spider` | 1 | 1,396 B | 100.00000% |
 
 Regenerate after a successful build:
 

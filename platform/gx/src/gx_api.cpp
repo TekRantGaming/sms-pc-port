@@ -10,6 +10,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "port_fpu.h"  // port_cvt_fp2unsigned: MWCC's __cvt_fp2unsigned, as the SDK converts
+
 using namespace gx;
 
 namespace gx {
@@ -1063,7 +1065,7 @@ void GXSetFog(GXFogType type, f32 startz, f32 endz, f32 nearz, f32 farz, GXColor
     while (bm > 0.0f && bm < 0.5f) { bm *= 2.0f; be--; }
     float a = A / float(1 << (be + 1 > 0 ? be + 1 : 0));
     if (be + 1 < 0) a = A * float(1 << -(be + 1));
-    uint32_t bmant = uint32_t(8.388638e6f * bm);
+    uint32_t bmant = port_cvt_fp2unsigned(8.388638e6f * bm);
     uint32_t bshift = uint32_t(be + 1);
     uint32_t ah = fbits(a), ch = fbits(C);
     uint32_t f0 = ((ah >> 12) & 0x7FF) | ((ah >> 23) & 0xFF) << 11 | (ah >> 31) << 19;
@@ -1166,7 +1168,7 @@ void GXSetCopyClamp(GXFBClamp clamp) {
     s_texCtrl = setField(s_texCtrl, 2, 0, clamp);
 }
 u32 GXSetDispCopyYScale(f32 vscale) {
-    uint32_t s = uint32_t(256.0f / vscale) & 0x1FF;
+    uint32_t s = port_cvt_fp2unsigned(256.0f / vscale) & 0x1FF;
     s_dispYScale = s;
     s_dispCtrl = setField(s_dispCtrl, 1, 10, s != 256);
     uint32_t ht = getField(s_dispSize, 10, 10) + 1;
@@ -1219,7 +1221,7 @@ void GXClearBoundingBox(void) {}
 void GXReadBoundingBox(u16* l, u16* t, u16* r, u16* b) { *l = 0; *t = 0; *r = 639; *b = 527; }
 
 u16 GXGetNumXfbLines(u16 efbHeight, float yScale) {
-    uint32_t iScale = uint32_t(256.0f / yScale) & 0x1FF;
+    uint32_t iScale = port_cvt_fp2unsigned(256.0f / yScale) & 0x1FF;
     if (!iScale) return efbHeight;
     uint32_t n = ((uint32_t(efbHeight) - 1) * 256) / iScale + 1;
     if (iScale > 0x80 && iScale < 0x100) {
@@ -1231,7 +1233,7 @@ u16 GXGetNumXfbLines(u16 efbHeight, float yScale) {
 }
 float GXGetYScaleFactor(u16 efbHeight, u16 xfbHeight) {
     float f = float(xfbHeight) / float(efbHeight);
-    uint32_t iScale = uint32_t(256.0f / f) & 0x1FF;
+    uint32_t iScale = port_cvt_fp2unsigned(256.0f / f) & 0x1FF;
     // step the integer scale until the line count matches the request
     for (int guard = 0; guard < 512 && iScale > 1; guard++) {
         float s = 256.0f / float(iScale);

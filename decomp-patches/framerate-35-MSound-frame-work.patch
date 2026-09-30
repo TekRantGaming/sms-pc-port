@@ -66,8 +66,8 @@ Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop
  			                                   0);
  		MSound* sound = gpMSound;
 +#ifdef TARGET_PC
-+		sound->fadeOutAllSound(
-+		    MarDirectorPortSoundFrames(SMSGetVSyncTimesPerSec() * 0.4f));
++		sound->fadeOutAllSound(port_cvt_fp2unsigned(
++		    MarDirectorPortSoundFrames(SMSGetVSyncTimesPerSec() * 0.4f)));
 +#else
  		sound->fadeOutAllSound(SMSGetVSyncTimesPerSec() * 0.4f);
 +#endif

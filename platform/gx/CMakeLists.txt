@@ -46,7 +46,9 @@ endif()
 add_library(sms_gx STATIC ${SMS_GX_SOURCES} ${SMS_GX_GD_SOURCES})
 target_include_directories(sms_gx
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/port_include ${SMS_GX_TYPES_INCLUDE} ${SMS_GX_DECOMP_INCLUDE})
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/port_include ${SMS_GX_TYPES_INCLUDE} ${SMS_GX_DECOMP_INCLUDE}
+    # port_fpu.h (the SDK's float-to-unsigned conversion, port_cvt_fp2unsigned)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
 # macOS has no system GL/glcorearb.h; ship Khronos headers under third_party/.
 if(APPLE)
     target_include_directories(sms_gx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)

@@ -37,7 +37,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
  			SMSGetApplication()->getFader()->setColor(
  			    JUtility::TColor(0xff, 0xff, 0xff, 0xff));
 +#endif
- 			SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec());
+ 			SMSGetMSound()->fadeOutAllSound(port_cvt_fp2unsigned(SMSGetVSyncTimesPerSec()));
  		}
  		break;
 @@ -331,6 +351,13 @@

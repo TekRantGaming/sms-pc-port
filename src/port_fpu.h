@@ -126,4 +126,34 @@ static inline float port_gekko_fres(double x)
 	return (float)port_f64_from_bits(sign | ((unsigned long long)re << 52) | mant);
 }
 
+/* MWCC's float-to-integer runtime conversions (runtime.c), which the game
+ * reaches for every float or double it converts to a 32-bit unsigned integer
+ * or to a 64-bit integer. The host's own conversions differ outside the
+ * target range, and between the 32 and 64-bit builds (x86 wraps a negative
+ * value; from 2^31 up the 32-bit build gives 0 or 0x80000000 and the 64-bit
+ * build the low 32 bits); in range both are the same truncation.
+ *
+ * __cvt_fp2unsigned: 0 below zero and for NaN (fctiwz of NaN is 0x80000000,
+ * less the 2^31 it adds back), 0xFFFFFFFF from 2^32 up (+inf included),
+ * otherwise truncation towards zero. */
+static inline unsigned int port_cvt_fp2unsigned(double d)
+{
+	if (!(d >= 0.0))
+		return 0;
+	if (d >= 4294967296.0)
+		return 0xFFFFFFFFu;
+	return (unsigned int)d;
+}
+
+/* __cvt_dbl_usll, which MWCC calls for (u64) and (s64) alike: truncation
+ * towards zero as a signed 64-bit value (so a negative value wraps as a u64),
+ * and from 2^63 in magnitude, infinities and NaN included, 0x7FFF...F or
+ * 0x8000...0 by the sign bit. */
+static inline unsigned long long port_cvt_dbl_usll(double d)
+{
+	if (d > -9223372036854775808.0 && d < 9223372036854775808.0)
+		return (unsigned long long)(long long)d;
+	return __builtin_signbit(d) ? 0x8000000000000000ull : 0x7FFFFFFFFFFFFFFFull;
+}
+
 #endif

@@ -90,19 +90,27 @@ static inline float __fres(float x) { return port_gekko_fres(x); }
 #ifdef __cplusplus
 }
 #endif
-/* MWCC converts a float to an unsigned integer through the runtime's
- * __cvt_fp2unsigned (runtime.c): a negative value or NaN gives 0 and a value
- * from 2^32 up gives 0xFFFFFFFF, where the host's conversion of a negative
- * value wraps (-22.5 gives 0xFFFFFFEA). Patched call sites that can see such
- * values use this (decomp-patches/fpu-02-*). */
-static inline u32 port_cvt_fp2unsigned(double d)
-{
-	if (!(d >= 0.0))
-		return 0;
-	if (d >= 4294967296.0)
-		return 0xFFFFFFFFu;
-	return (u32)d;
+/* MWCC converts a float or double to a 32-bit unsigned integer through the
+ * runtime's __cvt_fp2unsigned, and to a 64-bit one through __cvt_dbl_usll;
+ * port_cvt_fp2unsigned and port_cvt_dbl_usll (port_fpu.h) give their
+ * results, and every such conversion the DOL makes goes through them
+ * (decomp-patches/fpu-02..04). port_cvt_fp<T> is the conversion for a
+ * template whose T may be u32: the runtime's for a 32-bit unsigned T, a plain
+ * cast (fctiwz and the low bits on the console, as on the host) otherwise. */
+#ifdef __cplusplus
+extern "C++" {
+template <class T> struct port_cvt_fp_impl {
+	template <class F> static T cvt(F x) { return (T)x; }
+};
+template <> struct port_cvt_fp_impl<unsigned int> {
+	static unsigned int cvt(double d) { return port_cvt_fp2unsigned(d); }
+};
+template <> struct port_cvt_fp_impl<unsigned long> {
+	static unsigned long cvt(double d) { return port_cvt_fp2unsigned(d); }
+};
+template <class T, class F> inline T port_cvt_fp(F x) { return port_cvt_fp_impl<T>::cvt(x); }
 }
+#endif
 /* JSystem's and the game's paired-single routines outside MTX/VEC, as the
  * console computes them (platform/mtx/jsys_ps.inc). */
 #include "port_ps.h"

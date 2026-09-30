@@ -25,8 +25,9 @@ The model (every clause measured with the decomp's MWCC on test cases, see
 docs/64-BIT.md):
 - a product fuses when it is an operand of + or - (through parentheses, not
   through a cast or a call); in a * b + c * d the left one, else the right;
-  -(a * b) + c is fnmsubs and c - -(a * b) fmadds; x / 2^k (k >= 1) is a
-  product (MWCC multiplies by 2^-k); a compound assignment fuses too, to an
+  -(a * b) + c is fnmsubs and c - -(a * b) fmadds; x / 2^k (k >= 1, a
+  floating literal or an integer one converted) is a product (MWCC
+  multiplies by 2^-k); a compound assignment fuses too, to an
   integer as well (s16 += a * b computes in float);
 - CSE: within a function, an arithmetic expression or a memory load (a
   member through a pointer or a reference, an array element, a global, a
@@ -36,13 +37,17 @@ docs/64-BIT.md):
   sibling branch). A product that is computed once this way is never fused;
   and when one statement uses the same expression twice, the smallest
   expression containing both becomes a comma expression, so a product that
-  contains both (m->x * m->x, (a - b) * (a - b)) is not fused either.
+  contains both (m->x * m->x, (a - b) * (a - b)) is not fused either. A
+  member that is a struct or an array is not loaded itself, only its
+  elements are (d->p.x * d->p.y + c fuses; a[i].x * a[i].y + c does not).
   Register variables (scalar locals and parameters whose address is not
   taken, and the fields of local structs whose address is not taken) are no
   expressions to share, so a * a fuses; int-to-float conversions and
   negations are not shared (they are leaves here). A store to memory or a
   call ends the sharing of memory loads; an assignment ends the sharing of
-  what used the variable.
+  what used the variable. With -inline auto, a call to an inline function
+  that neither stores nor calls is shared like an expression (MWCC expands
+  it and shares its loads: npc->getPosition().x twice in one statement).
 - LICM: a product whose operands do not change in the innermost loop around
   it is computed before the loop and not fused.
 - `#pragma fp_contract off` switches it off to the end of the file (or to a
@@ -62,9 +67,14 @@ statement expression, since a call's arguments are evaluated in an order the
 compiler chooses.
 
 Needs libclang 18 and its Python bindings (pip install clang==18.1.8), and
-the linux-32 and linux-64 builds configured (their compile_commands.json and
-patched/ trees); the generated patch goes to decomp-patches/fma/ and is
-regenerated when the decomp or decomp-patches change:
+the linux-32 and linux-64 builds configured (their compile_commands.json give
+each unit's flags; the input tree, the decomp with decomp-patches/*.patch
+applied, is made here). Only regenerating the patch needs them: the build
+applies the committed patch. The generated patch goes to decomp-patches/fma/
+and is regenerated when the decomp or decomp-patches change (the build fails
+until then: its first line records a hash of those inputs, which
+tools/fmacontract/fmastamp.py --check compares; tools/update-decomp.sh
+regenerates it):
 
   tools/fmacontract/fmarewrite.py --patch decomp-patches/fma/0001-mwcc-fused-multiply-adds.patch
 
@@ -73,9 +83,12 @@ relative to the decomp root), --patch FILE a unified diff against the port's
 patched tree (decomp + decomp-patches), and --sites FILE a TSV of every
 site.
 """
-import argparse, collections, concurrent.futures, ctypes, difflib, json, math, os, re, shlex, sys
+import argparse, collections, concurrent.futures, ctypes, difflib, json, math, os, re, shlex, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fmastamp  # noqa: E402
 
 try:
     import clang.cindex as ci
@@ -273,6 +286,8 @@ def build(ctx, c, fname):
             n.ref = decl_info(ctx, r)
         elif r is not None and r.kind == CK.FIELD_DECL:
             n.name = 'F%d' % r.hash
+        elif k == CK.MEMBER_REF_EXPR and r is not None and r.kind in FUNC_KINDS:
+            n.t = 'fn'  # the callee of a method call (data->getPoint1): no value
         elif k == CK.MEMBER_REF_EXPR:
             n.name = None  # a dependent member: named from the text (Func.member)
         elif r is not None and r.kind == CK.ENUM_CONSTANT_DECL:
@@ -282,6 +297,8 @@ def build(ctx, c, fname):
     elif k == CK.CALL_EXPR:
         callee = c.referenced
         n.call_inline, n.call_pure = callee_info(ctx, callee)
+        if callee is not None and callee.kind in FUNC_KINDS:
+            n.name = 'C%d' % callee.hash
         if callee is not None and callee.kind in FUNC_KINDS:
             try:
                 n.argref = [tkind(a.type) == 'ref' for a in callee.get_arguments()]
@@ -316,11 +333,18 @@ def walk(n):
 
 
 def pow2_divisor(n, src):
-    """The literal text of x / 2^k (k >= 1): MWCC multiplies by 2^-k, a
-    product that fuses like any other (a / 3.0f and a / 0.5f do not)."""
+    """The divisor of x / 2^k (k >= 1), as the text of a floating literal of
+    the division's type: MWCC multiplies by 2^-k, a product that fuses like
+    any other (a / 3.0f and a / 0.5f do not). An integer literal converted
+    to the division's floating type counts too (x * y / 2 + c fuses:
+    JUTRomFont::drawChar_scale)."""
     if not (n.k == CK.BINARY_OPERATOR and n.op == '/' and len(n.ch) == 2):
         return None
     d = strip(n.ch[1])
+    if d.k == CK.UNEXPOSED_EXPR and len(d.ch) == 1 and n.t in ('f', 'd'):
+        i = strip(d.ch[0])  # the implicit conversion of an integer literal
+        if i.k == CK.INTEGER_LITERAL:
+            return pow2_divisor_int(n, i, src)
     if d.k != CK.FLOATING_LITERAL or not d.ok:
         return None
     txt = src[d.s:d.e]
@@ -330,6 +354,20 @@ def pow2_divisor(n, src):
         return None
     if v >= 2.0 and math.frexp(v)[0] == 0.5:
         return txt
+    return None
+
+
+def pow2_divisor_int(n, d, src):
+    """2^k as a floating literal of the division's type (the text a site
+    writes as its reciprocal, 1 / 2.0f)."""
+    if not d.ok:
+        return None
+    try:
+        v = int(src[d.s:d.e].rstrip(b'uUlL').decode(), 0)
+    except ValueError:
+        return None
+    if v >= 2 and v & (v - 1) == 0:
+        return b'%d.0%s' % (v, b'f' if n.t == 'f' else b'')
     return None
 
 
@@ -429,15 +467,19 @@ class Func(object):
             if n.name is None:
                 m = re.search(rb'([A-Za-z_]\w*)\s*$', self.src[n.s:n.e]) if n.ok else None
                 n.name = 'D' + (m.group(1).decode() if m else str(n.id))
+            # a member that is a struct or an array is no load (MWCC adds its
+            # offset to the loads of its elements): only those are shared, so
+            # d->p.x * d->p.y + c and m[0][0] * m[1][1] + c fuse
+            load = n.t not in ('r', 'a', 'o', 'fn')
             if not n.ch:
-                return ('m', ('this',), n.name), frozenset(), True, True
+                return ('m', ('this',), n.name), frozenset(), True, load
             b = strip(n.ch[0])
             if b.k == CK.DECL_REF_EXPR and b.ref is not None and b.t == 'r' and self.vclass(b.ref) == 'sreg':
                 return ('r', b.ref.id, n.name), frozenset([b.ref.id]), False, False
             bk, dp, mm, _ = self.key(b)
             if bk is None:
                 return None, dp, True, False
-            return ('m', bk, n.name), dp, True, True
+            return ('m', bk, n.name), dp, True, load
         if k == CK.ARRAY_SUBSCRIPT_EXPR and len(n.ch) == 2:
             a, dpa, _, _ = self.key(n.ch[0])
             b, dpb, _, _ = self.key(n.ch[1])
@@ -451,6 +493,21 @@ class Func(object):
             if n.op in ('-', '~', '!'):
                 return ((n.op, a) if a is not None else None), dp, mm, False
             return None, dp, mm, False
+        if k == CK.CALL_EXPR and n.call_inline and n.call_pure and n.name is not None:
+            # MWCC inlines it and its loads and arithmetic are shared like the
+            # caller's own (npc->getPosition().x in findNearestTalkNPC). A call
+            # that gives a struct (a reference to a member, as getPosition()
+            # does) computes no value itself: only what is loaded through it is
+            # shared (data->getPoint1().x and .z are two loads).
+            ks = []
+            dp = frozenset()
+            for c in n.ch:
+                kk, d2, _, _ = self.key(c)
+                if kk is None:
+                    return None, dp | d2, True, False
+                ks.append(kk)
+                dp |= d2
+            return ('call', n.name, tuple(ks)), dp, True, n.t in ('f', 'd', 'i', 'p')
         if k == CK.BINARY_OPERATOR and n.op in ARITH and len(n.ch) == 2:
             a, dpa, ma, _ = self.key(n.ch[0])
             b, dpb, mb, _ = self.key(n.ch[1])
@@ -577,7 +634,7 @@ class Func(object):
             eb = self.env
             self.env = {kk: v for kk, v in save.items() if kk in ea and kk in eb}
             return
-        if k == CK.CALL_EXPR:
+        if k == CK.CALL_EXPR and not (n.call_pure and self.key(n)[0] is not None):
             for c in n.ch:
                 self.ev(c, path + (c.id,))
             if not n.call_pure:
@@ -1182,6 +1239,50 @@ def qualified(c):
     return '::'.join(reversed(parts))
 
 
+def input_tree(decomp, tree):
+    """decomp-patches/*.patch applied in name order to copies of the files
+    they touch, as cmake/patches.cmake does (without decomp-patches/fma)."""
+    os.makedirs(tree, exist_ok=True)
+    for p in fmastamp.port_patches():
+        for line in open(p, 'rb'):
+            m = re.match(rb'^\+\+\+ b/([^\t \n]+)', line)
+            if m:
+                rel = m.group(1).decode()
+                dst = os.path.join(tree, rel)
+                if not os.path.exists(dst):
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.copyfile(os.path.join(decomp, rel), dst)
+        r = subprocess.run(['patch', '-p1', '--quiet', '--no-backup-if-mismatch', '-d', tree, '-i', p],
+                           capture_output=True, text=True)
+        if r.returncode:
+            sys.exit('fmarewrite: %s does not apply to the decomp:\n%s' % (p, r.stdout + r.stderr))
+
+
+def map_entry(e, broot, tree, decomp):
+    """A build's command for a unit, with its patched/ tree replaced by the
+    input tree (a file only decomp-patches/fma touches is the decomp's)."""
+    def m(path):
+        if path == broot or path.startswith(broot + '/'):
+            rel = path[len(broot) + 1:]
+            t = os.path.join(tree, rel) if rel else tree
+            if os.path.isfile(os.path.join(broot, rel)) and not os.path.exists(t):
+                return os.path.join(decomp, rel)
+            if not os.path.isfile(os.path.join(broot, rel)):
+                os.makedirs(t, exist_ok=True)  # an include directory
+            return t
+        return path
+    out = []
+    for a in shlex.split(e['command']):
+        for flag in ('-I', '-isystem', '-iquote', '-include', ''):
+            if a.startswith(flag) and a[len(flag):].startswith(broot):
+                a = flag + m(a[len(flag):])
+                break
+        out.append(a)
+    f = m(e['file'])
+    out = [f if a == e['file'] else a for a in out]
+    return dict(e, command=' '.join(shlex.quote(a) for a in out), file=f)
+
+
 def worker(args):
     global INLINE
     entries, roots, libfile, INLINE = args
@@ -1247,18 +1348,29 @@ def main():
     ccs = args.compile_commands or [p for p in (os.path.join(ROOT, 'build', 'linux-32', 'compile_commands.json'),
                                                 os.path.join(ROOT, 'build', 'linux-64', 'compile_commands.json'))
                                     if os.path.exists(p)]
+    if not ccs:
+        sys.exit('fmarewrite: no compile_commands.json: configure the 32- and 64-bit builds first '
+                 '(or pass --compile-commands)')
     decomp = os.path.realpath(args.decomp)
-    # each build's patched/ tree (decomp + decomp-patches) holds the same text
-    roots = [os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(c)), 'patched')) for c in ccs]
-    roots += [decomp, os.path.abspath(args.decomp)]
+    # The input is the decomp with decomp-patches/*.patch applied, made here
+    # rather than read from a build's patched/ tree, which also holds
+    # decomp-patches/fma when that build has SMS_FMA_CONTRACT on. The builds
+    # give each unit's command (flags, and which units there are).
+    tmp = tempfile.mkdtemp(prefix='fmarewrite')
+    tree = os.path.join(tmp, 'patched')
+    input_tree(decomp, tree)
+    roots = [tree, decomp, os.path.abspath(args.decomp)]
     entries = []
     for cc in ccs:
+        broot = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(cc)), 'patched'))
         for e in json.load(open(cc)):
+            e = map_entry(e, broot, tree, decomp)
             f = e['file']
             rel = None
             for r in roots:
                 if f.startswith(r + '/'):
                     rel = f[len(r) + 1:]
+                    break
             if rel is None or not (rel.startswith('src/') or rel.startswith('libs/JSystem/')):
                 continue
             if args.only and not re.search(args.only, rel):
@@ -1324,6 +1436,8 @@ def main():
             open(p, 'wb').write(new)
     if args.patch:
         with open(args.patch, 'wb') as fh:
+            # what it was made from (tools/fmacontract/fmastamp.py --check)
+            fh.write((fmastamp.TAG + fmastamp.inputs_hash(decomp)[0] + '\n').encode())
             for rel in sorted(changed):
                 fname, old, new = changed[rel]
                 a = old.decode('utf-8', 'surrogateescape').splitlines(True)
@@ -1338,6 +1452,7 @@ def main():
                 fh.write('\t'.join(r) + '\n')
     for k in sorted(stats):
         print('%-24s %d' % (k, stats[k]))
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+fmarewrite-inputs: 8aa514dd2006d966b94d316af3a2816b6434576ce5dcd6fe406127e300720e12
 --- a/include/Camera/cameralib.hpp
 +++ b/include/Camera/cameralib.hpp
 @@ -31,5 +31,5 @@
@@ -1542,12 +1543,14 @@
  	// Glyph details
 --- a/libs/JSystem/src/JUtility/JUTRomFont.cpp
 +++ b/libs/JSystem/src/JUtility/JUTRomFont.cpp
-@@ -108,7 +108,7 @@
+@@ -107,8 +107,8 @@
+ 	s32 shift = mFixed ? mFixedWidth - width : 0;
  
- 	f32 posMinX = xScale * shift / 2 + pos_x;
+-	f32 posMinX = xScale * shift / 2 + pos_x;
 -	f32 posMaxX = width * xScale + posMinX;
 -	f32 posMinY = pos_y - yScale * getAscent();
 -	f32 posMaxY = yScale * getDescent() + pos_y;
++	f32 posMinX = port_fmaf(xScale * shift, (1 / 2.0f), pos_x);
 +	f32 posMaxX = port_fmaf(width, xScale, posMinX);
 +	f32 posMinY = port_fnmsf(yScale, getAscent(), pos_y);
 +	f32 posMaxY = port_fmaf(yScale, getDescent(), pos_y);
@@ -4307,9 +4310,9 @@
 -	            - (mPoint2.x - mPoint1.x) * (mPoint3.z - mPoint2.z);
 -	mNormal.z = (mPoint2.x - mPoint1.x) * (mPoint3.y - mPoint2.y)
 -	            - (mPoint2.y - mPoint1.y) * (mPoint3.x - mPoint2.x);
-+	mNormal.x = port_fnmsf((mPoint2.z - mPoint1.z), (mPoint3.y - mPoint2.y), (mPoint2.y - mPoint1.y) * (mPoint3.z - mPoint2.z));
-+	mNormal.y = port_fnmsf((mPoint2.x - mPoint1.x), (mPoint3.z - mPoint2.z), (mPoint2.z - mPoint1.z) * (mPoint3.x - mPoint2.x));
-+	mNormal.z = port_fnmsf((mPoint2.y - mPoint1.y), (mPoint3.x - mPoint2.x), (mPoint2.x - mPoint1.x) * (mPoint3.y - mPoint2.y));
++	mNormal.x = port_fmsf((mPoint2.y - mPoint1.y), (mPoint3.z - mPoint2.z), (mPoint2.z - mPoint1.z) * (mPoint3.y - mPoint2.y));
++	mNormal.y = port_fmsf((mPoint2.z - mPoint1.z), (mPoint3.x - mPoint2.x), (mPoint2.x - mPoint1.x) * (mPoint3.z - mPoint2.z));
++	mNormal.z = port_fmsf((mPoint2.x - mPoint1.x), (mPoint3.y - mPoint2.y), (mPoint2.y - mPoint1.y) * (mPoint3.x - mPoint2.x));
  
  	if (mNormal.x != 0.0f || mNormal.y != 0.0f || mNormal.z != 0.0f) {
  		MsVECNormalize(&mNormal, &mNormal);
@@ -6310,14 +6313,25 @@
 +	mVel.y = port_fmaf(mForwardVel, speed_mult, force);
  }
  
-@@ -822,5 +822,5 @@
+@@ -755,8 +755,6 @@
+ 
+ 	if (isSinking()) {
+-		f32 scale = ((mGraffitoParams.mSinkJumpRateMax.get()
+-		              - mGraffitoParams.mSinkJumpRateMin.get())
+-		             * (1.0f - (mSinkTimer / mGraffitoParams.mSinkTime.get())))
+-		            + mGraffitoParams.mSinkJumpRateMin.get();
++		f32 scale = port_fmaf((mGraffitoParams.mSinkJumpRateMax.get()
++		              - mGraffitoParams.mSinkJumpRateMin.get()), (1.0f - (mSinkTimer / mGraffitoParams.mSinkTime.get())), mGraffitoParams.mSinkJumpRateMin.get());
+ 
+ 		mVel.y *= scale;
+@@ -822,5 +820,5 @@
  	mFaceAngle.y    = matan(z, tmp.x) + 0x8000;
  	mModelFaceAngle = mFaceAngle.y;
 -	mForwardVel     = param_2 * -std::sqrtf(tmp.x * tmp.x + z * z);
 +	mForwardVel     = param_2 * -std::sqrtf(port_fmaf(tmp.x, tmp.x, z * z));
  	mVel.y          = tmp.y * param_2;
  }
-@@ -1349,7 +1349,7 @@
+@@ -1349,7 +1347,7 @@
  
  	JGeometry::TVec3<f32> point;
 -	point.x = mPosition.x + unk15C * JMASSin(mFaceAngle.y);
@@ -6327,7 +6341,18 @@
 +	point.z = port_fmaf(unk15C, JMASCos(mFaceAngle.y), mPosition.z);
  
  	if (!checkWallPlane(&point, 80.0f, unk15C))
-@@ -1966,6 +1966,6 @@
+@@ -1528,8 +1526,6 @@
+ 	if (isSinking()) {
+ 		f32 sinkScale
+-		    = (mGraffitoParams.mSinkMoveMax.get()
+-		       - mGraffitoParams.mSinkMoveMin.get())
+-		          * (1.0f - (mSinkTimer / (f32)mGraffitoParams.mSinkTime.get()))
+-		      + mGraffitoParams.mSinkMoveMin.get();
++		    = port_fmaf((mGraffitoParams.mSinkMoveMax.get()
++		       - mGraffitoParams.mSinkMoveMin.get()), (1.0f - (mSinkTimer / (f32)mGraffitoParams.mSinkTime.get())), mGraffitoParams.mSinkMoveMin.get());
+ 		unk108->mStickHS16 *= sinkScale;
+ 		unk108->mStickVS16 *= sinkScale;
+@@ -1966,6 +1962,6 @@
  	JGeometry::TVec3<f32> pos = mPosition;
  
 -	pos.x += 0.8f * (50.0f * JMASSin(mFaceAngle.y));
@@ -6336,7 +6361,7 @@
 +	pos.z = port_fmaf(0.8f, (50.0f * JMASCos(mFaceAngle.y)), pos.z);
  
  	TBGCheckData* wall = checkWallPlane(&pos, 50.0f, unk15C);
-@@ -2541,6 +2541,6 @@
+@@ -2541,6 +2537,6 @@
  	f32 front = mYoshiParams.mHeadFront.value;
  	s16 angle = mFaceAngle.y;
 -	headPos.x += JMASSin(angle) * front;
@@ -6345,14 +6370,14 @@
 +	headPos.z = port_fmaf(JMASCos(angle), front, headPos.z);
  
  	TBGWallCheckRecord record(headPos.x, headPos.y + 100.0f, headPos.z,
-@@ -2551,5 +2551,5 @@
+@@ -2551,5 +2547,5 @@
  		f32 dx = record.mCenter.x - headPos.x;
  		f32 dz = record.mCenter.z - z;
 -		f32 f4 = std::sqrtf(dx * dx + dz * dz);
 +		f32 f4 = std::sqrtf(port_fmaf(dx, dx, dz * dz));
  
  		f32 f2 = f4;
-@@ -2574,5 +2574,5 @@
+@@ -2574,5 +2570,5 @@
  void TMario::thinkTorocco()
  {
 -	mToroccoAngle += unk108->mStickHS16 * mDeParams.mToroccoRotSp.get();
@@ -6455,15 +6480,7 @@
 +				f32 sp2 = port_fmaf(sp, mRunParams.mRunAnmSpeedMult.get(), mRunParams.mRunAnmSpeedBase.get());
  				setAnimation(ANIM_TURBO_DASH, sp2);
  				loop = false;
-@@ -401,6 +398,5 @@
- 	s16 dirAng = matan(MarioRunGetNormal(ground).z, ground->getNormal().x);
- 
--	f32 mag = MsSqrtf(ground->getNormal().x * ground->getNormal().x
--	                  + ground->getNormal().z * ground->getNormal().z);
-+	f32 mag = MsSqrtf(port_fmaf(ground->getNormal().x, ground->getNormal().x, ground->getNormal().z * ground->getNormal().z));
- 
- 	s16 angDiff = mSlopeAngle - mFaceAngle.y;
-@@ -411,12 +407,12 @@
+@@ -411,12 +408,12 @@
  	getSlopeSlideAccele(&slopeUp, &slopeDown);
  	if (angDiff > -0x4000 && angDiff < 0x4000)
 -		baseAcc += slopeUp * mag;
@@ -6480,14 +6497,14 @@
 +	mSlideVelZ = port_fmaf(baseAcc, cosAng, mSlideVelZ);
  	mSlideVelX *= friction;
  	mSlideVelZ *= friction;
-@@ -488,5 +484,5 @@
+@@ -488,5 +485,5 @@
  	f32 sn       = JMASSin((s16)(mIntendedYaw - unk9E));
  	if (cs < 0.0f && mForwardVel >= 0.0f)
 -		cs *= 0.01f * (0.5f * mForwardVel) + 0.5f;
 +		cs *= port_fmaf(0.01f, (0.5f * mForwardVel), 0.5f);
  
  	f32 slipFr;
-@@ -516,12 +512,10 @@
+@@ -516,12 +513,10 @@
  	}
  
 -	f32 mult   = (0.02f * (mIntendedMag / 32.0f * cs)) + slipFr;
@@ -6503,7 +6520,7 @@
 +	    __extension__({ __typeof__(sn * (mSlideVelX * (mIntendedMag / 32.0f))) port_fmac_15053_15137_0 = sn * (mSlideVelX * (mIntendedMag / 32.0f)); __typeof__(getSlideStickMult()) port_fmac_15053_15137_1 = getSlideStickMult(); __typeof__(mSlideVelZ) port_fmac_15053_15137_2 = mSlideVelZ; port_fmsf(port_fmac_15053_15137_0, port_fmac_15053_15137_1, port_fmac_15053_15137_2); }));
  
  	f32 newMag = MsSqrtf(mSlideVelX * mSlideVelX + mSlideVelZ * mSlideVelZ);
-@@ -556,6 +550,5 @@
+@@ -556,6 +551,5 @@
  	// move one binder word into the named block) changes the code (90.3%).
  	f32 mag = std::sqrtf(
 -	    MarioRunGetNormal2(mGroundPlane).x * MarioRunGetNormal(mGroundPlane).x
@@ -6511,7 +6528,7 @@
 +	    __extension__({ __typeof__(MarioRunGetNormal2(mGroundPlane).x) port_fmac_16326_16461_0 = MarioRunGetNormal2(mGroundPlane).x; __typeof__(MarioRunGetNormal(mGroundPlane).x) port_fmac_16326_16461_1 = MarioRunGetNormal(mGroundPlane).x; __typeof__(mGroundPlane->getNormal().z * mGroundPlane->getNormal().z) port_fmac_16326_16461_2 = mGroundPlane->getNormal().z * mGroundPlane->getNormal().z; port_fmaf(port_fmac_16326_16461_0, port_fmac_16326_16461_1, port_fmac_16326_16461_2); }));
  
  	s16 angDiff = mSlopeAngle - mFaceAngle.y;
-@@ -564,7 +557,7 @@
+@@ -564,7 +558,7 @@
  	getSlopeNormalAccele(&slopeUp, &slopeDown);
  	if (angDiff > -0x4000 && angDiff < 0x4000) {
 -		mForwardVel += slopeUp * mag;
@@ -6521,7 +6538,7 @@
 +		mForwardVel = -(port_fmsf(slopeDown, mag, mForwardVel));
  	}
  
-@@ -618,6 +611,5 @@
+@@ -618,6 +612,5 @@
  		mForwardVel += MarioRunParam(mRunParams.mVelMinusBrake);
  	} else if (mForwardVel <= sp) {
 -		mForwardVel += MarioRunParam(mRunParams.mAddBase)
@@ -6529,7 +6546,7 @@
 +		mForwardVel += __extension__({ __typeof__(MarioRunParam(mRunParams.mAddBase)) port_fmac_18075_18179_2 = MarioRunParam(mRunParams.mAddBase); __typeof__(mForwardVel) port_fmac_18075_18179_0 = mForwardVel; __typeof__(MarioRunParam(mRunParams.mAddVelDiv)) port_fmac_18075_18179_1 = MarioRunParam(mRunParams.mAddVelDiv); port_fnmsf(port_fmac_18075_18179_0, port_fmac_18075_18179_1, port_fmac_18075_18179_2); });
  	} else if (getGroundPlane()->getNormal().y
  	           >= MarioRunParam(mRunParams.mDecStartNrmY)) {
-@@ -632,14 +624,10 @@
+@@ -632,14 +625,10 @@
  	if (isUpperPumpingStyle()) {
  		s16 base = mDeParams.mPumpingRotSpMin.get();
 -		rotSp    = (s16)(0.03125f
@@ -6548,7 +6565,7 @@
 +                             * (mDeParams.mRunningRotSpMax.get() - base)), base));
  	}
  
-@@ -653,8 +641,7 @@
+@@ -653,8 +642,7 @@
  	if (isRunningInWater()) {
  		mForwardVel *= -(
 -		    (((mFloorPosition.z - mPosition.y)
@@ -6560,21 +6577,21 @@
 +		      / MarioRunParamBind(mRunParams.mSwimDepth)); __typeof__((1.0f - MarioRunParam(mRunParams.mInWaterBrake))) port_fmac_19189_19347_1 = (1.0f - MarioRunParam(mRunParams.mInWaterBrake)); __typeof__(1.0f) port_fmac_19189_19347_2 = 1.0f; port_fmsf(port_fmac_19189_19347_0, port_fmac_19189_19347_1, port_fmac_19189_19347_2); }));
  	}
  
-@@ -750,5 +737,5 @@
+@@ -750,5 +738,5 @@
  
  	t = (want - powMin) / (powMax - powMin);
 -	s16 rotSp = t * (rotMax - rotMin) + rotMin;
 +	s16 rotSp = port_fmaf(t, (rotMax - rotMin), rotMin);
  	s16 diff     = mIntendedYaw - mFaceAngle.y;
  	mFaceAngle.y = mIntendedYaw - IConverge(diff, 0, rotSp, rotSp);
-@@ -810,5 +797,5 @@
+@@ -810,5 +798,5 @@
  	}
  
 -	f32 rate = 2.0f * MsSqrtf(dx * dx + dz * dz);
 +	f32 rate = 2.0f * MsSqrtf(port_fmaf(dx, dx, dz * dz));
  	if (angDiff < 0)
  		setAnimation(ANIM_SWLKR, rate);
-@@ -1423,8 +1410,6 @@
+@@ -1423,8 +1411,6 @@
  	}
  
 -	mVel.x
@@ -6585,7 +6602,7 @@
 +	mVel.z = port_fmaf(mIntendedMag * JMASCos(mFaceAngle.y), mDirtyParams.mSlipRunSp.get(), mVel.z);
  	mDirtyTimer--;
  	if (mDirtyTimer <= 0) {
-@@ -1487,6 +1472,5 @@
+@@ -1487,6 +1473,5 @@
  	                                nullptr, 0, 4);
  
 -	mForwardVel += mIntendedMag * JMASCos((s16)(mFaceAngle.y - mIntendedYaw))
@@ -7374,18 +7391,3 @@
 +	vec.z = port_fmaf(-x, JMASSin(angleY), vec.z * JMASCos(angleY));
  	return vec;
  }
---- a/src/System/MarDirectorEvent.cpp
-+++ b/src/System/MarDirectorEvent.cpp
-@@ -48,10 +48,6 @@
- 				continue;
- 
--			f32 dist = (npc->getPosition().x - marioPos.x)
--			               * (npc->getPosition().x - marioPos.x)
--			           + (npc->getPosition().y - marioPos.y)
--			                 * (npc->getPosition().y - marioPos.y)
--			           + (npc->getPosition().z - marioPos.z)
--			                 * (npc->getPosition().z - marioPos.z);
-+			f32 dist = port_fmaf((npc->getPosition().z - marioPos.z), (npc->getPosition().z - marioPos.z), port_fmaf((npc->getPosition().x - marioPos.x), (npc->getPosition().x - marioPos.x), (npc->getPosition().y - marioPos.y)
-+			                 * (npc->getPosition().y - marioPos.y)));
- 			if (dist < bestDist) {
- 				bestDist = dist;

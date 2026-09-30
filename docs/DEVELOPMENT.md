@@ -35,6 +35,7 @@ How the port is put together and where changes go. To build and play, see the [R
   String literals are Shift-JIS, as in the MWCC build (archive object names are matched against them); clang has no CP932 execution charset, so on macOS the sources are mirrored as CP932 first (`tools/darwin_cp932_mirror.py`).
 - The game's global `operator new/delete` (JKRHeap) are renamed in `libsms_game.a` with `objcopy --redefine-syms` (`llvm-objcopy` on macOS), so only game code allocates from JKR heaps; libstdc++ and `platform/` use the host allocator.
 - `rand()` is MSL's (RAND_MAX 32767, same LCG) via `port_compat.h`; glibc's 2^31 range overflows the game's `1.f / (RAND_MAX + 1)`.
+- The game's trigonometry is MSL's (`sinf`, `cosf`, `tanf`, `atanf`, `atan2f`, `acosf`, fdlibm's `atan2`) via `port_compat.h` and `platform/misc/msl_math.c`, which follows the DOL's matched objects instruction for instruction; `tools/mslmath/check.sh` compares it with those objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), item 10).
 
 ## Tools
 

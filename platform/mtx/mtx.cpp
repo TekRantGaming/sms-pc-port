@@ -10,8 +10,9 @@
 // host) with the same evaluation order, so the 64-bit build, which would
 // otherwise round every operation to f32 in SSE, gives bit-identical matrices.
 // The few f32 roundings inside an expression (spill()) are the intermediates
-// g++ 13 spilled to f32 stack slots in the 32-bit build. tanf is the host's,
-// whose i386 and x86-64 glibc results differ in the last bit for some inputs.
+// g++ 13 spilled to f32 stack slots in the 32-bit build. sinf, cosf and tanf
+// are MSL's (platform/misc/msl_math.c), as the SDK's mtx.c and mtx44.c call
+// them on the console.
 #include "port_compat.h"
 #include <dolphin/mtx.h>
 
@@ -105,7 +106,7 @@ static void rottrig(Mtx m, char axis, f32 s, f32 c)
 }
 static void rotaxis(Mtx m, Vec* axis, f32 rad)
 {
-	f32 s = sinf(rad), c = cosf(rad);
+	f32 s = sms_msl_sinf(rad), c = sms_msl_cosf(rad);
 	xf t   = 1.0L - c;
 	xf len = sqrtl((xf)axis->x * axis->x + (xf)axis->y * axis->y + (xf)axis->z * axis->z);
 	xf x = axis->x / len, y = axis->y / len, z = axis->z / len;
@@ -160,7 +161,7 @@ DEF2(MTXTranspose, (Mtx s, Mtx x), {
 	t[0][3] = t[1][3] = t[2][3] = 0;
 	memcpy(x, t, sizeof(Mtx));
 })
-DEF2(MTXRotRad, (Mtx m, char axis, f32 rad), { rottrig(m, axis, sinf(rad), cosf(rad)); })
+DEF2(MTXRotRad, (Mtx m, char axis, f32 rad), { rottrig(m, axis, sms_msl_sinf(rad), sms_msl_cosf(rad)); })
 DEF2(MTXRotTrig, (Mtx m, char axis, f32 s, f32 c), { rottrig(m, axis, s, c); })
 DEF2(MTXRotAxisRad, (Mtx m, Vec* axis, f32 rad), { rotaxis(m, axis, rad); })
 DEF2(MTXQuat, (Mtx m, Quaternion* q), { quat(m, q); })
@@ -293,7 +294,7 @@ extern "C" void C_MTXLookAt(Mtx m, Point3dPtr camPos, VecPtr camUp, Point3dPtr t
 }
 extern "C" void C_MTXPerspective(Mtx44 m, f32 fovY, f32 aspect, f32 n, f32 f)
 {
-	xf cot = 1.0L / tanf(fovY * 0.5f * (3.14159265358979323846f / 180.0f));
+	xf cot = 1.0L / sms_msl_tanf(fovY * 0.5f * (3.14159265358979323846f / 180.0f));
 	memset(m, 0, sizeof(Mtx44));
 	xf r    = 1.0L / ((xf)f - n);
 	m[0][0] = cot / aspect;
@@ -326,7 +327,7 @@ extern "C" void C_MTXOrtho(Mtx44 m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 f)
 }
 extern "C" void C_MTXLightPerspective(Mtx m, f32 fovY, f32 aspect, f32 sS, f32 sT, f32 tS, f32 tT)
 {
-	xf cot = 1.0L / tanf(fovY * 0.5f * (3.14159265358979323846f / 180.0f));
+	xf cot = 1.0L / sms_msl_tanf(fovY * 0.5f * (3.14159265358979323846f / 180.0f));
 	memset(m, 0, sizeof(Mtx));
 	m[0][0] = cot / aspect * sS;
 	m[0][2] = -tS;

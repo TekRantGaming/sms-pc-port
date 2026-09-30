@@ -125,6 +125,40 @@ using std::fmod;
 using std::pow;
 #endif
 
+/* MSL's trigonometry. The game calls the maths library in its DOL, whose
+ * results differ from every host libm (and i386 glibc differs from x86-64
+ * glibc), so its calls go to the same code compiled for the host
+ * (platform/misc/msl_math.c), with MSL's overloads:
+ *   sinf cosf tanf atanf atan2f acosf  MSL's float functions (C and C++)
+ *   atan2(double, double)             fdlibm's atan2
+ *   C++ sin(float) cos(float)         MSL's float overloads: sinf, cosf and
+ *       atan2(float, float)           atan2f
+ *   C++ std::atan2f                   MSL's is ::atan2((double)y, (double)x)
+ * They are function-like macros, so the game's variables named sin or tan
+ * keep their names; <math.h> and <cmath> are already included above. */
+#include "msl_math.h"
+#ifdef __cplusplus
+static inline float sms_msl_sin(float x) { return sms_msl_sinf(x); }
+static inline double sms_msl_sin(double x) { return ::sin(x); } /* no sin(double) in the DOL */
+static inline float sms_msl_cos(float x) { return sms_msl_cosf(x); }
+static inline double sms_msl_cos(double x) { return ::cos(x); } /* no cos(double) in the DOL */
+static inline float sms_msl_atan2(float y, float x) { return sms_msl_atan2f(y, x); }
+namespace std {
+using ::sms_msl_sinf; using ::sms_msl_cosf; using ::sms_msl_tanf; using ::sms_msl_atanf;
+using ::sms_msl_acosf; using ::sms_msl_sin; using ::sms_msl_cos; using ::sms_msl_atan2;
+inline float sms_msl_atan2f(float y, float x) { return (float)::sms_msl_atan2((double)y, (double)x); }
+}
+#define sin(x) sms_msl_sin(x)
+#define cos(x) sms_msl_cos(x)
+#endif
+#define sinf(x) sms_msl_sinf(x)
+#define cosf(x) sms_msl_cosf(x)
+#define tanf(x) sms_msl_tanf(x)
+#define atanf(x) sms_msl_atanf(x)
+#define atan2f(y, x) sms_msl_atan2f(y, x)
+#define acosf(x) sms_msl_acosf(x)
+#define atan2(y, x) sms_msl_atan2(y, x)
+
 /* Heaps the game sizes with fixed GameCube constants (decomp-patches/ptr64-*):
  * with 8-byte pointers objects are up to twice as large, so 64-bit hosts
  * double them; 32-bit hosts keep retail's sizes. */

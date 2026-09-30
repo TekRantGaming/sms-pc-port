@@ -314,6 +314,18 @@ foreach(gekko_src platform/misc/msl_math.c platform/mtx/mtx.cpp)
       COMPILE_OPTIONS "-ffp-contract=off")
   endif()
 endforeach()
+# The rest of the platform layer, the graphics layer (sms_gx) included, does
+# its float maths in SSE on x86 as well: the 32-bit build would otherwise
+# evaluate it in x87 extended precision, and its results would differ in the
+# last bit from the 64-bit build's (GXInitSpecularDir's half-angle vector
+# moved a specular highlight by one level; docs/64-BIT.md, item 17). These
+# are the x86-64 compiler's defaults, so the 64-bit build does not change.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+  target_compile_options(sms PRIVATE -msse2 -mfpmath=sse)
+  if(TARGET sms_gx)
+    target_compile_options(sms_gx PRIVATE -msse2 -mfpmath=sse)
+  endif()
+endif()
 if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
   # @rpath/SDL2.framework: beside the executable (build.sh copies it
   # there) or in SMS.app/Contents/Frameworks. No absolute path, so a copy

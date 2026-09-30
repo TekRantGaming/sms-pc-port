@@ -236,4 +236,8 @@ extern int port_no_audio; /* SMS_NO_AUDIO=1 */
 }
 #endif
 
+/* MWCC's fused multiply-adds, as tools/fmacontract writes them into the
+ * game's source (decomp-patches/fma/). */
+#include "port_fmac.h"
+
 #endif /* SMS_PORT_COMPAT_H */

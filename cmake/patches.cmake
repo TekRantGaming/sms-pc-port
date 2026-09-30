@@ -16,6 +16,14 @@ endforeach()
 set(_scratch ${CMAKE_BINARY_DIR}/patched.new)
 file(GLOB SMS_PATCHES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/decomp-patches/*.patch)
 list(SORT SMS_PATCHES)
+# MWCC's fused multiply-adds as explicit calls (src/port_fmac.h), generated
+# by tools/fmacontract/fmarewrite.py against the tree the patches above make:
+# applied after them.
+if(SMS_FMA_CONTRACT)
+  file(GLOB _fma_patches CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/decomp-patches/fma/*.patch)
+  list(SORT _fma_patches)
+  list(APPEND SMS_PATCHES ${_fma_patches})
+endif()
 file(REMOVE_RECURSE ${_scratch})
 file(MAKE_DIRECTORY ${_scratch} ${SMS_PATCHED_INCLUDE_DIRS})
 set(_touched "")

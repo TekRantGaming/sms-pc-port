@@ -67,6 +67,13 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SMS_DECOMP}/configure.py)
 include(${CMAKE_BINARY_DIR}/decomp_sources.cmake)
 
+# The game's multiply-adds fused where MWCC fused them (docs/64-BIT.md, item
+# 17): decomp-patches/fma/ writes each site as a call to src/port_fmac.h.
+option(SMS_FMA_CONTRACT "Fuse the game's multiply-adds where MWCC did (decomp-patches/fma)" ON)
+# The FMA instruction for those sites instead of the exact software fallback
+# (x86: needs a CPU with FMA3; the results are the same).
+option(SMS_FMA_HW "Use the FMA instruction for the fused sites (x86: -mfma)" OFF)
+
 # Port patches (decomp-patches/*.patch) are applied to copies of the touched
 # files under the build tree; those copies replace the originals in the
 # source lists.
@@ -103,6 +110,9 @@ if(SMS_HAVE_NO_UNREACHABLE_TRAPS)
 endif()
 if(SMS_ARCH STREQUAL "64")
   list(APPEND SMS_GAME_FLAGS -fno-pie)
+endif()
+if(SMS_FMA_HW AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$")
+  list(APPEND SMS_GAME_FLAGS -mfma)
 endif()
 # Clang rejects the game's pointer-to-int truncations ((int)ptr, (u32)ptr) as
 # hard errors in C++ where g++ -fpermissive only warns; -fms-extensions turns

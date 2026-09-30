@@ -11,7 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
  #include <System/DummyStrings.hpp>
  
  extern OSThread gSetupThread;
-@@ -352,11 +355,28 @@
+@@ -309,11 +312,28 @@
  			return TApplication::APP_STATE_DONE;
  
  		if (unk20->mCloseMenu) {
@@ -24,8 +24,8 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
 +				((void (*)(TSelectMenu*))sms_mod_t_)(unk20);
 +			if (!sms_mod_word(0x80176044, &sms_mod_w_))
 +#endif
- 			SMSGetApplication()->mNextArea.unk1 = unk20->mSelectedShine;
- 			TFlagManager::smInstance->setFlag(0x40003, unk20->mSelectedShine);
+ 			SMSGetApplication()->mNextArea.unk1 = getSelectMenu()->mSelectedShine;
+ 			TFlagManager::smInstance->setFlag(0x40003, getSelectMenu()->mSelectedShine);
  			SMSGetApplication()->getFader()->startWipe(0xf, 1.0f, 0.0f);
 +#ifdef TARGET_PC
 +			// Eclipse (character_select.cpp): the `li r0, 0xff` word at
@@ -40,7 +40,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
  			SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec());
  		}
  		break;
-@@ -374,6 +394,13 @@
+@@ -331,6 +351,13 @@
  		gpMSound->stopAllSound();
  		if (unk18->isSomethingPushed())
  			return TApplication::APP_STATE_DONE;

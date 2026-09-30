@@ -231,7 +231,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		getNextArea().set(curArea.getStage(), 0, 0);
  	} else {
  		decideNextStage();
-@@ -405,7 +573,11 @@
+@@ -408,7 +576,11 @@
  			unkB4     = TApplication::APP_STATE_DONE;
  			break;
  		case 5:
@@ -243,7 +243,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  			unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
  			moveStage();
  			unkE4     = 2;
-@@ -430,6 +602,16 @@
+@@ -433,6 +605,16 @@
  				} else {
  					SMSGetApplication()->mNextArea.set(1, 0xff, 0);
  				}
@@ -260,7 +260,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
  				moveStage();
  				SMSGetApplication()->getFader()->setFadeStatus(
-@@ -496,7 +678,21 @@
+@@ -499,7 +681,21 @@
  		unkB4 = TApplication::APP_STATE_DONE;
  	}
  
@@ -282,7 +282,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
  		currentStateFinalize(nextState);
  		nextStateInitialize(nextState);
  		mState = nextState;
-@@ -879,6 +1075,54 @@
+@@ -887,6 +1083,54 @@
  				break;
  			}
  
@@ -335,17 +335,17 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +					if (sms_mod_act_) {
 +#else
  			if (mMap != 15) {
- 				if (unk18[0]->testTrigger(0x10)) {
+ 				if (getGamePad()->testTrigger(0x10)) {
  					r29 = STATE_GUIDE;
-@@ -887,6 +1131,7 @@
+@@ -895,6 +1139,7 @@
  
- 				if (unk18[0]->checkFrameMeaning(TMarioGamePad::MEANING_0x1)) {
+ 				if (getGamePad()->checkFrameMeaning(TMarioGamePad::MEANING_0x1)) {
  					if (gpMarioOriginal->checkActionThing3()) {
 +#endif
  						r29 = STATE_PAUSE_MENU;
  						break;
  					}
-@@ -912,15 +1157,51 @@
+@@ -920,15 +1165,51 @@
  				console->unk47 = 1;
  				MSBgm::startBGM(MSD_BGM_GET_SHINE);
  				TFlagManager::getInstance()->setBool(true, 0x30006);

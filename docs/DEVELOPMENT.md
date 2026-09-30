@@ -113,7 +113,7 @@ Each file in `decomp-patches/` starts with a `Reason:` line; they are applied in
 | `ret-02..03` | Explicit returns for the 34 functions that fall off the end of a non-void body and whose value nothing reads (undefined behaviour under g++, harmless under MWCC). |
 | `thp-01..02` | Host THP decoder (portable bit reader and IDCT, big-endian audio header); see `platform/thp/README.md`. |
 | `endian-18` | `JSUInputStream`'s typed reads keep the value when a read fails at the end of the stream, as the console does, instead of byte-swapping it (see [Memory and undefined-behaviour checks](#memory-and-undefined-behaviour-checks)). |
-| `fpu-02..03` | MWCC's float-to-unsigned conversion (`__cvt_fp2unsigned`: 0 below zero) where the game converts negative values: the hit-check table index, the iris wipe's first row (`port_cvt_fp2unsigned` in `port_compat.h`). |
+| `fpu-02..04` | MWCC's float-to-unsigned conversions at every site where the DOL makes them, with the runtime's result (`port_cvt_fp2unsigned` and `port_cvt_dbl_usll` in `port_fpu.h`: 0 below zero and for NaN, 0xFFFFFFFF from 2^32 up): the hit-check table index and the iris wipe's first row (`fpu-02..03`), and the 37 other source sites (`fpu-04`; `TMarDirector`'s wipe fade is in `framerate-35`). See [Float-to-integer conversions](#float-to-integer-conversions). |
 | `bounds-01..02` | Retail out-of-bounds accesses whose result depends on byte order or data layout, given the console's result: `TGCConsole2`'s unset pane index, the two 16-byte null textures read as 32. |
 | `uninit-01..03` | Retail reads of uninitialised stack values made deterministic: the stack light objects' direction, the logo wipe's pen vector z, the plaza tightrope colour. |
 
@@ -136,7 +136,7 @@ Last audit 2026-09-30, on the scripted title and plaza runs (no stage sweep).
     The same entry leaves the tightrope colour to an uninitialised stack `s32`: on the console, whatever the scene search in the preceding `TCubeManagerBase::load` left in that slot, which is not reproduced; the port starts it at 0 (black) so both word sizes draw the same (`uninit-03`).
   - MWCC converts a float to an unsigned integer with `__cvt_fp2unsigned`, which gives 0 for a negative value; the host wraps it (`fpu-02..03`).
     `TObjHitCheck::getTableIndex` got a first cell of 0xEA instead of 0 for an actor whose entry radius reaches past the world origin, entering it in 22 extra cells; `Hxs2_Circle` started its rows at 0xFFFFFFEC and drew nothing once the iris wipe's ring passed the screen centre.
-    The DOL has 70 such conversions in 22 objects; UBSan saw a negative value only at these two sites on these runs.
+    The DOL has 70 such conversions in 22 objects; UBSan saw a negative value only at these two sites on these runs, and `fpu-04` has since given the rest the runtime's result (see [Float-to-integer conversions](#float-to-integer-conversions)).
   - `TGCConsole2` starts its highlighted-pane index at 0x17, past the 22-entry `unk334`, and calls `isVisible()`/`hide()` on `unk334[23]`, which is the `TBoundPane` `unk390`: the console reads and clears the high byte of its big-endian `unk4.x2` (0), the host the low byte (60), which `hide()` zeroed (`bounds-01`).
   - `J3DSys` and `gd-reinit-gx` load 4x4 IA8 null textures (32 bytes) from 16-byte arrays; the console's second half is the next `.data` in the DOL, which the port now carries (`bounds-02`).
   - `Hxs_PenDraw` normalises a vector with an unset z (`-2e-19` and similar in the 32-bit build, 0 in the 64-bit one); it is now 0 (`uninit-02`).
@@ -148,7 +148,37 @@ Last audit 2026-09-30, on the scripted title and plaza runs (no stage sweep).
   - `JDrama` stores -1 in `VITVMode` as a sentinel; the `JPA`, camera and matrix code converts out-of-range floats to `s16`/`u8`/`u16`, which both MWCC (`fctiwz`, then a halfword or byte store) and g++ truncate to the low bits of the 32-bit result; `RumbleChannelMgr::start` and the `pointer-overflow` reports are pointer arithmetic that is never dereferenced.
 - **Benign reports**: UBSan's misaligned-access reports (JKR heaps align to 4, the host ABI wants 8 for classes with `double` or `long long`; x86 does not care), its downcast and member-call type reports on the decomp's approximate class hierarchies (`TBGCheckList` arrays that are never constructed, name-searched objects cast to the searched type), memcheck's reports inside Mesa, and `gx::resolveWriteBack` hashing game memory that holds struct padding copied from the DVD layer.
 - **Result**: the scripted title and plaza frames are unchanged against `3676789` and byte-identical between 32 and 64-bit (the tightropes and the iris ring are not in those frames), and the 60 fps plaza gate run still captures Mario after 100 frames with the same `setNextStage`.
-- **Not covered**: stale data in reused JKR heap blocks (memcheck would need the heaps' frees marked undefined), the 57 other float-to-unsigned sites (13 are fixed: `getTableIndex` is inlined six times), and anything past the plaza runs.
+- **Not covered**: stale data in reused JKR heap blocks (memcheck would need the heaps' frees marked undefined), and anything past the plaza runs.
+
+## Float-to-integer conversions
+
+Audited 2026-09-30 from the DOL's disassembly (the decomp's `build/GMSE01/asm`), mapped to source with a `-fsanitize=float-cast-overflow -O0` compile of every port unit, which lists each host float-to-integer conversion by source line and target type.
+
+- **What the console does.**
+  MWCC converts a float or double to a 32-bit unsigned integer only by calling the runtime's `__cvt_fp2unsigned` (`runtime.c`; no inline sequence anywhere in the DOL): 0 below zero and for NaN, 0xFFFFFFFF from 2^32 up (+inf included), truncation otherwise.
+  To a 64-bit integer, signed or unsigned, it calls `__cvt_dbl_usll`: truncation as a signed value (a negative value wraps as a `u64`), and 0x7FFF...F or 0x8000...0 by the sign bit from 2^63 in magnitude, infinities and NaN included.
+  To `u8`, `u16` and every signed type it uses `fctiwz` and keeps the low bits: saturation to the `s32` range, NaN as 0x80000000.
+- **What the host does.**
+  x86 wraps a negative value, and outside the 32-bit range the two builds disagree with the console and with each other: 5e9 gives 0 (32-bit) or 0x2A05F200 (64-bit), -3e9 gives 0x80000000 or 0x4D2FA200, NaN 0x80000000 or 0; the console gives 0xFFFFFFFF, 0 and 0.
+  No GCC flag changes this code generation (`-fsanitize=float-cast-overflow` only reports).
+  Clang's `-fno-strict-float-cast-overflow` saturates, which is the runtime's rule for `u32` but not the console's for `u8`, `u16` and signed types, which keep the low bits of `fctiwz`, and the Linux build is GCC.
+- **The sites.**
+  The DOL makes 70 `__cvt_fp2unsigned` calls and 2 `__cvt_dbl_usll` calls.
+  60 of the former are game and JSystem code, from 40 source lines (the hit-check table index's two are inlined six times, `JGadget::TVector`'s growth six, `JAISound`'s random value five): `ObjHitCheck` (2 lines), `hx_wiper` (16: frame-buffer rows, the game-over bounce timer, the test wipes, the iris ring), `TGCConsole2::setTimer`, `TSelectDir` and `TMovieDirector`'s sound fades, `TMarDirector`'s wipe fade, `TMarioGamePad::reset`'s button repeat, `CLBLinearInbetween<u32>`, `JGadget::TVector::GetSize_extend`, `MSSetSoundCanRestart`, `J3DDrawBuffer::entryZSort`, `JAIBasic`'s frame-SE priorities and distance waits (5), `JAISound`'s random value and pitch spread, `TOscillator::calc`'s table index, `JPADrawCalcColorAnmFrameRepeat`, and the fog mantissa of `J3DGDSetFog` and `FifoSetFog`.
+  The other 10 are the SDK's: `GXSetFog`, `GXGetNumXfbLines`, `GXGetYScaleFactor` (3) and `GXSetDispCopyYScale`, which `platform/gx` reimplements, and `OSDumpContext` (4), which the port does not have.
+  `__cvt_dbl_usll` is called by `JGeometry::TUtil<f32>::mod` and MSL's `std::fmodf`.
+- **Handled.**
+  `port_fpu.h` has the runtime's two conversions (`port_cvt_fp2unsigned`, `port_cvt_dbl_usll`; checked against a model of the runtime's instructions on 20,000,000 inputs in each word size), and `port_compat.h` has `port_cvt_fp<T>` for a template (the runtime's conversion for a 32-bit unsigned `T`, a cast otherwise).
+  `fpu-02..03` route the first 3 source lines through it, `fpu-04` the other 37 and `TUtil<f32>::mod`, `framerate-35` the wipe fade it rewrites, and `platform/gx` its four SDK sites.
+  The port's own `u32` conversion of a frame rate (`framerate-18`) uses it as well.
+  In range the result is the host's own truncation, so nothing changes there.
+- **Left.**
+  `std::fmodf` is the host's exact `fmodf` in the port (`port_compat.h`), where the console's is MSL's inline `x - y * (float)(s64)(x / y)` with a fused `fnmsubs`, so the port makes no conversion there, and its results differ from the console's when `x / y` rounds up to the next integer or the quotient is large (callers: `Koopa.cpp`, `koopajr.cpp`, `wireTrap.cpp` and `MapObjCorona.cpp`, none of them in the scripted runs).
+  `TUtil<f32>::mod` (`Koopa.cpp`, `koopajr.cpp`, `BathtubPeach.cpp`) keeps the same subtraction unfused, as the rest of the game's C code (see [64-BIT.md](64-BIT.md), item 12).
+  The `fctiwz` paths (`u8`, `u16`, signed types) match the console except from 2^31 up and +inf, where the console gives 0x7FFFFFFF and x86 0x80000000 (so `u8` 0xFF against 0); the port does not change them.
+- **Result.**
+  The scripted title and plaza frames are unchanged against `6fc6838` and byte-identical between 32 and 64-bit (the previous audit's UBSan run saw an out-of-range value at none of the `fpu-04` sites on these runs), and the 60 fps plaza gate run still captures Mario after 100 frames with the same `setNextStage` in both builds.
+  A 32-bit build with `-fsanitize=float-cast-overflow` (`-O1 -g1`, a separate build folder) reports no conversion to a 32 or 64-bit unsigned type on the same runs; its 25 remaining reports (the first at each source line) are `s16`, `u8` and `u16` conversions of values between -3150 and 48789, where the console and both builds keep the same low bits of the truncated `s32`.
 
 ## Environment variables
 

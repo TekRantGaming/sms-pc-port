@@ -58,10 +58,15 @@ How the port is put together and where changes go. To build and play, see the [R
 The Linux debugging tools (`gdbrun.sh`, `hangdump.sh`, `run_capture.sh`, `syntax_check.py`) use `build/linux-32/`; set `SMS_ARCH=64` for `build/linux-64/`, or `SMS_BUILD=dir` for any other build folder.
 Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
 
-- **Moving the decomp pin:** `tools/update-decomp.sh [--64] [REF]` fetches the decomp, moves `decomp/` to REF (default `origin/main`), checks that every `decomp-patches/` patch applies in order with no failed hunk and no fuzz, and builds 32-bit (and 64-bit with `--64`).
+- **Moving the decomp pin:** `tools/update-decomp.sh [--64] [REF]` fetches the decomp, moves `decomp/` to REF (default `origin/main`), checks that every `decomp-patches/` patch applies in order with no failed hunk and no fuzz, regenerates `decomp-patches/fma/`, and builds 32-bit (and 64-bit with `--64`).
   It keeps the new pin, staged for a commit, only when all of that passes; otherwise it restores the old pin and says what failed.
   Patches name files by their path in the decomp, so a decomp change that moves files (as the upstream merge that moved the libraries to `libs/` did) needs their `--- a/`/`+++ b/` lines rewritten, and the include roots in `CMakeLists.txt` and the source roots in `tools/gen_sources.py` updated with it.
   The submodule is always pinned to an exact decomp commit.
+- **The fused multiply-adds (`decomp-patches/fma/`)** are generated from the decomp and the other patches by `tools/fmacontract/fmarewrite.py` ([64-BIT.md](64-BIT.md), item 17), which needs libclang 18's Python bindings (`pip install clang==18.1.8`) and the `linux-32` and `linux-64` builds configured.
+  Only regenerating the patch needs libclang; building applies the committed patch.
+  The patch's first line is a hash of its inputs (the decomp's `src/`, `include/` and `libs/` as they are on disk, and `decomp-patches/*.patch`), and with `SMS_FMA_CONTRACT` on (the default) the build fails with the command to run when they no longer match (`tools/fmacontract/fmastamp.py --check`, at configure time and at every build), so an edit to the decomp or a new port patch is not built against a stale patch.
+  `tools/update-decomp.sh` regenerates it when libclang is installed; by hand: `tools/fmacontract/fmarewrite.py --patch decomp-patches/fma/0001-mwcc-fused-multiply-adds.patch`, and commit the result with the change.
+  `-DSMS_FMA_CONTRACT=OFF` builds without it (the game's multiply-adds then round twice).
 
 ## Platform layer
 

@@ -230,6 +230,16 @@ if(SMS_WITH_GX AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/platform/gx/CMakeLists.txt
 endif()
 
 add_library(sms_game STATIC ${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES})
+if(SMS_FMA_CONTRACT)
+  # decomp-patches/fma must be current (cmake/patches.cmake): checked at every
+  # build, since an edit to the decomp is an input too. Needs no libclang.
+  add_custom_target(sms_fma_check
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/fmacontract/fmastamp.py
+            --check --decomp ${SMS_DECOMP}
+    COMMENT "Checking that decomp-patches/fma is current"
+    VERBATIM)
+  add_dependencies(sms_game sms_fma_check)
+endif()
 # Host THP decoders (the decomp's SDK decoder, patched; platform/thp).
 include(${CMAKE_CURRENT_SOURCE_DIR}/platform/thp/thp.cmake)
 # The SDK's PADClamp (dead zone / octagon), built from the decomp as C.

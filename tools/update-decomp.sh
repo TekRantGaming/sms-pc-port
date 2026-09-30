@@ -3,14 +3,16 @@
 #
 # Moves the decomp/ submodule to REF (default origin/main, fetched first),
 # checks that every decomp-patches/*.patch still applies in order, exactly
-# (no failed hunk, no fuzz), and builds the port 32-bit (with --64, 64-bit
-# too). The submodule stays on the new commit, staged, only when everything
-# passes; otherwise the old pin is restored. JOBS=n limits compiler jobs.
+# (no failed hunk, no fuzz), regenerates decomp-patches/fma/ (the fused
+# multiply-adds; needs libclang: pip install clang==18.1.8), and builds the
+# port 32-bit (with --64, 64-bit too). The submodule stays on the new commit,
+# staged, only when everything passes; otherwise the old pin and fma patch
+# are restored. JOBS=n limits compiler jobs.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
-  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 source tools/common.sh
@@ -49,9 +51,12 @@ new=$(git -C decomp rev-parse --verify --quiet "$ref^{commit}") \
   || sms_die "Unknown decomp ref $ref"
 echo "decomp: ${old:0:12} -> ${new:0:12} ($ref, $(git -C decomp rev-list --count "$old..$new" 2>/dev/null || echo "?") new commits)"
 
+fma=decomp-patches/fma/0001-mwcc-fused-multiply-adds.patch
+fma_saved=""
 restore() {
   git -C decomp checkout --quiet --detach "$old"
   git update-index --cacheinfo "160000,$old_index,decomp"
+  if [[ -n "$fma_saved" ]]; then cp "$fma_saved" "$fma"; fi
 }
 failed=()
 summary=()
@@ -103,6 +108,39 @@ else
   summary+=("patches: all $n apply cleanly")
 fi
 
+# decomp-patches/fma is generated from the decomp and the patches above by
+# tools/fmacontract/fmarewrite.py (docs/64-BIT.md, item 17), which parses the
+# units with libclang using the build folders' compile_commands.json; the
+# build refuses a stale one (tools/fmacontract/fmastamp.py).
+py=$(command -v python3 || command -v python || true)
+if (( ${#failed[@]} == 0 )) && [[ -e "$fma" ]] && ! "$py" tools/fmacontract/fmastamp.py --check 2>/dev/null; then
+  if "$py" -c 'import clang.cindex' 2>/dev/null; then
+    echo "Regenerating $fma ..."
+    fma_saved="$scratch/fma.patch"
+    cp "$fma" "$fma_saved"
+    log="$scratch/fma.log"
+    ok=1
+    # configuring succeeds with a stale fma patch, and writes the commands
+    for a in "${arches[@]}"; do
+      bdir=$(sms_dir_for "$a")
+      if [[ -f "$bdir/CMakeCache.txt" ]]; then cmake -S . -B "$bdir" >> "$log" 2>&1 || ok=0; fi
+    done
+    if (( ok )) && "$py" tools/fmacontract/fmarewrite.py --patch "$fma" >> "$log" 2>&1; then
+      sites=$(awk '$1 == "sites" {print $2}' "$log")
+      summary+=("fma patch: regenerated (${sites:-?} sites); commit it with the new pin")
+    else
+      failed+=("fma patch")
+      mkdir -p build
+      cp "$log" build/update-decomp-fma.log
+      summary+=("fma patch: regeneration FAILED (log: build/update-decomp-fma.log)")
+    fi
+  else
+    failed+=("fma patch")
+    summary+=("fma patch: stale, and libclang's Python bindings are missing (pip install clang==18.1.8);"
+              "  install them and rerun, or build with -DSMS_FMA_CONTRACT=OFF")
+  fi
+fi
+
 if (( build )) && (( ${#failed[@]} == 0 )); then
   for a in "${arches[@]}"; do
     bdir=$(sms_dir_for "$a")
@@ -128,7 +166,7 @@ if (( build )) && (( ${#failed[@]} == 0 )); then
     fi
   done
 elif (( build )); then
-  summary+=("builds: skipped (the patches must apply first)")
+  summary+=("builds: skipped (the patches must apply and the fma patch be current first)")
 fi
 
 echo
@@ -145,4 +183,8 @@ if (( ${#failed[@]} )); then
   exit 1
 fi
 echo "OK: decomp/ is on ${new:0:12}, staged. Commit the new pin with:"
-echo "  git commit -m \"Move the decomp to ${new:0:7}\" decomp"
+if [[ -n "$fma_saved" ]]; then
+  echo "  git commit -m \"Move the decomp to ${new:0:7}\" decomp $fma"
+else
+  echo "  git commit -m \"Move the decomp to ${new:0:7}\" decomp"
+fi

@@ -18,11 +18,35 @@ file(GLOB SMS_PATCHES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/decomp-patch
 list(SORT SMS_PATCHES)
 # MWCC's fused multiply-adds as explicit calls (src/port_fmac.h), generated
 # by tools/fmacontract/fmarewrite.py against the tree the patches above make:
-# applied after them.
+# applied after them. Its first line records a hash of what it was made
+# from (the decomp's src/, include/ and libs/ as they are on disk, and
+# decomp-patches/*.patch), which tools/fmacontract/fmastamp.py --check
+# compares. A stale patch is not applied, and the build fails (the
+# sms_fma_check target in CMakeLists.txt, which checks again at every build,
+# so that an edit to the decomp is caught too) until it is regenerated or
+# SMS_FMA_CONTRACT is turned off. Configuring still succeeds, so that the
+# compile_commands.json the rewriter reads are written.
 if(SMS_FMA_CONTRACT)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+               ${CMAKE_CURRENT_SOURCE_DIR}/tools/fmacontract/fmastamp.py)
+  # configure again when the decomp moves to another commit
+  execute_process(COMMAND git -C ${SMS_DECOMP} rev-parse --path-format=absolute --git-path HEAD
+                  OUTPUT_VARIABLE _decomp_head OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(_decomp_head AND EXISTS "${_decomp_head}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_decomp_head})
+  endif()
+  execute_process(COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/fmacontract/fmastamp.py
+                          --check --decomp ${SMS_DECOMP}
+                  RESULT_VARIABLE _fma_rc ERROR_VARIABLE _fma_err)
   file(GLOB _fma_patches CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/decomp-patches/fma/*.patch)
-  list(SORT _fma_patches)
-  list(APPEND SMS_PATCHES ${_fma_patches})
+  # a regenerated patch configures again, stale or not
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_fma_patches})
+  if(_fma_rc EQUAL 0)
+    list(SORT _fma_patches)
+    list(APPEND SMS_PATCHES ${_fma_patches})
+  else()
+    message(WARNING "${_fma_err}The build fails until then.")
+  endif()
 endif()
 file(REMOVE_RECURSE ${_scratch})
 file(MAKE_DIRECTORY ${_scratch} ${SMS_PATCHED_INCLUDE_DIRS})

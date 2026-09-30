@@ -112,6 +112,43 @@ Each file in `decomp-patches/` starts with a `Reason:` line; they are applied in
 | `audio-01..02` | JAudio bitfield/byte-order fixes (`TChannel` mix config, BMS note-on flags); see `platform/audio/README.md`. |
 | `ret-02..03` | Explicit returns for the 34 functions that fall off the end of a non-void body and whose value nothing reads (undefined behaviour under g++, harmless under MWCC). |
 | `thp-01..02` | Host THP decoder (portable bit reader and IDCT, big-endian audio header); see `platform/thp/README.md`. |
+| `endian-18` | `JSUInputStream`'s typed reads keep the value when a read fails at the end of the stream, as the console does, instead of byte-swapping it (see [Memory and undefined-behaviour checks](#memory-and-undefined-behaviour-checks)). |
+| `fpu-02..03` | MWCC's float-to-unsigned conversion (`__cvt_fp2unsigned`: 0 below zero) where the game converts negative values: the hit-check table index, the iris wipe's first row (`port_cvt_fp2unsigned` in `port_compat.h`). |
+| `bounds-01..02` | Retail out-of-bounds accesses whose result depends on byte order or data layout, given the console's result: `TGCConsole2`'s unset pane index, the two 16-byte null textures read as 32. |
+| `uninit-01..03` | Retail reads of uninitialised stack values made deterministic: the stack light objects' direction, the logo wipe's pen vector z, the plaza tightrope colour. |
+
+## Memory and undefined-behaviour checks
+
+Last audit 2026-09-30, on the scripted title and plaza runs (no stage sweep).
+
+- **Tooling.**
+  AddressSanitizer runs only in a 32-bit build: x86-64 ASan puts its shadow memory at `0x7fff8000`, over MEM1's fixed `0x80000000`.
+  That build also had UBSan (`-fsanitize=address,undefined,float-cast-overflow -fno-sanitize=return -fsanitize-recover=all`, `-O1 -g1`, a separate build folder; GCC's `vptr` check needs `-fno-sanitize=vptr` on `J3DModel.cpp` and `JUTConsole.cpp`, whose classes have no key function).
+  ASan cannot see inside the game's JKR heaps, which live in MEM1, so uninitialised reads there come from valgrind memcheck (`--track-origins=yes`) on the normal 64-bit build, started with `--vgdb-error=0`: gdb stops at `port_os_init`, marks the arena undefined with `monitor make_memory undefined 0x80004000 0x3ffc000`, sets `vgdb-error` back up and detaches.
+  memcheck then reports reads of arena memory that nothing has written since boot, and uninitialised stack values; it does not see stale data in reused heap blocks.
+  It runs the game about 100 times slower than native (llvmpipe, `LP_NUM_THREADS=0`), so in the time available it covered the boot, the logos and the title screen, not the plaza.
+  A gdb probe on `GXLoadLightObjImm` recorded every light object the game loads, in both word sizes.
+- **Fixed** (patches above):
+  - The stack `GXLightObj`s of `TLightCommon`/`TLightMario::setLight` and `perform`, `TSilhouette::setting` and `TMapObjPlane` leave the direction unset, so GX_LIGHT0 and GX_LIGHT1 carried stack garbage, different in each word size: a NaN (`ffffb750`) and values near 1e14 in the 32-bit build, zeros or small values in the 64-bit build (`uninit-01`).
+    The lights' angular coefficients are (1, 0, 0) or all zero, so the result on the console does not depend on a finite direction, but the host shader multiplies it (0 × NaN is NaN), and GLSL's `max(NaN, 0.0)` is undefined, so a GPU driver could light those materials differently from llvmpipe.
+  - `JSUInputStream`'s typed reads byte-swapped the value after a read that failed at the end of the stream, where the console leaves it unchanged (`endian-18`).
+    Delfino Plaza's `TMapWireManager` entry ends after its two counts, so `TMapWire::mDrawWidth` and `mDrawHeight` (5.0 and 6.0) became 5.7e-41 and 6.9e-41 and the tightropes were drawn with no width.
+    The same entry leaves the tightrope colour to an uninitialised stack `s32`: on the console, whatever the scene search in the preceding `TCubeManagerBase::load` left in that slot, which is not reproduced; the port starts it at 0 (black) so both word sizes draw the same (`uninit-03`).
+  - MWCC converts a float to an unsigned integer with `__cvt_fp2unsigned`, which gives 0 for a negative value; the host wraps it (`fpu-02..03`).
+    `TObjHitCheck::getTableIndex` got a first cell of 0xEA instead of 0 for an actor whose entry radius reaches past the world origin, entering it in 22 extra cells; `Hxs2_Circle` started its rows at 0xFFFFFFEC and drew nothing once the iris wipe's ring passed the screen centre.
+    The DOL has 70 such conversions in 22 objects; UBSan saw a negative value only at these two sites on these runs.
+  - `TGCConsole2` starts its highlighted-pane index at 0x17, past the 22-entry `unk334`, and calls `isVisible()`/`hide()` on `unk334[23]`, which is the `TBoundPane` `unk390`: the console reads and clears the high byte of its big-endian `unk4.x2` (0), the host the low byte (60), which `hide()` zeroed (`bounds-01`).
+  - `J3DSys` and `gd-reinit-gx` load 4x4 IA8 null textures (32 bytes) from 16-byte arrays; the console's second half is the next `.data` in the DOL, which the port now carries (`bounds-02`).
+  - `Hxs_PenDraw` normalises a vector with an unset z (`-2e-19` and similar in the 32-bit build, 0 in the 64-bit one); it is now 0 (`uninit-02`).
+- **Real, left as they are** (the port reads what the console reads, or the value does not matter):
+  - Uninitialised members read from never-written arena memory, 0 on both the console (MEM1 is zeroed at boot) and the port: `JUTGamePad::CRumble` reads the pad's port number before the constructor sets it; `MSModBgm::unk0`, `TOptionControl::mSelectedOption`, `TMario::mFreezeImmunityTimer`, `TSpcInterp`'s lock flag, `TConsoleStr::unk2A5`, `J3DMatPacket::mpShapePacket` and joints' scale flags that `J3DModel::calcNrmMtx` reads before anything computes them.
+  - `TMarDirector::direct`'s movement-pass `JDrama::TGraphics` is never initialised, so `setViewport` tests garbage `field_rendering`; the draw pass sets the viewport again.
+  - `TModelDataNode` keeps a pointer to `TMapObjBase::makeMActors`' stack name buffer and later `strcmp`s against it (ASan: stack-use-after-return); on the console and the port the buffer is usually the same address holding the new name.
+  - `J2DPicture::insert` reads `unk104[i + 3]` and `J3DTevBlock4`'s display list reads `mTevKColorSel`/`mTevKAlphaSel` up to index 15 of 4-entry arrays: the neighbouring members, at the same offsets as on the console.
+  - `JDrama` stores -1 in `VITVMode` as a sentinel; the `JPA`, camera and matrix code converts out-of-range floats to `s16`/`u8`/`u16`, which both MWCC (`fctiwz`, then a halfword or byte store) and g++ truncate to the low bits of the 32-bit result; `RumbleChannelMgr::start` and the `pointer-overflow` reports are pointer arithmetic that is never dereferenced.
+- **Benign reports**: UBSan's misaligned-access reports (JKR heaps align to 4, the host ABI wants 8 for classes with `double` or `long long`; x86 does not care), its downcast and member-call type reports on the decomp's approximate class hierarchies (`TBGCheckList` arrays that are never constructed, name-searched objects cast to the searched type), memcheck's reports inside Mesa, and `gx::resolveWriteBack` hashing game memory that holds struct padding copied from the DVD layer.
+- **Result**: the scripted title and plaza frames are unchanged against `3676789` and byte-identical between 32 and 64-bit (the tightropes and the iris ring are not in those frames), and the 60 fps plaza gate run still captures Mario after 100 frames with the same `setNextStage`.
+- **Not covered**: stale data in reused JKR heap blocks (memcheck would need the heaps' frees marked undefined), the 57 other float-to-unsigned sites (13 are fixed: `getTableIndex` is inlined six times), and anything past the plaza runs.
 
 ## Environment variables
 

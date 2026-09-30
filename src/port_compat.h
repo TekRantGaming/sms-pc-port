@@ -90,6 +90,9 @@ static inline float __fres(float x) { return port_gekko_fres(x); }
 #ifdef __cplusplus
 }
 #endif
+/* JSystem's and the game's paired-single routines outside MTX/VEC, as the
+ * console computes them (platform/mtx/jsys_ps.inc). */
+#include "port_ps.h"
 
 /* Non-standard names MSL's math.h provides. MSL spells M_PI as a float. */
 #undef M_PI

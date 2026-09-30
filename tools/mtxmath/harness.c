@@ -10,6 +10,8 @@
 #include <string.h>
 #include <math.h>
 #include "table.h"
+#define REC (8 + 4 * NIN)
+#define RES (4 * NOUT + 4)
 
 static uint64_t s;
 static uint64_t rnd(void)
@@ -59,19 +61,35 @@ int main(int argc, char** argv)
 			for (long i = 0; i < n; i++) {
 				int style = (int)(rnd() % 6);
 				unsigned aux;
+				float in[NIN];
 				if (!strncmp(case_names[c], "MultVecArray", 12))
 					aux = 2 + (unsigned)(rnd() % 4); /* the DOL loops 2^32 times for 1 */
+				else if (!strncmp(case_names[c], "J3DConcatIndexed", 16)) /* two u16 matrix indices */
+					aux = (unsigned)(rnd() % 2) << 16 | (unsigned)(rnd() % 2);
+				else if (!strcmp(case_names[c], "J3DWeightEnvelope")) /* mix count, two indices */
+					aux = (1 + (unsigned)(rnd() % 2)) << 16 | (unsigned)(rnd() % 2) << 8 | (unsigned)(rnd() % 2);
 				else
 					aux = (unsigned char)"xyzXYZa\0w"[rnd() % 9];
 				put32(c, stdout);
 				put32(aux, stdout);
-				for (int k = 0; k < 32; k++) {
-					float v = val(style);
-					uint32_t u;
+				for (int k = 0; k < NIN; k++) {
+					in[k] = val(style);
 					/* the perspective cases: angles and planes in their ranges, mostly */
 					if (style == 1 && strstr(case_names[c], "Perspective"))
-						v = (float)uni(1, 179);
-					memcpy(&u, &v, 4);
+						in[k] = (float)uni(1, 179);
+				}
+				/* J3DHermiteS: s16 keys in the high halves of in[1..6], and
+				 * mostly a frame between the two times */
+				if (!strcmp(case_names[c], "J3DHermiteS") && style != 0) {
+					for (int k = 1; k <= 6; k++)
+						in[k] = fbits((uint32_t)rnd());
+					uint32_t t0, t1;
+					memcpy(&t0, &in[1], 4), memcpy(&t1, &in[4], 4);
+					in[0] = (float)((short)(t0 >> 16) + uni(-0.25, 1.25) * ((short)(t1 >> 16) - (short)(t0 >> 16)));
+				}
+				for (int k = 0; k < NIN; k++) {
+					uint32_t u;
+					memcpy(&u, &in[k], 4);
 					put32(u, stdout);
 				}
 			}
@@ -79,21 +97,21 @@ int main(int argc, char** argv)
 		return 0;
 	}
 	if (argc == 2 && !strcmp(argv[1], "run")) {
-		unsigned char r[136];
-		while (fread(r, 136, 1, stdin) == 1) {
-			float in[32], out[16];
-			uint32_t o[17];
+		unsigned char r[REC];
+		while (fread(r, REC, 1, stdin) == 1) {
+			float in[NIN], out[NOUT];
+			uint32_t o[NOUT + 1];
 			unsigned ret = 0;
-			for (int k = 0; k < 32; k++) {
+			for (int k = 0; k < NIN; k++) {
 				uint32_t u = get32(r + 8 + 4 * k);
 				memcpy(&in[k], &u, 4);
 			}
-			for (int k = 0; k < 16; k++)
+			for (int k = 0; k < NOUT; k++)
 				out[k] = fbits(0x13579bdf);
 			run_case(get32(r), get32(r + 4), in, out, &ret);
-			memcpy(o, out, 64);
-			o[16] = ret;
-			for (int k = 0; k < 17; k++)
+			memcpy(o, out, 4 * NOUT);
+			o[NOUT] = ret;
+			for (int k = 0; k < NOUT + 1; k++)
 				put32(o[k], stdout);
 		}
 		return 0;
@@ -101,20 +119,20 @@ int main(int argc, char** argv)
 	if (argc == 5 && !strcmp(argv[1], "cmp")) {
 		/* per case, the records whose results differ in any bit (two NaNs are equal) */
 		FILE *fi = fopen(argv[2], "rb"), *fa = fopen(argv[3], "rb"), *fb = fopen(argv[4], "rb");
-		unsigned char r[136], a[68], b[68];
+		unsigned char r[REC], a[RES], b[RES];
 		long tot[NCASES] = { 0 }, bad[NCASES] = { 0 }, total = 0;
 		int shown[NCASES] = { 0 };
 		if (!fi || !fa || !fb)
 			return 2;
-		while (fread(r, 136, 1, fi) == 1) {
+		while (fread(r, REC, 1, fi) == 1) {
 			unsigned c = get32(r) % NCASES;
 			int differ = 0;
-			if (fread(a, 68, 1, fa) != 1 || fread(b, 68, 1, fb) != 1) {
+			if (fread(a, RES, 1, fa) != 1 || fread(b, RES, 1, fb) != 1) {
 				fprintf(stderr, "short results\n");
 				return 2;
 			}
 			tot[c]++;
-			for (int k = 0; k < 17; k++) {
+			for (int k = 0; k < NOUT + 1; k++) {
 				uint32_t x = get32(a + 4 * k), y = get32(b + 4 * k);
 				int nx = (x & 0x7f800000) == 0x7f800000 && (x & 0x7fffff), ny = (y & 0x7f800000) == 0x7f800000 && (y & 0x7fffff);
 				if (x != y && !(nx && ny))
@@ -128,7 +146,7 @@ int main(int argc, char** argv)
 				for (int k = 0; k < 16; k++)
 					printf(" %08x", get32(r + 8 + 4 * k));
 				printf("\n    out");
-				for (int k = 0; k < 17; k++)
+				for (int k = 0; k < NOUT + 1; k++)
 					printf(" %08x/%08x", get32(a + 4 * k), get32(b + 4 * k));
 				printf("\n");
 			}

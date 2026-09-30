@@ -8,8 +8,10 @@ the same scalar operation on both halves. ps0 of a register is the real FPR;
 ps1 lives in a shadow array (ps1_shadow, one double per FPR).
 
 The Gekko semantics modelled (as Dolphin implements them):
-- psq_l/psq_lu/psq_st/psq_stu with GQR0 (floats, no scaling); W=1 loads 1.0
-  into ps1 and stores ps0 only.
+- psq_l/psq_lu/psq_lx/psq_st/psq_stu with GQR0 (floats, no scaling); W=1
+  loads 1.0 into ps1 and stores ps0 only. psq_l with W=1 through GQR5 is an
+  s16 load with no scale (OSInitFastCast's setting; J3DHermiteInterpolationS),
+  converted with r0, r11 and gqr_tmp as scratch.
 - ps_add/sub/mul/madd/msub/nmadd/nmsub/muls0/muls1/madds0/madds1 are the
   scalar single-precision instruction (fadds, fmadds, ...) on each half;
   ps_sum0/1, ps_merge00/01/10/11, ps_neg and ps_cmpo0 as documented.
@@ -17,7 +19,8 @@ The Gekko semantics modelled (as Dolphin implements them):
   fmadds, fmsubs, fnmadds, fnmsubs, fres, frsp) also write their result to
   ps1; double-precision ones (lfd, fmr, fneg, fsel, frsqrte, ...) leave ps1.
 The arithmetic of each operation is qemu's. f16-f20 and r12 are scratch (the
-objects do not use them).
+objects do not use them); TAG@rN=OBJ... uses rN instead of r12 for that
+object (J3DModel::calcWeightEnvelopeMtx uses r12).
 
 Relocations: .sdata/.sdata2 constants are copied into this file under
 TAG_SYMBOL labels; calls go to the named symbol (the other rewritten
@@ -47,9 +50,12 @@ PS3 = {'ps_add': 'fadds', 'ps_sub': 'fsubs', 'ps_mul': 'fmuls', 'ps_div': 'fdivs
 PS4 = {'ps_madd': 'fmadds', 'ps_msub': 'fmsubs', 'ps_nmadd': 'fnmadds', 'ps_nmsub': 'fnmsubs'}
 
 
+SCR = 'r12'
+
+
 def base():
-    emit('\tlis r12, ps1_shadow@ha')
-    emit('\taddi r12, r12, ps1_shadow@l')
+    emit(f'\tlis {SCR}, ps1_shadow@ha')
+    emit(f'\taddi {SCR}, {SCR}, ps1_shadow@l')
 
 
 def fr(x):
@@ -57,11 +63,11 @@ def fr(x):
 
 
 def ld1(dst, src):  # f<dst> = ps1 of f<src>
-    emit(f'\tlfd f{dst}, {8 * src}(r12)')
+    emit(f'\tlfd f{dst}, {8 * src}({SCR})')
 
 
 def st1(src, dst):  # ps1 of f<dst> = f<src>
-    emit(f'\tstfd f{src}, {8 * dst}(r12)')
+    emit(f'\tstfd f{src}, {8 * dst}({SCR})')
 
 
 def rewrite(tag, obj, funcs):
@@ -115,10 +121,15 @@ def rewrite(tag, obj, funcs):
         # relocated operands
         if rel:
             kind, target = rel
+            if kind == 'R_PPC_EMB_SDA21' and op == 'li':  # the address itself
+                s = sym(tag, target)
+                emit(f'\tlis {a[0]}, {s}@ha')
+                emit(f'\taddi {a[0]}, {a[0]}, {s}@l')
+                continue
             if kind == 'R_PPC_EMB_SDA21':
                 s = sym(tag, target)
-                emit(f'\tlis r12, {s}@ha')
-                emit(f'\t{op} {a[0]}, {s}@l(r12)')
+                emit(f'\tlis {SCR}, {s}@ha')
+                emit(f'\t{op} {a[0]}, {s}@l({SCR})')
                 if op in SINGLE_FILL:
                     base()
                     st1(fr(a[0]), fr(a[0]))
@@ -138,6 +149,41 @@ def rewrite(tag, obj, funcs):
         if m and op.startswith('b'):
             emit(f'\t{op} L_{tag}_{m.group(1)}')
             continue
+        if op == 'psq_lx':  # frD, rA, rB, W, I
+            d, w, i = fr(a[0]), int(a[3]), int(a[4])
+            assert i == 0 and w == 0 and a[1] != 'r0', 'psq_lx: GQR0, W=0 only'
+            emit(f'\tlfsx f{d}, {a[1]}, {a[2]}')
+            emit(f'\tadd {SCR}, {a[1]}, {a[2]}')
+            emit(f'\tlfs f16, 4({SCR})')
+            base()
+            st1(16, d)
+            continue
+        if op == 'lfsu':  # single-precision load with update: both halves
+            m = re.match(r'(-?\d+)\((r\d+)\)', a[1])
+            emit(f'\taddi {m.group(2)}, {m.group(2)}, {m.group(1)}')
+            emit(f'\tlfs {a[0]}, 0({m.group(2)})')
+            base()
+            st1(fr(a[0]), fr(a[0]))
+            continue
+        if op == 'psq_l' and a[3] == '5':  # s16 through GQR5 (no scale), W=1
+            d = fr(a[0])
+            assert a[2] == '1', 'GQR5: W=1 only'
+            emit(f'\tlha r0, {a[1]}')
+            emit('\txoris r0, r0, 0x8000')
+            emit('\tlis r11, gqr_tmp@ha')
+            emit('\taddi r11, r11, gqr_tmp@l')
+            emit('\tstw r0, 4(r11)')
+            emit('\tlis r0, 0x4330')
+            emit('\tstw r0, 0(r11)')
+            emit(f'\tlfd f{d}, 0(r11)')
+            emit('\tlfd f16, 8(r11)')
+            emit(f'\tfsub f{d}, f{d}, f16')
+            emit(f'\tfrsp f{d}, f{d}')
+            emit('\tlis r11, one@ha')
+            emit('\tlfs f16, one@l(r11)')
+            base()
+            st1(16, d)
+            continue
         if op.startswith('psq_'):
             d = fr(a[0])
             m = re.match(r'(-?\d+)\((r\d+)\)', a[1])
@@ -151,8 +197,8 @@ def rewrite(tag, obj, funcs):
             if op.startswith('psq_l'):
                 emit(f'\tlfs f{d}, {off}({ra})')
                 if w:
-                    emit('\tlis r12, one@ha')
-                    emit('\tlfs f16, one@l(r12)')
+                    emit(f'\tlis {SCR}, one@ha')
+                    emit(f'\tlfs f16, one@l({SCR})')
                     base()
                 else:
                     emit(f'\tlfs f16, {off + 4}({ra})')
@@ -239,6 +285,8 @@ def rewrite(tag, obj, funcs):
 emit('\t.section .text')
 for spec in sys.argv[2:]:
     tag, rest = spec.split('=', 1)
+    tag, _, SCR = tag.partition('@')
+    SCR = SCR or 'r12'
     obj, _, fl = rest.partition(':')
     rewrite(tag, obj, set(fl.split(',')) if fl else None)
 emit('\t.section .data')
@@ -246,5 +294,7 @@ emit('\t.balign 8')
 emit('\t.globl ps1_shadow')
 emit('ps1_shadow:\t.space 256')
 emit('one:\t.float 1.0')
+emit('\t.balign 8')
+emit('gqr_tmp:\t.4byte 0, 0, 0x43300000, 0x80000000')
 out += data
 print('\n'.join(out))

@@ -2,12 +2,18 @@
 """gen.py OUTDIR: writes OUTDIR/driver.s (the PowerPC side of check.sh) and
 OUTDIR/table.h (the host side), from the list of test cases below.
 
-A record (big-endian) is: u32 case, u32 aux, 32 floats in[0..31]; the result
-is 16 words out[0..15] (the output buffer, filled with 0x13579bdf first) and
-a return word (r3, or f1 stored as a float). Arguments: O is the output
-buffer, In a pointer to in[n], fn the float in[n], aux the aux word; copy
-(a, b) copies in[a..b-1] to the output buffer first (in-place cases)."""
-import os, sys
+A record (big-endian) is: u32 case, u32 aux, NIN floats in[]; the result is
+NOUT words out[] (the output buffer, filled with 0x13579bdf first) and a
+return word (r3, or f1 stored as a float). Arguments: O is the output
+buffer, In a pointer to in[n], fn the float in[n], aux the aux word, Hn a
+pointer to the s16 in the high half of in[n], A a pointer to the aux word
+(two big-endian u16 indices), Nk the count k, U a pointer to the DOL's
+PSMulUnit01 (0, -1); copy (a, b) copies in[a..b-1] to the output buffer
+first (in-place cases). A sixth field, when present, is the host's call
+(C, with in, out, aux and ret) where the port's function differs from the
+DOL's in name or arguments. WeightEnvelope drives the DOL's whole
+J3DModel::calcWeightEnvelopeMtx over a model built in the driver."""
+import os, re, sys
 
 CASES = [
     # name, function, return, args, copy
@@ -51,8 +57,41 @@ CASES = [
     ('VECCrossProduct_c=a', 'PSVECCrossProduct', None, ['O', 'I3', 'O'], (0, 3)),
     ('VECSquareDistance', 'PSVECSquareDistance', 'f', ['I0', 'I3'], None),
     ('VECDistance', 'PSVECDistance', 'f', ['I0', 'I3'], None),
+    # JSystem's and the game's paired-single routines (platform/mtx/jsys_ps.inc)
+    ('J3DInvTranspose', 'J3DPSCalcInverseTranspose__FPA4_fPA3_f', 'u', ['I0', 'O'], None,
+     '*ret = port_J3DPSCalcInverseTranspose((void*)in, (void*)out);'),
+    ('J3DProjConcat', 'J3DMtxProjConcat__FPA4_fPA4_fPA4_f', None, ['I0', 'I12', 'O'], None,
+     'port_J3DMtxProjConcat((void*)in, (void*)(in + 12), (void*)out);'),
+    ('J3DProjConcat_ab=a', 'J3DMtxProjConcat__FPA4_fPA4_fPA4_f', None, ['O', 'I12', 'O'], (0, 12),
+     'port_J3DMtxProjConcat((void*)out, (void*)(in + 12), (void*)out);'),
+    ('J3DConcatIndexed1', 'J3DMTXConcatArrayIndexedSrc__FPA4_CfPA3_A4_CfPCUsPA3_A4_fUl', None,
+     ['I0', 'I12', 'A', 'O', 'N1'], None,
+     '{ unsigned short ix[2] = { aux >> 16, aux & 0xffff }; port_J3DMTXConcatArrayIndexedSrc((void*)in, (void*)(in + 12), ix, (void*)out, 1); }'),
+    ('J3DConcatIndexed2', 'J3DMTXConcatArrayIndexedSrc__FPA4_CfPA3_A4_CfPCUsPA3_A4_fUl', None,
+     ['I0', 'I12', 'A', 'O', 'N2'], None,
+     '{ unsigned short ix[2] = { aux >> 16, aux & 0xffff }; port_J3DMTXConcatArrayIndexedSrc((void*)in, (void*)(in + 12), ix, (void*)out, 2); }'),
+    ('J3DArrayConcat1', 'J3DPSMtxArrayConcat__FPA4_fPA4_fPA4_fUl', None, ['I0', 'I12', 'O', 'N1'], None,
+     'port_J3DPSMtxArrayConcat((void*)in, (void*)(in + 12), (void*)out, 1);'),
+    ('J3DArrayConcat2', 'J3DPSMtxArrayConcat__FPA4_fPA4_fPA4_fUl', None, ['I0', 'I12', 'O', 'N2'], None,
+     'port_J3DPSMtxArrayConcat((void*)in, (void*)(in + 12), (void*)out, 2);'),
+    ('J3DMulMtxVec', 'dol_J3DPSMulMtxVec', None, ['I0', 'I12', 'O'], None,
+     'port_J3DPSMulMtxVec((void*)in, (void*)(in + 12), out);'),
+    ('J3DMulMtxVec33', 'dol_J3DPSMulMtxVec33', None, ['I0', 'I9', 'O', 'U'], None,
+     'port_J3DPSMulMtxVec33((void*)in, (void*)(in + 9), out);'),
+    ('J3DWeightEnvelope', 'calcWeightEnvelopeMtx__8J3DModelFv', None, [], None,
+     '{ float acc[12] = { 0 }; unsigned j = 0, n = aux >> 16, ix[2] = { aux >> 8 & 255, aux & 255 };'
+     ' do port_J3DWeightEnvelopeMix((void*)acc, (void*)(in + 12 * ix[j]), (void*)(in + 24 + 12 * ix[j]), in[48 + j]);'
+     ' while (++j < n); memcpy(out, acc, 48); }'),
+    ('J3DHermiteS', 'J3DHermiteInterpolationS__FfPsPsPsPsPsPs', 'f', ['f0', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'], None,
+     '{ float r = port_J3DHermiteInterpolationS(in[0], S16(1), S16(2), S16(3), S16(4), S16(5), S16(6)); memcpy(ret, &r, 4); }'),
+    ('MsVECMag2', 'MsVECMag2__FP3Vec', 'f', ['I0'], None,
+     '{ float r = port_MsVECMag2((void*)in); memcpy(ret, &r, 4); }'),
+    ('MsVECNormalize', 'MsVECNormalize__FP3VecP3Vec', None, ['I0', 'O'], None, 'port_MsVECNormalize((void*)in, out);'),
+    ('MsVECNormalize_inplace', 'MsVECNormalize__FP3VecP3Vec', None, ['O', 'O'], (0, 3),
+     'port_MsVECNormalize(out, out);'),
 ]
-REC, RES, BATCH = 136, 68, 128
+NIN, NOUT, BATCH = 52, 24, 128
+REC, RES = 8 + 4 * NIN, 4 * NOUT + 4
 
 out = sys.argv[1]
 s = []
@@ -104,13 +143,13 @@ batch:
 	mr r23, r22
 rec:	lis r0, 0x1357
 	ori r0, r0, 0x9bdf
-	li r3, 16
+	li r3, %d
 	mtctr r3
 	addi r4, r15, -4
 4:	stwu r0, 4(r4)
 	bdnz 4b
 	li r0, 0
-	stw r0, 64(r15)
+	stw r0, %d(r15)
 	lwz r16, 0(r14)
 	lis r12, cases@ha
 	addi r12, r12, cases@l
@@ -134,7 +173,7 @@ done:
 	li r0, 1
 	li r3, 0
 	sc
-''' % (REC * BATCH, REC * BATCH, REC, REC, RES, RES, REC * BATCH))
+''' % (REC * BATCH, REC * BATCH, REC, NOUT, 4 * NOUT, REC, RES, RES, REC * BATCH))
 
 
 def lfs_fill(reg, off, base):
@@ -144,7 +183,48 @@ def lfs_fill(reg, off, base):
     e(f'\tstfd f{reg}, {8 * reg}(r12)')
 
 
-for n, (name, fn, ret, args, copy) in enumerate(CASES):
+def weight_envelope():
+    # J3DModel (r3) and J3DModelData (r4), the fields calcWeightEnvelopeMtx
+    # reads: one envelope of aux >> 16 mix matrices, indices (aux >> 8) & 255
+    # and aux & 255 into the node matrices (in[0..23]) and inverse joint
+    # matrices (in[24..47]), weights in[48..], result in the output buffer.
+    e('\tlis r3, wm_model@ha')
+    e('\taddi r3, r3, wm_model@l')
+    e('\tlis r4, wm_data@ha')
+    e('\taddi r4, r4, wm_data@l')
+    e('\tstw r4, 4(r3)')
+    e('\tlwz r6, 4(r14)')
+    e('\tli r0, 1')
+    e('\tsth r0, 132(r4)')         # getWEvlpMtxNum
+    e('\tlis r5, wm_bytes@ha')
+    e('\taddi r5, r5, wm_bytes@l')
+    e('\tsrwi r0, r6, 16')
+    e('\tstb r0, 0(r5)')           # getWEvlpMixMtxNum(0)
+    e('\tstw r5, 136(r4)')
+    e('\tli r0, 1')
+    e('\tstb r0, 4(r5)')           # mScaleFlagArr[0..1]
+    e('\tstb r0, 5(r5)')
+    e('\taddi r0, r5, 4')
+    e('\tstw r0, 80(r3)')
+    e('\taddi r0, r5, 8')
+    e('\tstw r0, 84(r3)')          # mEvlpScaleFlagArr
+    e('\trlwinm r0, r6, 24, 24, 31')
+    e('\tsth r0, 12(r5)')
+    e('\tclrlwi r0, r6, 24')
+    e('\tsth r0, 14(r5)')
+    e('\taddi r0, r5, 12')
+    e('\tstw r0, 140(r4)')         # getWEvlpMixMtxIndex
+    e(f'\taddi r0, r14, {8 + 4 * 48}')
+    e('\tstw r0, 144(r4)')         # getWEvlpMixWeight
+    e(f'\taddi r0, r14, {8 + 4 * 24}')
+    e('\tstw r0, 148(r4)')         # getInvJointMtx(0)
+    e('\taddi r0, r14, 8')
+    e('\tstw r0, 88(r3)')          # mNodeMatrices
+    e('\tstw r15, 92(r3)')         # mWeightEvlpMatrices
+
+
+for n, c in enumerate(CASES):
+    name, fn, ret, args, copy = c[:5]
     e(f'case{n}:\t# {name}')
     e('\tmflr r0')
     e('\tstw r0, 4(r1)')
@@ -154,8 +234,23 @@ for n, (name, fn, ret, args, copy) in enumerate(CASES):
             e(f'\tlwz r0, {8 + 4 * k}(r14)')
             e(f'\tstw r0, {4 * (k - copy[0])}(r15)')
     gpr, fpr = 3, 1
+    if name == 'J3DWeightEnvelope':
+        weight_envelope()
     for a in args:
-        if a == 'O':
+        if a == 'A':
+            e(f'\taddi r{gpr}, r14, 4')
+            gpr += 1
+        elif a == 'U':
+            e(f'\tlis r{gpr}, psmulunit01@ha')
+            e(f'\taddi r{gpr}, r{gpr}, psmulunit01@l')
+            gpr += 1
+        elif a[0] == 'N':
+            e(f'\tli r{gpr}, {a[1:]}')
+            gpr += 1
+        elif a[0] == 'H':
+            e(f'\taddi r{gpr}, r14, {8 + 4 * int(a[1:])}')
+            gpr += 1
+        elif a == 'O':
             e(f'\tmr r{gpr}, r15')
             gpr += 1
         elif a == 'aux':
@@ -172,9 +267,9 @@ for n, (name, fn, ret, args, copy) in enumerate(CASES):
             e('\tstw r0, 8(r1)')
     e(f'\tbl {fn}')
     if ret == 'u':
-        e('\tstw r3, 64(r15)')
+        e(f'\tstw r3, {4 * NOUT}(r15)')
     elif ret == 'f':
-        e('\tstfs f1, 64(r15)')
+        e(f'\tstfs f1, {4 * NOUT}(r15)')
     e('\tlwz r0, 36(r1)')
     e('\taddi r1, r1, 32')
     e('\tmtlr r0')
@@ -184,16 +279,37 @@ e('\t.balign 4')
 e('cases:')
 for n in range(len(CASES)):
     e(f'\t.4byte case{n}')
+e('\t.balign 8')
+e('psmulunit01:\t.4byte 0x00000000, 0xbf800000') # J3DTransform.o .data, checked by check.sh
 e('\t.section .bss')
+e('\t.balign 8')
+e('wm_model:\t.space 256')
+e('wm_data:\t.space 256')
+e('wm_bytes:\t.space 16')
 e('\t.balign 8')
 e(f'inbuf:\t.space {REC * BATCH}')
 e(f'outbuf:\t.space {RES * BATCH}')
 open(os.path.join(out, 'driver.s'), 'w').write('\n'.join(s) + '\n')
 
 # host side
-h = ['/* Generated by tools/mtxmath/gen.py */']
+h = ['/* Generated by tools/mtxmath/gen.py */', f'#define NIN {NIN}', f'#define NOUT {NOUT}',
+     '#define S16(k) ((float)(short)(fbits_u(in[k]) >> 16))',
+     'static unsigned fbits_u(float f) { unsigned u; memcpy(&u, &f, 4); return u; }',
+     'void port_J3DWeightEnvelopeMix(void*, void*, void*, float);',
+     'float port_J3DHermiteInterpolationS(float, float, float, float, float, float, float);',
+     'void port_J3DMTXConcatArrayIndexedSrc(void*, void*, unsigned short*, void*, unsigned);']
 protos = set()
-for name, fn, ret, args, copy in CASES:
+for c in CASES:
+    name, fn, ret, args, copy = c[:5]
+    if len(c) > 5:
+        m = re.search(r'(port_\w+)\(', c[5])
+        if m.group(1) in ('port_J3DWeightEnvelopeMix', 'port_J3DHermiteInterpolationS',
+                          'port_J3DMTXConcatArrayIndexedSrc'):
+            continue
+        r = {'u': 'unsigned', 'f': 'float', None: 'void'}[ret]
+        pa = ['unsigned' if a[0] == 'N' else 'void*' for a in args if a not in ('A', 'U')]
+        protos.add(f'{r} {m.group(1)}({", ".join(pa)});')
+        continue
     params = []
     for a in args:
         params.append('void*' if a in ('O',) or a[0] == 'I' else
@@ -206,10 +322,15 @@ h.append('static const char* case_names[] = { %s };' % ', '.join('"%s"' % c[0] f
 h.append('static void run_case(unsigned n, unsigned aux, const float* in, float* out, unsigned* ret)')
 h.append('{')
 h.append('\tswitch (n) {')
-for n, (name, fn, ret, args, copy) in enumerate(CASES):
+for n, c in enumerate(CASES):
+    name, fn, ret, args, copy = c[:5]
     h.append(f'\tcase {n}:')
     if copy:
         h.append(f'\t\tmemcpy(out, in + {copy[0]}, {4 * (copy[1] - copy[0])});')
+    if len(c) > 5:
+        h.append('\t\t' + c[5])
+        h.append('\t\tbreak;')
+        continue
     cargs = []
     for a in args:
         cargs.append('out' if a == 'O' else 'aux' if a == 'aux' else f'(void*)(in + {a[1:]})' if a[0] == 'I'

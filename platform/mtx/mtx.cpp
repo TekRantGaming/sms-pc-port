@@ -10,7 +10,8 @@
 // their machine code instruction for instruction, in single precision:
 // - every operation rounds to f32, and a fused multiply-add (ps_madd,
 //   fmadds, ...) rounds once: fmaf, the host's FMA instruction where the CPU
-//   has one (x86 needs a runtime check) and fma_soft otherwise;
+//   has one (x86 needs a runtime check) and port_fmas_soft (port_fma.h)
+//   otherwise;
 // - frsqrte and fres are the Gekko's estimates (port_fpu.h), and a
 //   single-precision multiply rounds its frC operand to 25 significant bits
 //   first, as Dolphin models the Gekko; only a frsqrte estimate is ever
@@ -20,6 +21,12 @@
 // It is compiled with SSE maths and no contraction on every x86 host
 // (CMakeLists.txt), so the 32- and 64-bit builds compute the same bits.
 // tools/mtxmath/check.sh checks it against the DOL's own objects.
+//
+// jsys_ps.inc does the same for the paired-single routines outside the SDK
+// library (J3DTransform's J3DPSCalcInverseTranspose and matrix concatenations,
+// J3DPSMulMtxVec, J3DModel's weighted envelopes, J3DHermiteInterpolationS,
+// MsVECMag2 and MsVECNormalize), which the decomp's host builds call through
+// src/port_ps.h (decomp-patches/fpu-01-paired-single-routines).
 //
 // The C_ names of routines the DOL has only as paired-single code are not in
 // the DOL at all (the game's MTXConcat etc. are the PS ones): they forward to
@@ -31,32 +38,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include "port_fpu.h"
+#include "port_fma.h"
 
 extern "C" {
 void PSMTXMultVecSR(Mtx m, Vec* src, Vec* dst);
 void C_MTXMultVecSR(Mtx m, Vec* src, Vec* dst);
-}
-
-// a * c + b rounded once to single, without an FMA instruction. The product
-// of two floats is exact in double, so only the sum rounds twice (to double,
-// then to single), and that differs from rounding once only when the double
-// sum lands exactly halfway between two floats (or in the float subnormal
-// range, where the halfway points are coarser): then the sum is redone with
-// its exact error (TwoSum) and rounded to odd, which the conversion to float
-// then rounds correctly.
-static inline f32 fma_soft(f32 a, f32 c, f32 b)
-{
-	double p = (double)a * c, s = p + b;
-	unsigned long long u;
-	memcpy(&u, &s, 8);
-	if (__builtin_expect((u & 0x1FFFFFFFu) == 0x10000000u || __builtin_fabs(s) < 0x1p-126, 0)) {
-		double bb = s - p, e = (p - (s - bb)) + (b - bb);
-		if (e != 0.0 && e == e && !(u & 1)) {
-			u += (e > 0) == (s > 0) ? 1 : -1;
-			memcpy(&s, &u, 8);
-		}
-	}
-	return (f32)s;
 }
 
 // Dolphin's Force25Bit: the frC operand of a single-precision multiply,
@@ -96,13 +82,7 @@ static inline void gekko_frsqrte(f32 x, double* est, double* frc)
 }
 
 // Hides a value from the optimiser (see NFMA in mtx_ps.inc).
-#if defined(__x86_64__) || defined(__i386__)
-#define OPAQUE(x) __asm__("" : "+x"(x))
-#elif defined(__aarch64__)
-#define OPAQUE(x) __asm__("" : "+w"(x))
-#else
-#define OPAQUE(x) __asm__("" : "+m"(x))
-#endif
+#define OPAQUE(x) PORT_OPAQUE(x)
 
 #ifdef MTX_TEST_QEMU
 // tools/mtxmath: qemu-ppc's arithmetic, to compare with the DOL's objects run
@@ -120,8 +100,9 @@ static inline f32 qemu_fres(f32 x) { return x == 0.0f ? copysignf(0.5f, x) : 1.0
 
 #if (defined(__x86_64__) || defined(__i386__)) && !defined(MTX_TEST_QEMU)
 namespace mtx_soft {
-#define FMA(a, c, b) fma_soft(a, c, b)
+#define FMA(a, c, b) port_fmas_soft(a, c, b)
 #include "mtx_ps.inc"
+#include "jsys_ps.inc"
 #undef FMA
 } // namespace mtx_soft
 #if defined(__clang__)
@@ -133,6 +114,7 @@ namespace mtx_soft {
 namespace mtx_fma {
 #define FMA(a, c, b) __builtin_fmaf(a, c, b)
 #include "mtx_ps.inc"
+#include "jsys_ps.inc"
 #undef FMA
 } // namespace mtx_fma
 #if defined(__clang__)
@@ -164,6 +146,7 @@ static inline bool mtx_have_fma()
 namespace mtx_host {
 #define FMA(a, c, b) fmaf(a, c, b)
 #include "mtx_ps.inc"
+#include "jsys_ps.inc"
 #undef FMA
 } // namespace mtx_host
 #define CALL(fn, args) (mtx_host::fn args)
@@ -218,3 +201,22 @@ DEF(f32, PSVECDotProduct, C_VECDotProduct, gVECDotProduct, (Vec* a, Vec* b), (a,
 DEF(void, PSVECCrossProduct, C_VECCrossProduct, gVECCrossProduct, (Vec* a, Vec* b, Vec* c), (a, b, c))
 DEF(f32, PSVECSquareDistance, C_VECSquareDistance, gVECSquareDistance, (Vec* a, Vec* b), (a, b))
 DEF(f32, PSVECDistance, C_VECDistance, gVECDistance, (Vec* a, Vec* b), (a, b))
+
+// --- JSystem's and the game's paired-single routines (jsys_ps.inc), called
+// by the decomp's host builds (decomp-patches/fpu-01-paired-single-routines) ---
+#include "port_ps.h"
+DEF1(int, port_J3DPSCalcInverseTranspose, gJ3DPSCalcInverseTranspose, (const f32 (*src)[4], f32 (*dst)[3]), (src, dst))
+DEF1(void, port_J3DMtxProjConcat, gJ3DMtxProjConcat, (const f32 (*a)[4], const f32 (*b)[4], f32 (*ab)[4]), (a, b, ab))
+DEF1(void, port_J3DMTXConcatArrayIndexedSrc, gJ3DMTXConcatArrayIndexedSrc,
+     (const f32 (*a)[4], const f32 (*b)[3][4], const u16* idx, f32 (*dst)[3][4], u32 n), (a, b, idx, dst, n))
+DEF1(void, port_J3DPSMtxArrayConcat, gJ3DPSMtxArrayConcat, (const f32 (*a)[4], const f32 (*b)[4], f32 (*dst)[4], u32 n),
+     (a, b, dst, n))
+DEF1(void, port_J3DPSMulMtxVec, gJ3DPSMulMtxVec, (const f32 (*m)[4], const f32* v, f32* d), (m, v, d))
+DEF1(void, port_J3DPSMulMtxVec33, gJ3DPSMulMtxVec33, (const f32 (*m)[3], const f32* v, f32* d), (m, v, d))
+DEF1(void, port_J3DWeightEnvelopeMix, gJ3DWeightEnvelopeMix,
+     (f32 (*acc)[4], const f32 (*world)[4], const f32 (*inv)[4], f32 weight), (acc, world, inv, weight))
+DEF1(f32, port_J3DHermiteInterpolationS, gJ3DHermiteInterpolationS,
+     (f32 t, f32 time0, f32 value0, f32 tangent0, f32 time1, f32 value1, f32 tangent1),
+     (t, time0, value0, tangent0, time1, value1, tangent1))
+DEF1(f32, port_MsVECMag2, gMsVECMag2, (const f32* v), (v))
+DEF1(void, port_MsVECNormalize, gMsVECNormalize, (const f32* v1, f32* v2), (v1, v2))

@@ -20,12 +20,9 @@
  *   fadds/fsubs/fmuls/fdivs  float arithmetic, one rounding to single. This
  *                            file is built with SSE maths on x86
  *                            (CMakeLists.txt), never x87 extended precision.
- *   fmadds a,c,b             (float)((double)a * c + b): the Gekko rounds the
- *                            fused result to double and then to single (the
- *                            model Dolphin implements). The product of two
- *                            singles is exact in double, so one double
- *                            addition is that fused double result.
- *   fnmsubs / fnmadds        the same, negated (exact under round-to-nearest).
+ *   fmadds a,c,b             a * c + b rounded once, to single, as the PowerPC
+ *                            architecture defines it (src/port_fma.h).
+ *   fnmsubs / fnmadds        the same, the rounded result negated.
  *   fmadd/fmsub/fnmsub       fma(), fused in double (glibc's is exact).
  *   fctiwz                   truncation that saturates like the Gekko's.
  *   frsqrte                  port_gekko_frsqrte (src/port_fpu.h), the
@@ -40,6 +37,7 @@
 #include <string.h>
 
 #include "port_fpu.h"
+#include "port_fma.h"
 #include "msl_math.h"
 
 typedef union {
@@ -76,17 +74,28 @@ static inline double u2d(uint64_t u)
 	return d;
 }
 
-/* Gekko single-precision fused multiply-adds. MSL_MATH_SINGLE_ROUNDING (a
- * test-only switch) rounds once, to single, which is what qemu-ppc does. */
-#ifdef MSL_MATH_SINGLE_ROUNDING
-static inline float fmadds(float a, float c, float b) { return fmaf(a, c, b); }
-static inline float fnmadds(float a, float c, float b) { return -fmaf(a, c, b); }
-static inline float fnmsubs(float a, float c, float b) { return fmaf(-a, c, b); }
+/* Gekko single-precision fused multiply-adds, rounded once (src/port_fma.h):
+ * port_fmas_soft on x86 hosts, whose CPUs may lack an FMA instruction, and
+ * fmaf elsewhere (an instruction on arm64). The negated forms negate the
+ * rounded result, as the Gekko does: fnmsubs gives -0 where a * c == b. */
+#if defined(__x86_64__) || defined(__i386__)
+#define FMAS(a, c, b) port_fmas_soft(a, c, b)
 #else
-static inline float fmadds(float a, float c, float b) { return (float)((double)a * c + b); }
-static inline float fnmadds(float a, float c, float b) { return (float)-((double)a * c + b); }
-static inline float fnmsubs(float a, float c, float b) { return (float)(b - (double)a * c); }
+#define FMAS(a, c, b) fmaf(a, c, b)
 #endif
+static inline float fmadds(float a, float c, float b) { return FMAS(a, c, b); }
+static inline float fnmadds(float a, float c, float b)
+{
+	float r = FMAS(a, c, b);
+	PORT_OPAQUE(r);
+	return -r;
+}
+static inline float fnmsubs(float a, float c, float b)
+{
+	float r = FMAS(a, c, -b);
+	PORT_OPAQUE(r);
+	return -r;
+}
 
 #ifdef MSL_MATH_TEST_FRSQRTE
 double MSL_MATH_TEST_FRSQRTE(double);

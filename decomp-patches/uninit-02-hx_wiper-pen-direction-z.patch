@@ -1,0 +1,11 @@
+Reason: Hxs_PenDraw normalises a stack Vec whose z it never sets: the first segment of the logo wipe's pen stroke reads stack garbage (-2e-19 and similar in the 32-bit build, 0 in the 64-bit build), and the normalised z carries into the later segments. Set z to 0, the 2D stroke the code draws.
+--- a/src/GC2D/hx_wiper.c
++++ b/src/GC2D/hx_wiper.c
+@@ -1428,6 +1428,7 @@
+ 				Vec d;
+ 				d.x = nx - px;
+ 				d.y = ny - py;
++				d.z = 0.0f;
+ 				VECNormalize(&d, &d);
+ 				VECScale(&d, &d, 6.0f);
+ 				Hxs_Logo_TexDraw(px - d.x, py - d.y, nx + d.x, ny + d.y,

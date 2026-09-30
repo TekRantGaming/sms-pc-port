@@ -1,0 +1,52 @@
+Reason: The game builds GXLightObjs on the stack and sets only the fields its attenuation uses (TLightCommon/TLightMario::setLight and perform, TSilhouette::setting, TMapObjPlane): the direction (and, in TMapObjPlane, the attenuation) is stack garbage that GXLoadLightObjImm loads into the XF light registers. With the zero angular coefficients these lights have, the hardware result does not depend on it, but the host shader multiplies it (0 * NaN or 0 * Inf is NaN), and the garbage differs between builds (a NaN in the 32-bit build's LIGHT0 and LIGHT1). Zero-initialise the objects so the unused fields are deterministic and contribute nothing.
+--- a/src/MarioUtil/LightUtil.cpp
++++ b/src/MarioUtil/LightUtil.cpp
+@@ -105,7 +105,7 @@
+ 	SMS_DrawInit();
+ 	int lightIndex = index * 2;
+ 
+-	GXLightObj light;
++	GXLightObj light = {};
+ 	Vec pos;
+ 	MTXMultVec(gfx->getViewMtx(), getLightPosition(lightIndex), &pos);
+ 	GXInitLightPos(&light, pos.x, pos.y, pos.z);
+@@ -138,7 +138,7 @@
+ 	if (cue & CUE_DRAW_INIT) {
+ 		ReInitializeGX();
+ 		SMS_DrawInit();
+-		GXLightObj light;
++		GXLightObj light = {};
+ 		GXInitLightPos(&light, getLightPosition(0)->x, getLightPosition(0)->y,
+ 		               getLightPosition(0)->z);
+ 		GXInitLightColor(&light, getLightColor(0));
+@@ -169,7 +169,7 @@
+ 	SMS_DrawInit();
+ 	int lightIndex = index * 2;
+ 
+-	GXLightObj light;
++	GXLightObj light = {};
+ 	Vec pos;
+ 	MTXMultVec(gfx->getViewMtx(), getLightPosition(lightIndex), &pos);
+ 	GXInitLightPos(&light, pos.x, pos.y, pos.z);
+--- a/src/MarioUtil/DrawUtil.cpp
++++ b/src/MarioUtil/DrawUtil.cpp
+@@ -92,7 +92,7 @@
+ {
+ 	GXColor amb = (GXColor) { unk12.r, unk12.g, unk12.b, 0 };
+ 	GXSetChanAmbColor(GX_COLOR0A0, amb);
+-	GXLightObj GStack_54;
++	GXLightObj GStack_54 = {};
+ 	Vec local_60;
+ 	Vec local_6C = SMS_GetMarioPos();
+ 	MTXMultVec(param_1, &local_6C, &local_60);
+--- a/src/MoveBG/MapObjPlane.cpp
++++ b/src/MoveBG/MapObjPlane.cpp
+@@ -42,7 +42,7 @@
+ 	                  (GXColor) { mAmbColor, mAmbColor, mAmbColor, 0xff });
+ 	GXSetChanMatColor(GX_COLOR0A0, (GXColor) { 0xff, 0xff, 0xff, 0xff });
+ 
+-	GXLightObj light;
++	GXLightObj light = {};
+ 	JGeometry::TVec3<f32> pos(20000.0f, 20000.0f, 20000.0f);
+ 	GXInitLightPos(&light, pos.x, pos.y, pos.z);
+ 	GXInitLightColor(&light, (GXColor) { 0xff, 0xff, 0xff, 0xff });

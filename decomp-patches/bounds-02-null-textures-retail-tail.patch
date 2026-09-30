@@ -1,0 +1,38 @@
+Reason: J3DSys and gd-reinit-gx initialise a 4x4 IA8 texture (32 bytes) over a 16-byte NullTexData, so the GX reads 16 bytes past it. On the console those are the next .data in the DOL: IdentityMtx's first row (3f800000 0 0 0) after gd-reinit-gx's, the J3DAnmColorKey vtable (0 0 802e4684 802e390c) after J3DSys's. The host puts NullTexData in .bss, so the port read zero padding (or, under ASan, a redzone). Give both arrays 32 bytes with retail's tail.
+--- a/libs/JSystem/src/J3D/J3DGraphBase/J3DSys.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphBase/J3DSys.cpp
+@@ -19,7 +19,15 @@
+ extern void makeZModeTable();
+ extern void makeTevSwapTable();
+ 
+-u8 NullTexData[16] __attribute__((aligned(32))) = { 0 };
++// The 4x4 IA8 texture it initialises is 32 bytes. Retail's second 16 are
++// the start of J3DAnimation.cpp's .data, which follows it in the DOL (the
++// J3DAnmColorKey vtable, 803e1290 in marioUS.MAP).
++u8 NullTexData[32] __attribute__((aligned(32))) = {
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x80, 0x2e, 0x46, 0x84, 0x80, 0x2e, 0x39, 0x0c,
++};
+ 
+ J3DSys::J3DSys()
+ {
+--- a/src/MarioUtil/gd-reinit-gx.cpp
++++ b/src/MarioUtil/gd-reinit-gx.cpp
+@@ -2,7 +2,14 @@
+ #include <dolphin/mtx.h>
+ #include <dolphin/types.h>
+ 
+-static u8 NullTexData[16] __attribute__((aligned(0x20))) = { 0 };
++// The 4x4 IA8 texture it initialises is 32 bytes. Retail's second 16 are
++// the start of IdentityMtx, which follows it in the DOL (1.0f, 0, 0, 0).
++static u8 NullTexData[32] __attribute__((aligned(0x20))) = {
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x3f, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++};
+ static Mtx IdentityMtx                                   = {
+     1.0f, 0.0f, 0.0f, 0.0f, //
+     0.0f, 1.0f, 0.0f, 0.0f, //

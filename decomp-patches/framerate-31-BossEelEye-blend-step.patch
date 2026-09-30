@@ -1,8 +1,8 @@
 Reason: port: with frame_rate = 60 Eely-Mouth's eyes blend between animations at their 30 fps speed; the blend steps on the calc-anim pass, which comes every frame, so it finished in half the time
 --- a/src/Enemy/bosseel.cpp
 +++ b/src/Enemy/bosseel.cpp
-@@ -1209,6 +1209,18 @@ static inline TMarioParticleManager* BosseelEyeParticleManager()
- 	return manager;
+@@ -1201,6 +1201,18 @@ static inline MActor* BosseelEyeMActor(TBossEelEye* p)
+ 	return actor;
  }
  
 +#ifdef TARGET_PC
@@ -20,7 +20,7 @@ Reason: port: with frame_rate = 60 Eely-Mouth's eyes blend between animations at
  void TBossEelEye::perform(u32 cue, JDrama::TGraphics* graphics)
  {
  	if (getOwner()->mLiveFlag
-@@ -1232,7 +1244,12 @@ void TBossEelEye::perform(u32 cue, JDrama::TGraphics* graphics)
+@@ -1224,7 +1236,12 @@ void TBossEelEye::perform(u32 cue, JDrama::TGraphics* graphics)
  			MTXCopy(mtx, blendMtx);
  		}
  

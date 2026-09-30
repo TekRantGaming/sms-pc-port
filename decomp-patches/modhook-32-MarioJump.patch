@@ -74,10 +74,10 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  	if (mForwardVel < -16.0f)
  		mForwardVel += 0.4f;
  
-@@ -239,7 +292,23 @@
+@@ -242,7 +295,23 @@
  			}
  		}
- 		if (mWallPlane != nullptr) {
+ 		if (getWallPlane() != nullptr) {
 +#ifdef TARGET_PC
 +			// BetterSunshineEngine canJumpClingWall, retail 0x8024C88C (with
 +			// the words at 0x8024C888, 0x8024C890, 0x8024C894, 0x8024C898,
@@ -87,18 +87,18 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
 +			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8024C88C)) {
 +				SMS_MOD_GPR(28, this);
 +				sms_fence_ = ((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
-+				    const_cast<TBGCheckData*>(mWallPlane), mWallPlane->mBGType);
++				    const_cast<TBGCheckData*>(getWallPlane()), getWallPlane()->mBGType);
 +			} else {
-+				sms_fence_ = mWallPlane->isFence();
++				sms_fence_ = getWallPlane()->isFence();
 +			}
 +			if (sms_fence_) {
 +#else
- 			if (mWallPlane->isFence()) {
+ 			if (getWallPlane()->isFence()) {
 +#endif
- 				const JGeometry::TVec3<f32>& normal = mWallPlane->getNormal();
+ 				const JGeometry::TVec3<f32>& normal = getWallPlane()->getNormal();
  				mFaceAngle.y    = matan(normal.z, normal.x) + 0x8000;
  				mModelFaceAngle = mFaceAngle.y;
-@@ -349,6 +418,15 @@
+@@ -351,6 +420,15 @@
  		break;
  	}
  	default:
@@ -114,7 +114,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		jumpingBasic(MARIO_STATUS_JUMP_SLIP, ANIM_JUMP, 3);
  		break;
  	}
-@@ -367,6 +445,15 @@
+@@ -369,6 +447,15 @@
  	if (jumpingCommonEvents())
  		return 1;
  
@@ -130,7 +130,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  	jumpingBasic(MARIO_STATUS_SEC_JUMP_SLIP, anim, 3);
  	return 0;
  }
-@@ -378,7 +465,12 @@
+@@ -380,7 +467,12 @@
  		rumbleStart(0x15, mMotorParams.mMotorWall.get());
  	}
  
@@ -143,7 +143,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		return 1;
  
  	if (rocketCheck())
-@@ -390,7 +482,12 @@
+@@ -392,7 +484,12 @@
  
  BOOL TMario::backJumping()
  {
@@ -156,7 +156,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		return 1;
  
  	if (rocketCheck())
-@@ -417,7 +514,12 @@
+@@ -419,7 +516,12 @@
  		}
  	}
  
@@ -169,7 +169,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		return true;
  
  	if (rocketCheck())
-@@ -445,7 +547,14 @@
+@@ -447,7 +549,14 @@
  	if (jumpingCommonEvents())
  		return 1;
  
@@ -184,7 +184,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		return 1;
  
  	if (jumpingBasic(MARIO_STATUS_U_TURN_JUMP_SLIP, ANIM_TJMP1, 1) != 3) {
-@@ -457,7 +566,12 @@
+@@ -459,7 +568,12 @@
  
  BOOL TMario::jumpWall()
  {
@@ -197,7 +197,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		return 1;
  	if (considerJumpRotate())
  		return 1;
-@@ -624,8 +738,18 @@
+@@ -632,8 +746,18 @@
  		return changePlayerStatus(MARIO_STATUS_WALL_JUMP, 0, false);
  	}
  
@@ -216,7 +216,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  
  	if (mStatusTimer < 20) {
  		mStatusTimer += 1;
-@@ -1031,7 +1155,12 @@
+@@ -1039,7 +1163,12 @@
  
  BOOL TMario::rotateJumping()
  {
@@ -229,7 +229,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioJump inline patches (jumpMain
  		return 1;
  
  	if (rocketCheck())
-@@ -1110,7 +1239,22 @@
+@@ -1118,7 +1247,22 @@
  		// fallthrough
  
  	case 1:

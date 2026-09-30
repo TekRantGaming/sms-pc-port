@@ -1,7 +1,7 @@
 Reason: port: with frame_rate = 60 the talk window waits its 30 fps delay before opening; the 20-count wait and the page-erase fade step on the calc-anim pass, which comes every frame, so every talk window opened after 0.33 s instead of 0.67 s
 --- a/src/GC2D/Talk2D2.cpp
 +++ b/src/GC2D/Talk2D2.cpp
-@@ -1154,6 +1154,21 @@ static inline void Talk2D2CalcAnim(TTalk2D2* p)
+@@ -1137,6 +1137,21 @@ static inline void Talk2D2CalcAnim(TTalk2D2* p)
  	}
  }
  
@@ -22,8 +22,8 @@ Reason: port: with frame_rate = 60 the talk window waits its 30 fps delay before
 +
  // TODO: frame 0x178 vs retail 0x1c8. SMSGetMarDirector() at the director
  // sites (as in openTalkWindow) moves it to 0x190 at no instruction change;
- // Talk2D2GetMSound() at the sound sites is inert here.
-@@ -1230,6 +1245,9 @@ void TTalk2D2::perform(u32 cue, JDrama::TGraphics* graphics)
+ // SMSGetMSoundBound() at the sound sites is inert here.
+@@ -1213,6 +1228,9 @@ void TTalk2D2::perform(u32 cue, JDrama::TGraphics* graphics)
  	if (cue & CUE_CALC_ANIM) {
  		switch (gpMarDirector->unk124) {
  		case 2:

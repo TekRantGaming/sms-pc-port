@@ -1,9 +1,9 @@
 Reason: port: code mods (Super Mario Eclipse) use these by their retail data addresses (platform/mods/eclipse/rawdata.cpp): the dummy graph rail and the streamed-movie table are exported, and the enemy Mario water gauge's colour, a retail constant they overwrite, becomes a variable
 --- a/src/Enemy/enemyMario.cpp
 +++ b/src/Enemy/enemyMario.cpp
-@@ -1800,6 +1800,13 @@
- // TODO: frame 0xb8 vs 0xc8 (0xc more between the colour temporaries and
- // `identity`, 4 below them), retail puts `right` in borderLeft's f28 and adds
+@@ -1783,6 +1783,13 @@
+ // before it 0xc more between the colour temporaries and `identity`, 4 below
+ // them), retail puts `right` in borderLeft's f28 and adds
  // variable-first in bottom and left + 96. Needs a structural probe.
 +#ifdef TARGET_PC
 +// The water gauge's colour, a constant in retail's .sdata2 (0x8040FA90) that
@@ -14,8 +14,8 @@ Reason: port: code mods (Super Mario Eclipse) use these by their retail data add
 +
  void TEnemyMario::drawHPMeter(MtxPtr viewMtx)
  {
- 	JGeometry::TVec3<f32> worldPosition = mPosition;
-@@ -1843,7 +1850,11 @@
+ 	JGeometry::TVec3<f32> worldPosition = getPosition();
+@@ -1826,7 +1833,11 @@
  	GXEnd();
  
  	f32 right = left + mWaterCounter * 1.5f;

@@ -302,15 +302,18 @@ if(WIN32 OR APPLE)
   list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/trace/trace\\.cpp$")
 endif()
 add_executable(sms ${SMS_PORT_SRC}/port_main.cpp ${SMS_PLATFORM_SOURCES})
-# MSL's maths rounds every operation to single or double as the Gekko does:
-# SSE on x86 (never x87 extended precision) and no contraction, on every host.
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/platform/misc/msl_math.c PROPERTIES
-    COMPILE_OPTIONS "-msse2;-mfpmath=sse;-ffp-contract=off")
-else()
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/platform/misc/msl_math.c PROPERTIES
-    COMPILE_OPTIONS "-ffp-contract=off")
-endif()
+# MSL's maths and the MTX/VEC library round every operation to single or
+# double as the Gekko does: SSE on x86 (never x87 extended precision) and no
+# contraction (their fused multiply-adds are explicit), on every host.
+foreach(gekko_src platform/misc/msl_math.c platform/mtx/mtx.cpp)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/${gekko_src} PROPERTIES
+      COMPILE_OPTIONS "-msse2;-mfpmath=sse;-ffp-contract=off")
+  else()
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/${gekko_src} PROPERTIES
+      COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
+endforeach()
 if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
   # @rpath/SDL2.framework: beside the executable (build.sh copies it
   # there) or in SMS.app/Contents/Frameworks. No absolute path, so a copy

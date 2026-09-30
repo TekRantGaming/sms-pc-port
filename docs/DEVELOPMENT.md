@@ -36,6 +36,7 @@ How the port is put together and where changes go. To build and play, see the [R
 - The game's global `operator new/delete` (JKRHeap) are renamed in `libsms_game.a` with `objcopy --redefine-syms` (`llvm-objcopy` on macOS), so only game code allocates from JKR heaps; libstdc++ and `platform/` use the host allocator.
 - `rand()` is MSL's (RAND_MAX 32767, same LCG) via `port_compat.h`; glibc's 2^31 range overflows the game's `1.f / (RAND_MAX + 1)`.
 - The game's trigonometry is MSL's (`sinf`, `cosf`, `tanf`, `atanf`, `atan2f`, `acosf`, fdlibm's `atan2`) via `port_compat.h` and `platform/misc/msl_math.c`, which follows the DOL's matched objects instruction for instruction; `tools/mslmath/check.sh` compares it with those objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), item 10).
+- The SDK's matrix library (`PSMTX*`, `PSVEC*`, `C_MTX*`) is `platform/mtx`, which follows the DOL's paired-single and C routines instruction for instruction, with single-rounding fused multiply-adds; `tools/mtxmath/check.sh` compares it with the DOL's objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), item 11).
 
 ## Tools
 
@@ -75,7 +76,7 @@ Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
 | `platform/pad/` | Controller 1 from keyboard and SDL game controllers, bindings, scripted input, `.dtm` movie input hook. |
 | `platform/card/` | Memory card in slot A as host files. |
 | `platform/ar/` | 16 MiB ARAM, ARQ transfers (completion runs before `ARQPostRequest` returns: JAudio busy-waits on it). |
-| `platform/mtx/` | C versions of `PSMTX*`/`PSVEC*`/`C_MTX*`. |
+| `platform/mtx/` | `PSMTX*`/`PSVEC*`/`C_MTX*` as the DOL computes them (`mtx_ps.inc`). |
 | `platform/audio/` | DSP mail HLE, software mixer, AI output via SDL2; `noaudio.cpp` is the `SMS_NO_AUDIO` configuration. |
 | `platform/thp/` | THP movie decoding (the decomp's SDK decoder built for the host). |
 | `platform/endian/`, `platform/misc/endian.cpp` | Big-endian → host conversion of resources the game reads in place (dispatch from archive fetches by magic/file name). |

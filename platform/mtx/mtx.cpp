@@ -1,355 +1,220 @@
-// MTX/VEC: C implementations of the paired-single matrix library. Matrices are
-// row-major 3x4 (implicit last row 0 0 0 1) acting on column vectors, as in the
-// SDK; projection matrices follow the GX clip-space convention (z in [-w, 0]).
+// MTX/VEC: the GameCube's matrix library, computed as the console computes it.
+// Matrices are row-major 3x4 (implicit last row 0 0 0 1) acting on column
+// vectors, as in the SDK; projection matrices follow the GX clip-space
+// convention (z in [-w, 0]).
 //
-// Precision: the 32-bit x86 build compiles this file for the x87 FPU (the
-// platform layer does not take the game's -mfpmath=sse), so its sums of
-// products are evaluated in 80-bit extended precision and rounded to f32 once,
-// when stored. Its frames are the port's references. The arithmetic is spelled
-// out here in that precision (xf, long double: the x87 format on every x86
-// host) with the same evaluation order, so the 64-bit build, which would
-// otherwise round every operation to f32 in SSE, gives bit-identical matrices.
-// The few f32 roundings inside an expression (spill()) are the intermediates
-// g++ 13 spilled to f32 stack slots in the 32-bit build. sinf, cosf and tanf
-// are MSL's (platform/misc/msl_math.c), as the SDK's mtx.c and mtx44.c call
-// them on the console.
+// The DOL links the paired-single routines of the SDK's mtx.c, mtxvec.c and
+// vec.c (PSMTXConcat, PSMTXMultVec, PSVECNormalize, ...) and the C routines
+// that have no paired-single version (C_MTXLookAt, C_MTXPerspective,
+// C_MTXOrtho and the three light-projection routines). mtx_ps.inc follows
+// their machine code instruction for instruction, in single precision:
+// - every operation rounds to f32, and a fused multiply-add (ps_madd,
+//   fmadds, ...) rounds once: fmaf, the host's FMA instruction where the CPU
+//   has one (x86 needs a runtime check) and fma_soft otherwise;
+// - frsqrte and fres are the Gekko's estimates (port_fpu.h), and a
+//   single-precision multiply rounds its frC operand to 25 significant bits
+//   first, as Dolphin models the Gekko; only a frsqrte estimate is ever
+//   wider than that here (the Newton step of PSVECNormalize, PSVECMag and
+//   PSVECDistance);
+// - sinf, cosf and tanf are MSL's (platform/misc/msl_math.c).
+// It is compiled with SSE maths and no contraction on every x86 host
+// (CMakeLists.txt), so the 32- and 64-bit builds compute the same bits.
+// tools/mtxmath/check.sh checks it against the DOL's own objects.
+//
+// The C_ names of routines the DOL has only as paired-single code are not in
+// the DOL at all (the game's MTXConcat etc. are the PS ones): they forward to
+// the PS routine. PSMTXTranspose, PSVECSquareMag and C_MTXFrustum are not in
+// the DOL either, and nothing calls them.
 #include "port_compat.h"
 #include <dolphin/mtx.h>
-
-#define DEF2(name, args, ...) \
-	extern "C" void C_##name args __VA_ARGS__ extern "C" void PS##name args __VA_ARGS__
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#include "port_fpu.h"
 
 extern "C" {
 void PSMTXMultVecSR(Mtx m, Vec* src, Vec* dst);
 void C_MTXMultVecSR(Mtx m, Vec* src, Vec* dst);
 }
 
-typedef long double xf;
-
-// An f32 intermediate, rounded through memory: under g++'s default
-// -fexcess-precision=fast an x87 build could keep it in extended precision.
-static inline f32 spill(xf v)
+// a * c + b rounded once to single, without an FMA instruction. The product
+// of two floats is exact in double, so only the sum rounds twice (to double,
+// then to single), and that differs from rounding once only when the double
+// sum lands exactly halfway between two floats (or in the float subnormal
+// range, where the halfway points are coarser): then the sum is redone with
+// its exact error (TwoSum) and rounded to odd, which the conversion to float
+// then rounds correctly.
+static inline f32 fma_soft(f32 a, f32 c, f32 b)
 {
-	f32 r = (f32)v;
-	__asm__("" : "+m"(r));
-	return r;
-}
-
-static void identity(Mtx m)
-{
-	for (int i = 0; i < 3; i++)
-		for (int j = 0; j < 4; j++)
-			m[i][j] = i == j ? 1.0f : 0.0f;
-}
-static void concat(Mtx a, Mtx b, Mtx ab)
-{
-	Mtx t;
-	for (int i = 0; i < 3; i++) {
-		for (int j = 0; j < 4; j++)
-			t[i][j] = (xf)a[i][0] * b[0][j] + (xf)a[i][1] * b[1][j] + (xf)a[i][2] * b[2][j]
-			        + (j == 3 ? (xf)a[i][3] : 0.0L);
+	double p = (double)a * c, s = p + b;
+	unsigned long long u;
+	memcpy(&u, &s, 8);
+	if (__builtin_expect((u & 0x1FFFFFFFu) == 0x10000000u || __builtin_fabs(s) < 0x1p-126, 0)) {
+		double bb = s - p, e = (p - (s - bb)) + (b - bb);
+		if (e != 0.0 && e == e && !(u & 1)) {
+			u += (e > 0) == (s > 0) ? 1 : -1;
+			memcpy(&s, &u, 8);
+		}
 	}
-	memcpy(ab, t, sizeof(Mtx));
+	return (f32)s;
 }
-static u32 inverse(Mtx src, Mtx inv)
+
+// Dolphin's Force25Bit: the frC operand of a single-precision multiply,
+// rounded to 25 significant bits (half away from zero).
+static inline double force25(double d)
 {
-	f32 a = src[0][0], b = src[0][1], c = src[0][2];
-	f32 d = src[1][0], e = src[1][1], f = src[1][2];
-	f32 g = src[2][0], h = src[2][1], i = src[2][2];
-	xf ei_fh = (xf)e * i - (xf)f * h;
-	f32 di = spill((xf)d * i), fg = spill((xf)f * g), dh_eg = spill((xf)d * h - (xf)e * g);
-	xf det = ei_fh * a - ((xf)di - fg) * b + (xf)dh_eg * c;
-	if (det == 0.0L)
-		return 0;
-	xf r = 1.0L / det;
-	Mtx t;
-	t[0][0] = ei_fh * r;
-	t[0][1] = ((xf)c * h - (xf)b * i) * r;
-	t[0][2] = ((xf)b * f - (xf)c * e) * r;
-	t[1][0] = ((xf)fg - di) * r;
-	t[1][1] = ((xf)a * i - (xf)c * g) * r;
-	t[1][2] = ((xf)c * d - (xf)a * f) * r;
-	t[2][0] = (xf)dh_eg * r;
-	t[2][1] = ((xf)b * g - (xf)a * h) * r;
-	t[2][2] = ((xf)a * e - (xf)b * d) * r;
-	for (int k = 0; k < 3; k++)
-		t[k][3] = -((xf)t[k][0] * src[0][3] + (xf)t[k][1] * src[1][3] + (xf)t[k][2] * src[2][3]);
-	memcpy(inv, t, sizeof(Mtx));
-	return 1;
+	unsigned long long u;
+	memcpy(&u, &d, 8);
+	u = (u & 0xFFFFFFFFF8000000ull) + (u & 0x8000000ull);
+	memcpy(&d, &u, 8);
+	return d;
 }
-static void rottrig(Mtx m, char axis, f32 s, f32 c)
+
+// frsqrte of a single (port_gekko_frsqrte), and the estimate as the frC
+// operand of fmuls (force25). For a positive normal single this avoids the
+// general version's 64-bit integer work, which is slow in the 32-bit build:
+// the estimate's significand is 2^26 + mant (mant below 2^26), scaled by a
+// power of two that a float holds, and force25 rounds mant at its bit 1.
+static inline void gekko_frsqrte(f32 x, double* est, double* frc)
 {
-	identity(m);
-	switch (axis) {
-	case 'x':
-	case 'X':
-		m[1][1] = c;
-		m[1][2] = -s;
-		m[2][1] = s;
-		m[2][2] = c;
-		break;
-	case 'y':
-	case 'Y':
-		m[0][0] = c;
-		m[0][2] = s;
-		m[2][0] = -s;
-		m[2][2] = c;
-		break;
-	case 'z':
-	case 'Z':
-		m[0][0] = c;
-		m[0][1] = -s;
-		m[1][0] = s;
-		m[1][1] = c;
-		break;
+	u32 b;
+	memcpy(&b, &x, 4);
+	if ((b >> 23) - 1 >= 0xFE) { // zero, subnormal, negative, infinite or NaN
+		*est = port_gekko_frsqrte(x);
+		*frc = force25(*est);
+		return;
 	}
-}
-static void rotaxis(Mtx m, Vec* axis, f32 rad)
-{
-	f32 s = sms_msl_sinf(rad), c = sms_msl_cosf(rad);
-	xf t   = 1.0L - c;
-	xf len = sqrtl((xf)axis->x * axis->x + (xf)axis->y * axis->y + (xf)axis->z * axis->z);
-	xf x = axis->x / len, y = axis->y / len, z = axis->z / len;
-	xf tx = t * x, ty = t * y;
-	f32 txz = spill(tx * z);
-	m[0][0] = tx * x + c;
-	m[0][1] = tx * y - s * z;
-	m[0][2] = tx * z + s * y;
-	m[0][3] = 0;
-	m[1][0] = tx * y + s * z;
-	m[1][1] = ty * y + c;
-	m[1][2] = ty * z - s * x;
-	m[1][3] = 0;
-	m[2][0] = txz - s * y;
-	m[2][1] = ty * z + s * x;
-	m[2][2] = t * z * z + c;
-	m[2][3] = 0;
-}
-static void quat(Mtx m, Quaternion* q)
-{
-	xf n = (xf)q->x * q->x + (xf)q->y * q->y + (xf)q->z * q->z + (xf)q->w * q->w;
-	xf s = n > 0.0L ? 2.0L / n : 0.0L;
-	xf xs = q->x * s, ys = q->y * s, zs = q->z * s;
-	f32 wx = spill(q->w * xs), wy = spill(q->w * ys), xz = spill(q->x * zs);
-	xf wz = q->w * zs;
-	xf xx = q->x * xs, xy = q->x * ys;
-	xf yy = q->y * ys, yz = q->y * zs, zz = q->z * zs;
-	m[0][0] = 1.0L - (yy + zz);
-	m[0][1] = xy - wz;
-	m[0][2] = (xf)xz + wy;
-	m[0][3] = 0;
-	m[1][0] = xy + wz;
-	m[1][1] = 1.0L - (xx + zz);
-	m[1][2] = yz - wx;
-	m[1][3] = 0;
-	m[2][0] = (xf)xz - wy;
-	m[2][1] = yz + wx;
-	m[2][2] = 1.0L - (xx + yy);
-	m[2][3] = 0;
+	int e    = (int)(b >> 23) - 127, q = e >> 1; // q = floor(e / 2)
+	u32 i    = (b >> 8) & 0x7FFF;                // the top 15 mantissa bits
+	u32 seg  = (u32)(e & 1) * 16 + (i >> 11);
+	u32 mant = port_frsqrte_tab[seg][0] - port_frsqrte_tab[seg][1] * (i & 2047);
+	u32 pb   = (u32)(127 - 27 - q) << 23; // 2^(-27 - q): the estimate is 2^(-1 - q) * (1 + mant / 2^26)
+	f32 p;
+	memcpy(&p, &pb, 4);
+	*est = (double)(int)(0x4000000 + mant) * p;
+	*frc = (double)(int)(0x4000000 + (mant & ~1u) + (mant & 2u)) * p;
 }
 
-DEF2(MTXIdentity, (Mtx m), { identity(m); })
-DEF2(MTXCopy, (Mtx s, Mtx d), { if (s != d) memcpy(d, s, sizeof(Mtx)); })
-DEF2(MTXConcat, (Mtx a, Mtx b, Mtx ab), { concat(a, b, ab); })
-extern "C" u32 C_MTXInverse(Mtx s, Mtx i) { return inverse(s, i); }
-extern "C" u32 PSMTXInverse(Mtx s, Mtx i) { return inverse(s, i); }
-DEF2(MTXTranspose, (Mtx s, Mtx x), {
-	Mtx t;
-	for (int i = 0; i < 3; i++)
-		for (int j = 0; j < 3; j++)
-			t[i][j] = s[j][i];
-	t[0][3] = t[1][3] = t[2][3] = 0;
-	memcpy(x, t, sizeof(Mtx));
-})
-DEF2(MTXRotRad, (Mtx m, char axis, f32 rad), { rottrig(m, axis, sms_msl_sinf(rad), sms_msl_cosf(rad)); })
-DEF2(MTXRotTrig, (Mtx m, char axis, f32 s, f32 c), { rottrig(m, axis, s, c); })
-DEF2(MTXRotAxisRad, (Mtx m, Vec* axis, f32 rad), { rotaxis(m, axis, rad); })
-DEF2(MTXQuat, (Mtx m, Quaternion* q), { quat(m, q); })
-DEF2(MTXTrans, (Mtx m, f32 x, f32 y, f32 z), {
-	identity(m);
-	m[0][3] = x;
-	m[1][3] = y;
-	m[2][3] = z;
-})
-DEF2(MTXTransApply, (Mtx s, Mtx d, f32 x, f32 y, f32 z), {
-	if (s != d)
-		memcpy(d, s, sizeof(Mtx));
-	d[0][3] += x;
-	d[1][3] += y;
-	d[2][3] += z;
-})
-DEF2(MTXScale, (Mtx m, f32 x, f32 y, f32 z), {
-	identity(m);
-	m[0][0] = x;
-	m[1][1] = y;
-	m[2][2] = z;
-})
-DEF2(MTXScaleApply, (Mtx s, Mtx d, f32 x, f32 y, f32 z), {
-	f32 k[3] = { x, y, z };
-	for (int i = 0; i < 3; i++)
-		for (int j = 0; j < 4; j++)
-			d[i][j] = s[i][j] * k[i];
-})
-static void multvec(f32 (*m)[4], Vec* s, Vec* d)
-{
-	Vec t;
-	t.x = (xf)m[0][0] * s->x + (xf)m[0][1] * s->y + (xf)m[0][2] * s->z + m[0][3];
-	t.y = (xf)m[1][0] * s->x + (xf)m[1][1] * s->y + (xf)m[1][2] * s->z + m[1][3];
-	t.z = (xf)m[2][0] * s->x + (xf)m[2][1] * s->y + (xf)m[2][2] * s->z + m[2][3];
-	*d  = t;
-}
-static void multvecsr(f32 (*m)[4], Vec* s, Vec* d)
-{
-	Vec t;
-	t.x = (xf)m[0][0] * s->x + (xf)m[0][1] * s->y + (xf)m[0][2] * s->z;
-	t.y = (xf)m[1][0] * s->x + (xf)m[1][1] * s->y + (xf)m[1][2] * s->z;
-	t.z = (xf)m[2][0] * s->x + (xf)m[2][1] * s->y + (xf)m[2][2] * s->z;
-	*d  = t;
-}
-extern "C" void C_MTXMultVec(Mtx44 m, Vec* s, Vec* d) { multvec(m, s, d); }
-extern "C" void PSMTXMultVec(Mtx44 m, Vec* s, Vec* d) { multvec(m, s, d); }
-extern "C" void C_MTXMultVecSR(Mtx m, Vec* s, Vec* d) { multvecsr(m, s, d); }
-extern "C" void PSMTXMultVecSR(Mtx m, Vec* s, Vec* d) { multvecsr(m, s, d); }
-DEF2(MTXMultVecArray, (Mtx m, Vec* s, Vec* d, u32 n), {
-	for (u32 i = 0; i < n; i++)
-		multvec(m, &s[i], &d[i]);
-})
+// Hides a value from the optimiser (see NFMA in mtx_ps.inc).
+#if defined(__x86_64__) || defined(__i386__)
+#define OPAQUE(x) __asm__("" : "+x"(x))
+#elif defined(__aarch64__)
+#define OPAQUE(x) __asm__("" : "+w"(x))
+#else
+#define OPAQUE(x) __asm__("" : "+m"(x))
+#endif
 
-// --- VEC ---
-DEF2(VECAdd, (Vec* a, Vec* b, Vec* c), {
-	c->x = a->x + b->x;
-	c->y = a->y + b->y;
-	c->z = a->z + b->z;
-})
-DEF2(VECSubtract, (Vec* a, Vec* b, Vec* c), {
-	c->x = a->x - b->x;
-	c->y = a->y - b->y;
-	c->z = a->z - b->z;
-})
-DEF2(VECScale, (Vec* s, Vec* d, f32 k), {
-	d->x = s->x * k;
-	d->y = s->y * k;
-	d->z = s->z * k;
-})
-static xf squaremag(Vec* v) { return (xf)v->x * v->x + (xf)v->y * v->y + (xf)v->z * v->z; }
-DEF2(VECNormalize, (Vec* s, Vec* d), {
-	xf r = 1.0L / sqrtl(squaremag(s));
-	d->x = s->x * r;
-	d->y = s->y * r;
-	d->z = s->z * r;
-})
-extern "C" f32 C_VECSquareMag(Vec* v) { return squaremag(v); }
-extern "C" f32 PSVECSquareMag(Vec* v) { return C_VECSquareMag(v); }
-extern "C" f32 C_VECMag(Vec* v) { return sqrtl(squaremag(v)); }
-extern "C" f32 PSVECMag(Vec* v) { return C_VECMag(v); }
-static xf dot(Vec* a, Vec* b) { return (xf)a->x * b->x + (xf)a->y * b->y + (xf)a->z * b->z; }
-extern "C" f32 C_VECDotProduct(Vec* a, Vec* b) { return dot(a, b); }
-extern "C" f32 PSVECDotProduct(Vec* a, Vec* b) { return C_VECDotProduct(a, b); }
-DEF2(VECCrossProduct, (Vec* a, Vec* b, Vec* c), {
-	Vec t;
-	t.x = (xf)a->y * b->z - (xf)a->z * b->y;
-	t.y = (xf)a->z * b->x - (xf)a->x * b->z;
-	t.z = (xf)a->x * b->y - (xf)a->y * b->x;
-	*c  = t;
-})
-static xf squaredistance(Vec* a, Vec* b)
-{
-	xf x = (xf)a->x - b->x, y = (xf)a->y - b->y, z = (xf)a->z - b->z;
-	return x * x + y * y + z * z;
-}
-extern "C" f32 C_VECSquareDistance(Vec* a, Vec* b) { return squaredistance(a, b); }
-extern "C" f32 PSVECSquareDistance(Vec* a, Vec* b) { return C_VECSquareDistance(a, b); }
-extern "C" f32 C_VECDistance(Vec* a, Vec* b) { return sqrtl(squaredistance(a, b)); }
-extern "C" f32 PSVECDistance(Vec* a, Vec* b) { return C_VECDistance(a, b); }
+#ifdef MTX_TEST_QEMU
+// tools/mtxmath: qemu-ppc's arithmetic, to compare with the DOL's objects run
+// there: frsqrte is 1/sqrt in double, fres 1/x in single (but +-0.5 for +-0),
+// and fmuls rounds the exact product of its operands once.
+static inline f32 qemu_fres(f32 x) { return x == 0.0f ? copysignf(0.5f, x) : 1.0f / x; }
+#define FRSQRTE(x, e, c) (e = c = 1.0 / sqrt((double)(x)))
+#define FRES(x)          qemu_fres(x)
+#define MULS_EST(a, c)   ((f32)((__float128)(a) * (c)))
+#else
+#define FRSQRTE(x, e, c) gekko_frsqrte(x, &e, &c)
+#define FRES(x)          port_gekko_fres((double)(x))
+#define MULS_EST(a, c)   ((f32)((a) * (c))) // 27 by 25 bits: exact in double
+#endif
 
-// --- Viewing and projection ---
-extern "C" void C_MTXLookAt(Mtx m, Point3dPtr camPos, VecPtr camUp, Point3dPtr target)
-{
-	// look = normalize(camPos - target), right = normalize(camUp x look),
-	// up = look x right
-	xf lx = (xf)camPos->x - target->x, ly = (xf)camPos->y - target->y, lz = (xf)camPos->z - target->z;
-	xf r = 1.0L / sqrtl(lx * lx + ly * ly + lz * lz);
-	lx *= r;
-	ly *= r;
-	lz *= r;
-	xf rx = camUp->y * lz - camUp->z * ly, ry = camUp->z * lx - camUp->x * lz, rz = camUp->x * ly - camUp->y * lx;
-	r = 1.0L / sqrtl(rx * rx + ry * ry + rz * rz);
-	rx *= r;
-	ry *= r;
-	rz *= r;
-	f32 ux = spill(ly * rz - lz * ry), lxry = spill(lx * ry);
-	xf uy = lz * rx - lx * rz, uz = lxry - ly * rx;
-	m[0][0] = rx;
-	m[0][1] = ry;
-	m[0][2] = rz;
-	m[0][3] = -(rx * camPos->x + ry * camPos->y + rz * camPos->z);
-	m[1][0] = ux;
-	m[1][1] = uy;
-	m[1][2] = uz;
-	m[1][3] = -((xf)ux * camPos->x + uy * camPos->y + uz * camPos->z);
-	m[2][0] = lx;
-	m[2][1] = ly;
-	m[2][2] = lz;
-	m[2][3] = -(lx * camPos->x + ly * camPos->y + lz * camPos->z);
+#if (defined(__x86_64__) || defined(__i386__)) && !defined(MTX_TEST_QEMU)
+namespace mtx_soft {
+#define FMA(a, c, b) fma_soft(a, c, b)
+#include "mtx_ps.inc"
+#undef FMA
+} // namespace mtx_soft
+#if defined(__clang__)
+#pragma clang attribute push(__attribute__((target("fma"))), apply_to = function)
+#else
+#pragma GCC push_options
+#pragma GCC target("fma")
+#endif
+namespace mtx_fma {
+#define FMA(a, c, b) __builtin_fmaf(a, c, b)
+#include "mtx_ps.inc"
+#undef FMA
+} // namespace mtx_fma
+#if defined(__clang__)
+#pragma clang attribute pop
+#else
+#pragma GCC pop_options
+#endif
+
+// 1 when the CPU has FMA (and the OS saves the AVX state), else 0; tests and
+// SMS_MTX_SOFT_FMA=1 can force the software path.
+extern "C" {
+int sms_mtx_hw_fma = -1;
 }
-extern "C" void C_MTXPerspective(Mtx44 m, f32 fovY, f32 aspect, f32 n, f32 f)
+static int mtx_init_fma()
 {
-	xf cot = 1.0L / sms_msl_tanf(fovY * 0.5f * (3.14159265358979323846f / 180.0f));
-	memset(m, 0, sizeof(Mtx44));
-	xf r    = 1.0L / ((xf)f - n);
-	m[0][0] = cot / aspect;
-	m[1][1] = cot;
-	m[2][2] = -n * r;
-	m[2][3] = -((xf)f * n) * r;
-	m[3][2] = -1.0f;
+	const char* e = getenv("SMS_MTX_SOFT_FMA");
+	__builtin_cpu_init();
+	sms_mtx_hw_fma = (e && *e == '1') ? 0 : __builtin_cpu_supports("fma") ? 1 : 0;
+	return sms_mtx_hw_fma;
 }
-extern "C" void C_MTXFrustum(Mtx44 m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 f)
+static inline bool mtx_have_fma()
 {
-	memset(m, 0, sizeof(Mtx44));
-	m[0][0] = 2 * (xf)n / ((xf)r - l);
-	m[0][2] = ((xf)r + l) / ((xf)r - l);
-	m[1][1] = 2 * (xf)n / ((xf)t - b);
-	m[1][2] = ((xf)t + b) / ((xf)t - b);
-	m[2][2] = -(xf)n / ((xf)f - n);
-	m[2][3] = -((xf)f * n) / ((xf)f - n);
-	m[3][2] = -1.0f;
+	int v = sms_mtx_hw_fma;
+	return __builtin_expect(v >= 0, 1) ? v : mtx_init_fma();
 }
-extern "C" void C_MTXOrtho(Mtx44 m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 f)
-{
-	memset(m, 0, sizeof(Mtx44));
-	m[0][0] = 2.0L / ((xf)r - l);
-	m[0][3] = -((xf)r + l) / ((xf)r - l);
-	m[1][1] = 2.0L / ((xf)t - b);
-	m[1][3] = -((xf)t + b) / ((xf)t - b);
-	m[2][2] = -1.0L / ((xf)f - n);
-	m[2][3] = -(xf)f / ((xf)f - n);
-	m[3][3] = 1.0f;
-}
-extern "C" void C_MTXLightPerspective(Mtx m, f32 fovY, f32 aspect, f32 sS, f32 sT, f32 tS, f32 tT)
-{
-	xf cot = 1.0L / sms_msl_tanf(fovY * 0.5f * (3.14159265358979323846f / 180.0f));
-	memset(m, 0, sizeof(Mtx));
-	m[0][0] = cot / aspect * sS;
-	m[0][2] = -tS;
-	m[1][1] = cot * sT;
-	m[1][2] = -tT;
-	m[2][2] = -1.0f;
-}
-extern "C" void C_MTXLightFrustum(Mtx m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 sS, f32 sT, f32 tS, f32 tT)
-{
-	memset(m, 0, sizeof(Mtx));
-	m[0][0] = 2 * (xf)n / ((xf)r - l) * sS;
-	m[0][2] = ((xf)r + l) / ((xf)r - l) * sS - tS;
-	m[1][1] = 2 * (xf)n / ((xf)t - b) * sT;
-	m[1][2] = ((xf)t + b) / ((xf)t - b) * sT - tT;
-	m[2][2] = -1.0f;
-}
-extern "C" void C_MTXLightOrtho(Mtx m, f32 t, f32 b, f32 l, f32 r, f32 sS, f32 sT, f32 tS, f32 tT)
-{
-	memset(m, 0, sizeof(Mtx));
-	m[0][0] = 2.0L / ((xf)r - l) * sS;
-	m[0][3] = -((xf)r + l) / ((xf)r - l) * sS + tS;
-	m[1][1] = 2.0L / ((xf)t - b) * sT;
-	m[1][3] = -((xf)t + b) / ((xf)t - b) * sT + tT;
-	m[2][3] = 1.0f;
-}
+#define CALL(fn, args) (mtx_have_fma() ? mtx_fma::fn args : mtx_soft::fn args)
+#else
+// Other hosts (on arm64 fmaf is an instruction), and the qemu test build.
+namespace mtx_host {
+#define FMA(a, c, b) fmaf(a, c, b)
+#include "mtx_ps.inc"
+#undef FMA
+} // namespace mtx_host
+#define CALL(fn, args) (mtx_host::fn args)
+#endif
+
+#define DEF(ret, ps, c, fn, params, args)                        \
+	extern "C" ret ps params { return (ret)CALL(fn, args); }      \
+	extern "C" ret c params { return (ret)CALL(fn, args); }
+#define DEF1(ret, name, fn, params, args) \
+	extern "C" ret name params { return (ret)CALL(fn, args); }
+
+// --- mtx.c ---
+DEF(void, PSMTXIdentity, C_MTXIdentity, gMTXIdentity, (Mtx m), (m))
+DEF(void, PSMTXCopy, C_MTXCopy, gMTXCopy, (Mtx s, Mtx d), (s, d))
+DEF(void, PSMTXConcat, C_MTXConcat, gMTXConcat, (Mtx a, Mtx b, Mtx ab), (a, b, ab))
+DEF(u32, PSMTXInverse, C_MTXInverse, gMTXInverse, (Mtx s, Mtx i), (s, i))
+DEF(void, PSMTXTranspose, C_MTXTranspose, gMTXTranspose, (Mtx s, Mtx x), (s, x))
+DEF(void, PSMTXRotRad, C_MTXRotRad, gMTXRotRad, (Mtx m, char axis, f32 rad), (m, axis, rad))
+DEF(void, PSMTXRotTrig, C_MTXRotTrig, gMTXRotTrig, (Mtx m, char axis, f32 s, f32 c), (m, axis, s, c))
+DEF(void, PSMTXRotAxisRad, C_MTXRotAxisRad, gMTXRotAxisRad, (Mtx m, Vec* axis, f32 rad), (m, axis, rad))
+DEF(void, PSMTXQuat, C_MTXQuat, gMTXQuat, (Mtx m, Quaternion* q), (m, q))
+DEF(void, PSMTXTrans, C_MTXTrans, gMTXTrans, (Mtx m, f32 x, f32 y, f32 z), (m, x, y, z))
+DEF(void, PSMTXTransApply, C_MTXTransApply, gMTXTransApply, (Mtx s, Mtx d, f32 x, f32 y, f32 z), (s, d, x, y, z))
+DEF(void, PSMTXScale, C_MTXScale, gMTXScale, (Mtx m, f32 x, f32 y, f32 z), (m, x, y, z))
+DEF(void, PSMTXScaleApply, C_MTXScaleApply, gMTXScaleApply, (Mtx s, Mtx d, f32 x, f32 y, f32 z), (s, d, x, y, z))
+DEF1(void, C_MTXLookAt, gMTXLookAt, (Mtx m, Point3dPtr camPos, VecPtr camUp, Point3dPtr target), (m, camPos, camUp, target))
+DEF1(void, C_MTXLightFrustum, gMTXLightFrustum,
+     (Mtx m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 sS, f32 sT, f32 tS, f32 tT), (m, t, b, l, r, n, sS, sT, tS, tT))
+DEF1(void, C_MTXLightPerspective, gMTXLightPerspective, (Mtx m, f32 fovY, f32 aspect, f32 sS, f32 sT, f32 tS, f32 tT),
+     (m, fovY, aspect, sS, sT, tS, tT))
+DEF1(void, C_MTXLightOrtho, gMTXLightOrtho, (Mtx m, f32 t, f32 b, f32 l, f32 r, f32 sS, f32 sT, f32 tS, f32 tT),
+     (m, t, b, l, r, sS, sT, tS, tT))
+
+// --- mtx44.c ---
+DEF1(void, C_MTXPerspective, gMTXPerspective, (Mtx44 m, f32 fovY, f32 aspect, f32 n, f32 f), (m, fovY, aspect, n, f))
+DEF1(void, C_MTXFrustum, gMTXFrustum, (Mtx44 m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 f), (m, t, b, l, r, n, f))
+DEF1(void, C_MTXOrtho, gMTXOrtho, (Mtx44 m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 f), (m, t, b, l, r, n, f))
+
+// --- mtxvec.c ---
+DEF(void, PSMTXMultVec, C_MTXMultVec, gMTXMultVec, (Mtx44 m, Vec* s, Vec* d), (m, s, d))
+DEF(void, PSMTXMultVecSR, C_MTXMultVecSR, gMTXMultVecSR, (Mtx m, Vec* s, Vec* d), (m, s, d))
+DEF(void, PSMTXMultVecArray, C_MTXMultVecArray, gMTXMultVecArray, (Mtx m, Vec* s, Vec* d, u32 n), (m, s, d, n))
+
+// --- vec.c ---
+DEF(void, PSVECAdd, C_VECAdd, gVECAdd, (Vec* a, Vec* b, Vec* c), (a, b, c))
+DEF(void, PSVECSubtract, C_VECSubtract, gVECSubtract, (Vec* a, Vec* b, Vec* c), (a, b, c))
+DEF(void, PSVECScale, C_VECScale, gVECScale, (Vec* s, Vec* d, f32 k), (s, d, k))
+DEF(void, PSVECNormalize, C_VECNormalize, gVECNormalize, (Vec* s, Vec* d), (s, d))
+DEF(f32, PSVECSquareMag, C_VECSquareMag, gVECSquareMag, (Vec* v), (v))
+DEF(f32, PSVECMag, C_VECMag, gVECMag, (Vec* v), (v))
+DEF(f32, PSVECDotProduct, C_VECDotProduct, gVECDotProduct, (Vec* a, Vec* b), (a, b))
+DEF(void, PSVECCrossProduct, C_VECCrossProduct, gVECCrossProduct, (Vec* a, Vec* b, Vec* c), (a, b, c))
+DEF(f32, PSVECSquareDistance, C_VECSquareDistance, gVECSquareDistance, (Vec* a, Vec* b), (a, b))
+DEF(f32, PSVECDistance, C_VECDistance, gVECDistance, (Vec* a, Vec* b), (a, b))

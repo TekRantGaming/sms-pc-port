@@ -187,8 +187,9 @@ def trampoline(sym, ret, full, typed=False):
         obj = "((%s%s*)self)" % ("const " if is_const else "", qual)
         call = "%s->%s::%s(%s)" % (obj, qual, name, ", ".join(args))
     elif qual == "std":
-        # MSL's float math: the compiler's own
-        call = "__builtin_%s(%s)" % (name, ", ".join(args))
+        # MSL's float math: port_compat.h routes std::fmodf and the rest to
+        # the console's (platform/misc/msl_math.c)
+        call = "std::%s(%s)" % (name, ", ".join(args))
     else:
         call = "%s%s(%s)" % (qual + "::" if qual else "", name, ", ".join(args))
     if typed:

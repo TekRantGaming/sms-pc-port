@@ -1,4 +1,4 @@
-/* The GameCube's MSL trigonometry, compiled for the host
+/* The GameCube's MSL maths, compiled for the host
  * (platform/misc/msl_math.c). port_compat.h routes the game's calls here;
  * platform code that stands in for SDK code calling MSL (platform/mtx) calls
  * these directly. */
@@ -14,6 +14,10 @@ float sms_msl_tanf(float x);            /* trigf.c */
 float sms_msl_atanf(float x);           /* inverse_trig.c */
 float sms_msl_atan2f(float y, float x); /* inverse_trig.c */
 float sms_msl_acosf(float x);           /* inverse_trig.c */
+float sms_msl_expf(float x);            /* exponentialsf.c */
+float sms_msl_powf(float x, float y);   /* exponentialsf.c */
+float sms_msl_fmodf(float x, float y);  /* MSL's inline std::fmodf */
+float sms_msl_sqrtf(float x);           /* MSL's inline std::sqrtf */
 double sms_msl_atan(double x);          /* s_atan.c (fdlibm) */
 double sms_msl_atan2(double y, double x); /* w_atan2.c, e_atan2.c (fdlibm) */
 #ifdef __cplusplus

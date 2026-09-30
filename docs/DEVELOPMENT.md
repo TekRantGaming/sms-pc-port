@@ -35,7 +35,7 @@ How the port is put together and where changes go. To build and play, see the [R
   String literals are Shift-JIS, as in the MWCC build (archive object names are matched against them); clang has no CP932 execution charset, so on macOS the sources are mirrored as CP932 first (`tools/darwin_cp932_mirror.py`).
 - The game's global `operator new/delete` (JKRHeap) are renamed in `libsms_game.a` with `objcopy --redefine-syms` (`llvm-objcopy` on macOS), so only game code allocates from JKR heaps; libstdc++ and `platform/` use the host allocator.
 - `rand()` is MSL's (RAND_MAX 32767, same LCG) via `port_compat.h`; glibc's 2^31 range overflows the game's `1.f / (RAND_MAX + 1)`.
-- The game's trigonometry is MSL's (`sinf`, `cosf`, `tanf`, `atanf`, `atan2f`, `acosf`, fdlibm's `atan2`) via `port_compat.h` and `platform/misc/msl_math.c`, which follows the DOL's matched objects instruction for instruction; `tools/mslmath/check.sh` compares it with those objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), item 10).
+- The game's MSL maths is the console's (`sinf`, `cosf`, `tanf`, `atanf`, `atan2f`, `acosf`, `expf`, `powf`, fdlibm's `atan2`, and the header inlines `std::fmodf` and `sqrtf`) via `port_compat.h` and `platform/misc/msl_math.c`, which follows the DOL's matched objects instruction for instruction; `tools/mslmath/check.sh` compares it with those objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), items 10 and 15).
 - The SDK's matrix library (`PSMTX*`, `PSVEC*`, `C_MTX*`) is `platform/mtx`, which follows the DOL's paired-single and C routines instruction for instruction, with single-rounding fused multiply-adds; `tools/mtxmath/check.sh` compares it with the DOL's objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), item 11).
 
 ## Tools
@@ -170,11 +170,12 @@ Audited 2026-09-30 from the DOL's disassembly (the decomp's `build/GMSE01/asm`),
 - **Handled.**
   `port_fpu.h` has the runtime's two conversions (`port_cvt_fp2unsigned`, `port_cvt_dbl_usll`; checked against a model of the runtime's instructions on 20,000,000 inputs in each word size), and `port_compat.h` has `port_cvt_fp<T>` for a template (the runtime's conversion for a 32-bit unsigned `T`, a cast otherwise).
   `fpu-02..03` route the first 3 source lines through it, `fpu-04` the other 37 and `TUtil<f32>::mod`, `framerate-35` the wipe fade it rewrites, and `platform/gx` its four SDK sites.
+  `std::fmodf` and `TUtil<f32>::mod` now go through `sms_msl_fmodf` (`msl_math.c`, `fpu-05`), which makes both runtime calls as the DOL does.
   The port's own `u32` conversion of a frame rate (`framerate-18`) uses it as well.
   In range the result is the host's own truncation, so nothing changes there.
 - **Left.**
-  `std::fmodf` is the host's exact `fmodf` in the port (`port_compat.h`), where the console's is MSL's inline `x - y * (float)(s64)(x / y)` with a fused `fnmsubs`, so the port makes no conversion there, and its results differ from the console's when `x / y` rounds up to the next integer or the quotient is large (callers: `Koopa.cpp`, `koopajr.cpp`, `wireTrap.cpp` and `MapObjCorona.cpp`, none of them in the scripted runs).
-  `TUtil<f32>::mod` (`Koopa.cpp`, `koopajr.cpp`, `BathtubPeach.cpp`) keeps the same subtraction unfused, as the rest of the game's C code (see [64-BIT.md](64-BIT.md), item 12).
+  When this audit was made, `std::fmodf` was the host's exact `fmodf` and `TUtil<f32>::mod` kept its subtraction unfused; both are the console's since [64-BIT.md](64-BIT.md), item 15.
+  `GCConsole2`'s one `__cvt_sll_flt` (a signed 64-bit integer to float, rounded to double first) is the host's single rounding; the two differ only past 2^53.
   The `fctiwz` paths (`u8`, `u16`, signed types) match the console except from 2^31 up and +inf, where the console gives 0x7FFFFFFF and x86 0x80000000 (so `u8` 0xFF against 0); the port does not change them.
 - **Result.**
   The scripted title and plaza frames are unchanged against `6fc6838` and byte-identical between 32 and 64-bit (the previous audit's UBSan run saw an out-of-range value at none of the `fpu-04` sites on these runs), and the 60 fps plaza gate run still captures Mario after 100 frames with the same `setNextStage` in both builds.

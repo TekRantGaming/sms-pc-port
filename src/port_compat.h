@@ -149,15 +149,19 @@ using std::fmod;
 using std::pow;
 #endif
 
-/* MSL's trigonometry. The game calls the maths library in its DOL, whose
- * results differ from every host libm (and i386 glibc differs from x86-64
- * glibc), so its calls go to the same code compiled for the host
+/* MSL's maths. The game calls the maths library in its DOL, whose results
+ * differ from every host libm (and i386 glibc differs from x86-64 glibc), so
+ * its calls go to the same code compiled for the host
  * (platform/misc/msl_math.c), with MSL's overloads:
  *   sinf cosf tanf atanf atan2f acosf  MSL's float functions (C and C++)
+ *   expf powf
  *   atan2(double, double)             fdlibm's atan2
  *   C++ sin(float) cos(float)         MSL's float overloads: sinf, cosf and
  *       atan2(float, float)           atan2f
  *   C++ std::atan2f                   MSL's is ::atan2((double)y, (double)x)
+ *   sqrtf, std::sqrtf, std::fmodf     MSL's header inlines (the console's
+ *                                     sqrtf returns x for x <= 0 and NaN,
+ *                                     and a NaN for +inf)
  * They are function-like macros, so the game's variables named sin or tan
  * keep their names; <math.h> and <cmath> are already included above. */
 #include "msl_math.h"
@@ -171,6 +175,7 @@ namespace std {
 using ::sms_msl_sinf; using ::sms_msl_cosf; using ::sms_msl_tanf; using ::sms_msl_atanf;
 using ::sms_msl_acosf; using ::sms_msl_sin; using ::sms_msl_cos; using ::sms_msl_atan2;
 inline float sms_msl_atan2f(float y, float x) { return (float)::sms_msl_atan2((double)y, (double)x); }
+using ::sms_msl_expf; using ::sms_msl_powf; using ::sms_msl_fmodf; using ::sms_msl_sqrtf;
 }
 #define sin(x) sms_msl_sin(x)
 #define cos(x) sms_msl_cos(x)
@@ -182,6 +187,10 @@ inline float sms_msl_atan2f(float y, float x) { return (float)::sms_msl_atan2((d
 #define atan2f(y, x) sms_msl_atan2f(y, x)
 #define acosf(x) sms_msl_acosf(x)
 #define atan2(y, x) sms_msl_atan2(y, x)
+#define expf(x) sms_msl_expf(x)
+#define powf(x, y) sms_msl_powf(x, y)
+#define fmodf(x, y) sms_msl_fmodf(x, y)
+#define sqrtf(x) sms_msl_sqrtf(x)
 
 /* Heaps the game sizes with fixed GameCube constants (decomp-patches/ptr64-*):
  * with 8-byte pointers objects are up to twice as large, so 64-bit hosts

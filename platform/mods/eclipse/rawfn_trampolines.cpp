@@ -250,7 +250,7 @@ extern "C" intptr_t sms_rawfn_fill_rect__9()
 
 extern "C" float sms_rawfn_fmodf__3stdFff(double p0, double p1)
 {
-	return (float)(__builtin_fmodf((float)p0, (float)p1));
+	return (float)(std::fmodf((float)p0, (float)p1));
 }
 
 extern "C" intptr_t sms_rawfn_generate__16TEffectExplosionFRQ29JGeometry8TVec3_f(void* self, JGeometry::TVec3<float>* p0, JGeometry::TVec3<float>* p1)

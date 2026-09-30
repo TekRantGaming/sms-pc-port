@@ -60,3 +60,4 @@ inbuf:	.space 24
 outbuf:	.space 8
 table:
 	.4byte sinf, cosf, tanf, atanf, atan2f, acosf, atan, atan2, _inv_sqrtf
+	.4byte expf, powf, dol_fmodf, dol_sqrtf, dol_sqrtf, dol_tutil_mod

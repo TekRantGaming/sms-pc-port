@@ -1,11 +1,16 @@
 /* Host side of tools/mslmath/check.sh.
- *   harness gen N SEED [LAST]  writes N random test records for each function
- *                       0 to LAST (default 7) to stdout
+ *   harness gen N SEED FNS  writes N random test records for each function in
+ *                       FNS (a comma-separated list of numbers) to stdout
  *   harness run         reads records from stdin and writes each result
+ *   harness sqrt        compares MSL's sqrtf sequence with sms_msl_sqrtf on
+ *                       all 2^32 bit patterns (-DMSL_MATH_TEST_HOOKS only)
  * A record is big-endian: u32 function, u32 0, f64 a, f64 b; a result is a
  * big-endian f64 (a float result widened, as the Gekko holds it in a register).
  * Functions: 0 sinf 1 cosf 2 tanf 3 atanf 4 atan2f(a, b) 5 acosf 6 atan
- * 7 atan2(a, b) 8 _inv_sqrtf (with -DMSL_MATH_TEST_HOOKS only). */
+ * 7 atan2(a, b) 8 _inv_sqrtf 9 expf 10 powf(a, b) 11 std::fmodf(a, b)
+ * 12 std::sqrtf 13 std::sqrtf's instruction sequence
+ * 14 JGeometry::TUtil<f32>::mod(a, b) (sms_msl_fmodf here); 8 and 13 need
+ * -DMSL_MATH_TEST_HOOKS. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +27,7 @@ static uint64_t rnd(void)
 	return s;
 }
 static float fbits(uint32_t u) { float f; memcpy(&f, &u, 4); return f; }
+static uint32_t fb(float f) { uint32_t u; memcpy(&u, &f, 4); return u; }
 static double dbits(uint64_t u) { double d; memcpy(&d, &u, 8); return d; }
 static double uni(double lo, double hi) { return lo + (hi - lo) * (double)(rnd() >> 11) * (1.0 / 9007199254740992.0); }
 
@@ -45,6 +51,90 @@ static float farg(int fn)
 		u += (uint32_t)(rnd() % 64) - 32;
 		v = fbits(u);
 		return (rnd() & 1) ? -v : v;
+	}
+	}
+}
+/* expf: the whole range and past both ends, the audio code's small values */
+static float earg(void)
+{
+	switch (rnd() % 5) {
+	case 0: return fbits((uint32_t)rnd());
+	case 1: return (float)uni(-100, 100);
+	case 2: return (float)uni(-4, 4);
+	case 3: {
+		float v = (rnd() & 1) ? 88.72284f : -87.33655f;
+		uint32_t u;
+		memcpy(&u, &v, 4);
+		return fbits(u + (uint32_t)(rnd() % 64) - 32);
+	}
+	default: return (float)(uni(-1, 1) * ldexp(1.0, (int)(rnd() % 40) - 30));
+	}
+}
+/* powf: bases of any sign and size with integer, fractional and odd exponents
+ * (the game squares distances with powf(d, 2.0f), raises random values in
+ * [0, 1) to a slope, and takes powf(2e-4f, 1 / p)) */
+static void parg(double* a, double* b)
+{
+	float x, y;
+	switch (rnd() % 8) {
+	case 0: x = fbits((uint32_t)rnd()); break;
+	case 1: x = (float)uni(-20000, 20000); break;
+	case 2: x = (float)uni(0, 1); break;
+	case 3: x = (float)uni(-4, 4); break;
+	case 4: x = (float)(uni(-1, 1) * ldexp(1.0, (int)(rnd() % 200) - 100)); break;
+	case 5: x = (rnd() & 1) ? 0.0f : -0.0f; break;
+	case 6: x = (float)(int)(rnd() % 41) - 20.0f; break;
+	default: x = 0.00020000001f; break;
+	}
+	switch (rnd() % 8) {
+	case 0: y = fbits((uint32_t)rnd()); break;
+	case 1: y = 2.0f; break;
+	case 2: y = (float)(int)(rnd() % 41) - 20.0f; break;
+	case 3: y = (float)uni(-8, 8); break;
+	case 4: y = (float)uni(0, 5); break;
+	case 5: y = 1.0f / (float)uni(0.05, 10); break;
+	case 6: y = (float)(uni(-1, 1) * ldexp(1.0, (int)(rnd() % 80) - 40)); break;
+	default: y = (rnd() & 1) ? 0.0f : fbits(0x7f800000u | (uint32_t)(rnd() & 1) << 31); break;
+	}
+	*a = x;
+	*b = y;
+}
+/* fmodf: the game's angle wraps (360 and 2 pi ranges), large quotients (past
+ * 2^24, 2^53 and 2^63), exact multiples, zeros and specials */
+static void marg(double* a, double* b)
+{
+	float x, y;
+	switch (rnd() % 6) {
+	case 0: x = fbits((uint32_t)rnd()); break;
+	case 1: x = (float)uni(-1080, 1080); break;
+	case 2: x = (float)uni(-20, 20); break;
+	case 3: x = (float)(uni(-1, 1) * ldexp(1.0, (int)(rnd() % 140) - 20)); break;
+	case 4: x = (float)((int)(rnd() % 13) - 6) * 360.0f; break;
+	default: x = (float)uni(0, 720); break;
+	}
+	switch (rnd() % 6) {
+	case 0: y = fbits((uint32_t)rnd()); break;
+	case 1: y = 360.0f; break;
+	case 2: y = 6.2831855f; break;
+	case 3: y = (float)uni(-50, 50); break;
+	case 4: y = (float)(uni(-1, 1) * ldexp(1.0, (int)(rnd() % 80) - 60)); break;
+	default: y = (rnd() & 3) ? (float)uni(0.5, 2) : 0.0f; break;
+	}
+	*a = x;
+	*b = y;
+}
+/* sqrtf: squared distances and lengths, tiny, negative and special values */
+static float sarg(void)
+{
+	switch (rnd() % 5) {
+	case 0: return fbits((uint32_t)rnd());
+	case 1: return (float)uni(0, 1e8);
+	case 2: return (float)uni(-2, 2);
+	case 3: return (float)(uni(0, 1) * ldexp(1.0, (int)(rnd() % 280) - 150));
+	default: {
+		float v = (float)(int)(rnd() % 4096);
+		v *= v;
+		return fbits(fb(v) + (uint32_t)(rnd() % 5) - 2);
 	}
 	}
 }
@@ -72,23 +162,38 @@ static uint64_t get64(const unsigned char* p)
 }
 static uint64_t dbl2u(double d) { uint64_t u; memcpy(&u, &d, 8); return u; }
 
+#ifdef MSL_MATH_TEST_HOOKS
+float msl_inv_sqrtf_for_test(float);
+float msl_sqrtf_newton_for_test(float);
+#endif
 #ifdef HARNESS_QEMU
 double qemu_frsqrte(double x) { return 1.0 / sqrt(x); } /* qemu's "estimate" */
 #endif
 
 int main(int argc, char** argv)
 {
-	if ((argc == 4 || argc == 5) && !strcmp(argv[1], "gen")) {
+	if (argc == 5 && !strcmp(argv[1], "gen")) {
 		long n        = atol(argv[2]);
-		uint32_t last = argc == 5 ? (uint32_t)atoi(argv[4]) : 7;
+		const char* p = argv[4];
 		s             = strtoull(argv[3], 0, 0) | 1;
-		for (uint32_t fn = 0; fn <= last; fn++) {
+		while (*p) {
+			char* end;
+			uint32_t fn = (uint32_t)strtoul(p, &end, 10);
+			p           = *end ? end + 1 : end;
 			for (long i = 0; i < n; i++) {
 				double a, b = 0;
 				if (fn == 6 || fn == 7) {
 					a = darg();
 					if (fn == 7)
 						b = darg();
+				} else if (fn == 9) {
+					a = earg();
+				} else if (fn == 10) {
+					parg(&a, &b);
+				} else if (fn == 11 || fn == 14) {
+					marg(&a, &b);
+				} else if (fn == 12 || fn == 13) {
+					a = sarg();
 				} else {
 					a = farg(fn);
 					if (fn == 4)
@@ -115,18 +220,32 @@ int main(int argc, char** argv)
 			case 5: y = sms_msl_acosf((float)a); break;
 			case 6: y = sms_msl_atan(a); break;
 			case 7: y = sms_msl_atan2(a, b); break;
+			case 9: y = sms_msl_expf((float)a); break;
+			case 10: y = sms_msl_powf((float)a, (float)b); break;
+			case 11: y = sms_msl_fmodf((float)a, (float)b); break;
+			case 12: y = sms_msl_sqrtf((float)a); break;
+			case 14: y = sms_msl_fmodf((float)a, (float)b); break;
 #ifdef MSL_MATH_TEST_HOOKS
-			case 8: {
-				extern float msl_inv_sqrtf_for_test(float);
-				y = msl_inv_sqrtf_for_test((float)a);
-				break;
-			}
+			case 8: y = msl_inv_sqrtf_for_test((float)a); break;
+			case 13: y = msl_sqrtf_newton_for_test((float)a); break;
 #endif
 			}
 			put64(dbl2u(y), stdout);
 		}
 		return 0;
 	}
-	fprintf(stderr, "usage: harness gen N SEED [LAST] | harness run\n");
+#ifdef MSL_MATH_TEST_HOOKS
+	if (argc == 2 && !strcmp(argv[1], "sqrt")) {
+		uint64_t bad = 0;
+		for (uint64_t u = 0; u <= 0xffffffffu; u++) {
+			float x = fbits((uint32_t)u), p = msl_sqrtf_newton_for_test(x), q = sms_msl_sqrtf(x);
+			if (fb(p) != fb(q) && !(p != p && q != q) && bad++ < 3)
+				printf("    %08x: %08x vs %08x\n", (uint32_t)u, fb(p), fb(q));
+		}
+		printf("std::sqrtf  4294967296 inputs, %llu differ\n", (unsigned long long)bad);
+		return bad != 0;
+	}
+#endif
+	fprintf(stderr, "usage: harness gen N SEED FNS | harness run | harness sqrt\n");
 	return 2;
 }

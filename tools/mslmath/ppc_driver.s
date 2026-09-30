@@ -61,3 +61,4 @@ outbuf:	.space 8
 table:
 	.4byte sinf, cosf, tanf, atanf, atan2f, acosf, atan, atan2, _inv_sqrtf
 	.4byte expf, powf, dol_fmodf, dol_sqrtf, dol_sqrtf, dol_tutil_mod
+	.4byte dol_tutil_sqrt, dol_tutil_inv_sqrt, dol_ms_sqrtf, dol_jpa_sqrtf

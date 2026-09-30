@@ -1,0 +1,63 @@
+Reason: JGeometry::TUtil<f32>::sqrt and inv_sqrt (153 inlined copies in the DOL, weak copies in boid.o) and MsSqrtf (39 inlined copies, a weak copy in cameragc.o, and the same sequence spelled out in TMapObjBase::getDistanceXZ) refine the Gekko's frsqrte estimate with one Newton-Raphson step whose 3 - x * r * r MWCC compiled as one fused fnmsubs (single precision, TUtil) or fnmsub (double, MsSqrtf), rounded once. The host build rounded the product and the difference separately, which changes TUtil's results for 3.4% (sqrt) and 3.5% (inv_sqrt) of positive floats. Call sms_jg_sqrtf, sms_jg_inv_sqrtf and sms_ms_sqrtf (platform/misc/msl_math.c), which follow the DOL's instructions and are checked against its weak copies under qemu-ppc (tools/mslmath).
+--- a/libs/JSystem/include/JSystem/JGeometry/JGUtil.hpp
++++ b/libs/JSystem/include/JSystem/JGeometry/JGUtil.hpp
+@@ -61,20 +61,12 @@
+ 
+ 	static f32 sqrt(f32 mag)
+ 	{
+-		if (mag <= 0.0f)
+-			return mag;
+-
+-		f32 root = __frsqrte(mag);
+-		return 0.5f * root * (3.0f - mag * (root * root)) * mag;
++		return sms_jg_sqrtf(mag);
+ 	}
+ 
+ 	static f32 inv_sqrt(f32 mag)
+ 	{
+-		if (mag <= 0.0f)
+-			return mag;
+-
+-		f32 root = __frsqrte(mag);
+-		return 0.5f * root * (3.0f - mag * (root * root));
++		return sms_jg_inv_sqrtf(mag);
+ 	}
+ };
+ 
+--- a/include/MarioUtil/MathUtil.hpp
++++ b/include/MarioUtil/MathUtil.hpp
+@@ -476,15 +476,7 @@
+ 
+ inline f32 MsSqrtf(f32 x)
+ {
+-	// We love copy-pasting code, don't we?
+-	volatile float y;
+-	if (x > 0.0f) {
+-		double guess = __frsqrte((double)x);
+-		guess        = .5 * guess * (3.0 - guess * guess * x);
+-		y            = (float)(x * guess);
+-		return y;
+-	}
+-	return x;
++	return sms_ms_sqrtf(x);
+ }
+ 
+ #endif
+--- a/src/MoveBG/MapObjLib.cpp
++++ b/src/MoveBG/MapObjLib.cpp
+@@ -811,13 +811,8 @@
+ 	f32 dx    = param_1.x - mPosition.x;
+ 	f32 dz    = param_1.z - mPosition.z;
+ 	f32 lenSq = dx * dx + dz * dz;
+-	if (lenSq > 0.0f) {
+-		f64 guess = __frsqrte((f64)lenSq);
+-		volatile f32 y
+-		    = (f32)((f64)lenSq
+-		            * (0.5 * guess * -((f64)lenSq * (guess * guess) - 3.0)));
+-		lenSq = y;
+-	}
++	if (lenSq > 0.0f)
++		lenSq = sms_ms_sqrtf(lenSq); // MsSqrtf's sequence, spelled out
+ 	return lenSq;
+ }
+ 

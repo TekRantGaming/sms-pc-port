@@ -768,3 +768,70 @@ float msl_sqrtf_newton_for_test(float x)
 	return x;
 }
 #endif
+
+/* ---- The game's own frsqrte helpers (decomp-patches/fpu-06) ---------------
+ *
+ * Not MSL, but game and JSystem inlines that MWCC compiled the same way:
+ * the Gekko's estimate, and a Newton-Raphson step whose 3 - ... is one fused
+ * fnmsub. The DOL expands them at their call sites and keeps weak copies
+ * (JGeometry::TUtil<f32>::sqrt and inv_sqrt in boid.o, MsSqrtf in cameragc.o),
+ * which tools/mslmath/check.sh runs under qemu-ppc against these.
+ *
+ * TUtil<f32>::inv_sqrt, and sqrt with the final * mag, in single precision:
+ *   root = frsp(frsqrte(mag)); rr = root * root; h = 0.5 * root;
+ *   t = fnmsubs(mag, rr, 3) = -(mag * rr - 3) rounded once; h * t [* mag]
+ * for mag > 0 or a NaN, and mag itself otherwise. root is a single, so the
+ * Gekko's 25-bit rounding of an fmuls operand changes nothing. */
+float sms_jg_inv_sqrtf(float mag)
+{
+	if (mag <= 0.0f)
+		return mag;
+	float root = (float)frsqrte(mag);
+	float rr   = root * root;
+	float h    = 0.5f * root;
+	return h * fnmsubs(mag, rr, 3.0f);
+}
+
+float sms_jg_sqrtf(float mag)
+{
+	if (mag <= 0.0f)
+		return mag;
+	float root = (float)frsqrte(mag);
+	float rr   = root * root;
+	float h    = 0.5f * root;
+	return h * fnmsubs(mag, rr, 3.0f) * mag;
+}
+
+/* MsSqrtf (MarioUtil/MathUtil.hpp): one step in double precision, then
+ *   (float)(x * g)   with 3 - g * g * x one fnmsub, for x > 0; x otherwise.
+ * Unlike std::sqrtf's three steps this is not the rounded square root (it
+ * differs from sqrtf for 8.5% of the positive normal floats), so the sequence
+ * itself is followed. Rounding the fnmsub once or twice gives the same result
+ * for every positive normal float, but the DOL's fused form costs nothing.
+ * TUtil's single-precision step is another matter: unfused, it differs for
+ * 3.4% (sqrt) and 3.5% (inv_sqrt) of them. */
+float sms_ms_sqrtf(float x)
+{
+	if (x > 0.0f) {
+		double g = frsqrte((double)x), gg, h, t;
+		gg = g * g;
+		h  = 0.5 * g;
+		t  = fma((double)x, gg, -3.0);
+		PORT_OPAQUE(t);
+		t = -t; /* fnmsub */
+		return (float)((double)x * (h * t));
+	}
+	return x;
+}
+
+#ifdef MSL_MATH_TEST_HOOKS
+/* JPASqrtf (JParticle/JPAMath.cpp) needs no port code: its C body,
+ * x * (f32)__frsqrte(x) for x > 0 and 0 otherwise, is already the DOL's frsp
+ * of the estimate and one fmuls. The same body, for the check. */
+float msl_jpa_sqrtf_for_test(float x)
+{
+	if (x > 0.0f)
+		return x * (float)frsqrte(x);
+	return 0.0f;
+}
+#endif

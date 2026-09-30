@@ -9,8 +9,9 @@
  * Functions: 0 sinf 1 cosf 2 tanf 3 atanf 4 atan2f(a, b) 5 acosf 6 atan
  * 7 atan2(a, b) 8 _inv_sqrtf 9 expf 10 powf(a, b) 11 std::fmodf(a, b)
  * 12 std::sqrtf 13 std::sqrtf's instruction sequence
- * 14 JGeometry::TUtil<f32>::mod(a, b) (sms_msl_fmodf here); 8 and 13 need
- * -DMSL_MATH_TEST_HOOKS. */
+ * 14 JGeometry::TUtil<f32>::mod(a, b) (sms_msl_fmodf here)
+ * 15 JGeometry::TUtil<f32>::sqrt 16 TUtil<f32>::inv_sqrt 17 MsSqrtf 18 JPASqrtf;
+ * 8, 13 and 18 need -DMSL_MATH_TEST_HOOKS. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -165,6 +166,7 @@ static uint64_t dbl2u(double d) { uint64_t u; memcpy(&u, &d, 8); return u; }
 #ifdef MSL_MATH_TEST_HOOKS
 float msl_inv_sqrtf_for_test(float);
 float msl_sqrtf_newton_for_test(float);
+float msl_jpa_sqrtf_for_test(float);
 #endif
 #ifdef HARNESS_QEMU
 double qemu_frsqrte(double x) { return 1.0 / sqrt(x); } /* qemu's "estimate" */
@@ -192,7 +194,7 @@ int main(int argc, char** argv)
 					parg(&a, &b);
 				} else if (fn == 11 || fn == 14) {
 					marg(&a, &b);
-				} else if (fn == 12 || fn == 13) {
+				} else if (fn == 12 || fn == 13 || (fn >= 15 && fn <= 18)) {
 					a = sarg();
 				} else {
 					a = farg(fn);
@@ -225,9 +227,13 @@ int main(int argc, char** argv)
 			case 11: y = sms_msl_fmodf((float)a, (float)b); break;
 			case 12: y = sms_msl_sqrtf((float)a); break;
 			case 14: y = sms_msl_fmodf((float)a, (float)b); break;
+			case 15: y = sms_jg_sqrtf((float)a); break;
+			case 16: y = sms_jg_inv_sqrtf((float)a); break;
+			case 17: y = sms_ms_sqrtf((float)a); break;
 #ifdef MSL_MATH_TEST_HOOKS
 			case 8: y = msl_inv_sqrtf_for_test((float)a); break;
 			case 13: y = msl_sqrtf_newton_for_test((float)a); break;
+			case 18: y = msl_jpa_sqrtf_for_test((float)a); break;
 #endif
 			}
 			put64(dbl2u(y), stdout);

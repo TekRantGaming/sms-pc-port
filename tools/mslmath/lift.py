@@ -9,7 +9,7 @@ cannot be linked on their own. Each function is its instruction words,
 unchanged; its relocations are re-emitted against the same symbols (calls to
 the runtime, which check.sh links from runtime.o) or against copies of the
 small-data constants it loads (the same bytes, in .sdata2)."""
-import re, subprocess, sys
+import re, subprocess, sys, tempfile
 
 B = sys.argv[1]
 jobs = sys.argv[2:]
@@ -21,8 +21,12 @@ def tool(name, *a):
 
 
 def section_bytes(obj, sec):
-    out = subprocess.run([B + '/powerpc-eabi-objcopy', '-O', 'binary', '-j', sec, obj, '/dev/stdout'],
-                         capture_output=True, check=True).stdout
+    # a file, not /dev/stdout: objcopy writes nothing to a pipe
+    with tempfile.NamedTemporaryFile(suffix='.bin') as f:
+        subprocess.run([B + '/powerpc-eabi-objcopy', '-O', 'binary', '-j', sec, obj, f.name],
+                       capture_output=True, check=True)
+        out = open(f.name, 'rb').read()
+    assert out, (obj, sec)
     return out
 
 

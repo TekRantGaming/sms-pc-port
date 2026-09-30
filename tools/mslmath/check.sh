@@ -11,9 +11,9 @@
 # 3. Against the console's machine code, when qemu-ppc and a decomp build are
 #    present (SMS_DECOMP_BUILD, default decomp/build: its binutils/ and the
 #    split objects in GMSE01/obj): runs the DOL's own MSL objects, the runtime's
-#    conversions, and the weak std::fmodf, std::sqrtf and
-#    JGeometry::TUtil<f32>::mod the game calls (lifted out of their objects by
-#    lift.py) under qemu-ppc, and compares a test build of msl_math.c that uses
+#    conversions, and the weak std::fmodf, std::sqrtf, JGeometry::TUtil<f32>'s
+#    mod, sqrt and inv_sqrt, MsSqrtf and JPASqrtf the game calls (lifted out
+#    of their objects by lift.py) under qemu-ppc, and compares a test build of msl_math.c that uses
 #    qemu's frsqrte (exact 1/sqrt). Results must be bit-identical. The port's
 #    build differs from it only there, where it follows the Gekko's estimate
 #    (see msl_math.c).
@@ -26,8 +26,8 @@ flags="-O2 -msse2 -mfpmath=sse -ffp-contract=off -I$root/src"
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 status=0
-fns=0,1,2,3,4,5,6,7,9,10,11,12       # the port's functions
-fnsq=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 # and the test hooks
+fns=0,1,2,3,4,5,6,7,9,10,11,12,15,16,17 # the port's functions
+fnsq=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18 # and the test hooks
 
 $cc $flags -o "$out/gen" "$here/harness.c" "$root/platform/misc/msl_math.c" -lm
 "$out/gen" gen "$n" 0x5eed $fns > "$out/in.bin"
@@ -67,6 +67,10 @@ if command -v qemu-ppc > /dev/null && [ -d "$objs" ] && [ -x "$bin/powerpc-eabi-
 		"$dbuild/GMSE01/obj/Enemy/wireTrap.o" 'fmodf__3stdFff' dol_fmodf \
 		"$dbuild/GMSE01/obj/MSound/MAnmSound.o" 'sqrtf__3stdFf' dol_sqrtf \
 		"$dbuild/GMSE01/obj/Enemy/koopajr.o" 'mod__Q29JGeometry8TUtil<f>Fff' dol_tutil_mod \
+		"$dbuild/GMSE01/obj/Animal/boid.o" 'sqrt__Q29JGeometry8TUtil<f>Ff' dol_tutil_sqrt \
+		"$dbuild/GMSE01/obj/Animal/boid.o" 'inv_sqrt__Q29JGeometry8TUtil<f>Ff' dol_tutil_inv_sqrt \
+		"$dbuild/GMSE01/obj/Camera/cameragc.o" 'MsSqrtf__Ff' dol_ms_sqrtf \
+		"$dbuild/GMSE01/obj/JSystem/JParticle/JPAMath.o" 'JPASqrtf__Ff' dol_jpa_sqrtf \
 		> "$out/lifted.s"
 	"$bin/powerpc-eabi-as" -mregnames -o "$out/lifted.o" "$out/lifted.s"
 	"$bin/powerpc-eabi-ld" -T "$here/ppc.ld" -o "$out/msl.elf" "$out/driver.o" "$out/lifted.o" \

@@ -20,6 +20,10 @@ float sms_msl_fmodf(float x, float y);  /* MSL's inline std::fmodf */
 float sms_msl_sqrtf(float x);           /* MSL's inline std::sqrtf */
 double sms_msl_atan(double x);          /* s_atan.c (fdlibm) */
 double sms_msl_atan2(double y, double x); /* w_atan2.c, e_atan2.c (fdlibm) */
+/* The game's own frsqrte helpers, which MWCC compiled with a fused step */
+float sms_jg_sqrtf(float mag);          /* JGeometry::TUtil<f32>::sqrt */
+float sms_jg_inv_sqrtf(float mag);      /* JGeometry::TUtil<f32>::inv_sqrt */
+float sms_ms_sqrtf(float x);            /* MsSqrtf (MarioUtil/MathUtil.hpp) */
 #ifdef __cplusplus
 }
 #endif

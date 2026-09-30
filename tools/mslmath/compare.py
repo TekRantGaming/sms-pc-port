@@ -7,7 +7,7 @@ A = open(sys.argv[2], 'rb').read()
 B = open(sys.argv[3], 'rb').read()
 shown = int(sys.argv[4]) if len(sys.argv) > 4 else 3
 names = ("sinf cosf tanf atanf atan2f acosf atan atan2 _inv_sqrtf expf powf std::fmodf "
-         "std::sqrtf sqrtf_seq TUtil::mod").split()
+         "std::sqrtf sqrtf_seq TUtil::mod TUtil::sqrt TUtil::inv_sqrt MsSqrtf JPASqrtf").split()
 tot, bad, ex = {}, {}, {}
 for i in range(len(inp) // 24):
     fn, _, a, b = struct.unpack('>IIdd', inp[i * 24:i * 24 + 24])

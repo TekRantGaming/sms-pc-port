@@ -90,6 +90,19 @@ static inline float __fres(float x) { return port_gekko_fres(x); }
 #ifdef __cplusplus
 }
 #endif
+/* MWCC converts a float to an unsigned integer through the runtime's
+ * __cvt_fp2unsigned (runtime.c): a negative value or NaN gives 0 and a value
+ * from 2^32 up gives 0xFFFFFFFF, where the host's conversion of a negative
+ * value wraps (-22.5 gives 0xFFFFFFEA). Patched call sites that can see such
+ * values use this (decomp-patches/fpu-02-*). */
+static inline u32 port_cvt_fp2unsigned(double d)
+{
+	if (!(d >= 0.0))
+		return 0;
+	if (d >= 4294967296.0)
+		return 0xFFFFFFFFu;
+	return (u32)d;
+}
 /* JSystem's and the game's paired-single routines outside MTX/VEC, as the
  * console computes them (platform/mtx/jsys_ps.inc). */
 #include "port_ps.h"

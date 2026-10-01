@@ -1,12 +1,55 @@
-# sms-port
+# Super Mario Sunshine — PC Port
 
-A native PC port of **Super Mario Sunshine** (GameCube, North America, GMSE01), built from the [matching decompilation](https://github.com/chasem-dev/sms-english).
+A native PC port of **Super Mario Sunshine** (GameCube, North America, GMSE01), built from the [matching decompilation](https://github.com/chasem-dev/sms-english). It adds a full launcher and the options you would expect from a PC release: high resolutions, anti-aliasing, fullscreen modes, HD textures, camera options and key rebinding.
 
-No game data is included.
-You build the program from source, and it reads the models, textures, levels, music and movies from **your own disc image** at run time.
+![Delfino Plaza at 5x internal resolution with 4x MSAA and the UHD texture pack](docs/images/delfino-plaza-5x-hd.jpg)
 
-For guided setup, updates and a Play button, use our dedicated [SMS Launcher](https://github.com/chasem-dev/sms-launcher) for Windows, macOS and Linux.
-The launcher sets up this port on your computer using your own supported disc image; downloads are on its [releases page](https://github.com/chasem-dev/sms-launcher/releases/latest).
+**[Download for Windows or Linux](https://github.com/TekRantGaming/sms-pc-port/releases/latest)**: unzip or run, point the launcher at your disc image, and play.
+
+> No game data is included. The port reads the models, textures, levels, music and movies from **your own disc image** of Super Mario Sunshine (North America, GMSE01, revision 0) at run time.
+
+![The same frame at the original 640x528 and in the PC port at 5x resolution with 4x MSAA and HD textures](docs/images/before-after.jpg)
+
+## Features
+
+**Launcher.** A menu opens before the game. It works with the mouse, the keyboard or a controller, and saves everything to `settings.txt` and `bindings.txt`.
+
+- **Install.** Browse for your disc image or drop it on the window. The launcher checks the game, region and revision, then copies the image into place or uses it where it is.
+- **Display.** Windowed, borderless or exclusive fullscreen (with a resolution and refresh-rate picker), monitor choice, and vsync (off, on or adaptive). Widescreen 16:9, 16:10, 21:9, 32:9 or matched to your monitor, with the HUD centred or at the screen edges. Keep, stretch or integer aspect, and a smooth, sharp or nearest scaling filter. F11 or Alt+Enter toggles fullscreen in game.
+- **Graphics.** Internal resolution from 1x to 8x, with one recommended for your monitor. MSAA 2x/4x/8x, FXAA, anisotropic filtering up to 16x, contrast-adaptive sharpening and brightness.
+- **HD textures.** One click downloads and installs the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (qashto, razius) from its own release. Then switch it on or off, or remove it. Any Dolphin texture pack works in `mods/textures`.
+- **Camera.** Invert X and Y separately, a free camera that stays where you point it instead of swinging back behind Mario (L recentres it), camera speed, and mouse look with sensitivity.
+- **Gameplay and audio.** 60 fps gameplay at the original speed, skip intro movies, game file mods, a performance overlay and master volume.
+- **Controls.** Rebind every keyboard control. Xbox, PlayStation and other controllers work automatically.
+
+| | |
+| --- | --- |
+| ![Install page](docs/images/launcher-install.jpg) | ![Display page](docs/images/launcher-display.jpg) |
+| ![Graphics page](docs/images/launcher-graphics.jpg) | ![HD texture pack installed](docs/images/launcher-texture-pack.jpg) |
+| ![Camera page](docs/images/launcher-camera.jpg) | ![Controls page](docs/images/launcher-controls.jpg) |
+
+![Spraying goop in Delfino Plaza](docs/images/gameplay-fludd.jpg)
+![Mario and FLUDD in Delfino Plaza](docs/images/gameplay-plaza.jpg)
+
+## Playing a release
+
+1. Download the latest release: `SMS-PC-Port-*-windows-x64.zip` (unzip it and run `sms.exe`) or `SMS-PC-Port-*-linux-x86_64.AppImage` (`chmod +x` it and run it).
+2. On the launcher's **Install** page, select your disc image and press Install.
+3. Optionally install the HD texture pack on the **Graphics** page, and pick your settings.
+4. Press **Play**.
+
+On Linux, settings, the installed disc image and mods live in `~/.local/share/sms-port`. Saves go to `%APPDATA%\sms-port\card-a` on Windows and `~/.local/share/sms-port/card-a` on Linux.
+
+## Credits
+
+- The port and the decompilation it builds on: [chasem-dev/sms-pc-port](https://github.com/chasem-dev/sms-pc-port) and [chasem-dev/sms-english](https://github.com/chasem-dev/sms-english), and everyone who contributed to them.
+- [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) by qashto and razius.
+- [Dear ImGui](https://github.com/ocornut/imgui) (MIT) draws the launcher.
+- Super Mario Sunshine is © Nintendo. This project is not affiliated with or endorsed by Nintendo. Play it with a copy of the game you own.
+
+---
+
+The sections below describe building the port from source.
 
 ## Decompilation progress
 
@@ -32,7 +75,7 @@ The 64-bit builds keep every address the game sees below 4 GiB; see [docs/64-BIT
 1. **Get the source**, including the decompilation submodule:
 
    ```sh
-   git clone --recursive https://github.com/chasem-dev/sms-pc-port.git
+   git clone --recursive https://github.com/TekRantGaming/sms-pc-port.git
    cd sms-pc-port
    ```
 

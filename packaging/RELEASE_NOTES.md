@@ -1,5 +1,9 @@
 A native PC port of Super Mario Sunshine, built from the decompilation, with a launcher and PC enhancements.
 
+### New in this release
+- **HD texture pack installer.** On the Graphics page, **Download and install** fetches the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (qashto, razius) from its own release and installs it, with progress, resume and Cancel. Then switch it on or off, reinstall it or remove it. Earlier releases had only a toggle, and no pack to use with it.
+- The packages now include `bsdtar` to unpack the pack, so nothing else needs installing.
+
 **These downloads contain no game data.** You need your own disc image of Super Mario Sunshine, North America (GMSE01), revision 0 (ISO, GCM, NKit ISO or Dolphin CISO). The launcher's Install page copies it into place.
 
 ### Downloads

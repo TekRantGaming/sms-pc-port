@@ -80,6 +80,38 @@ BOOL_RET_FIXES = [
     for glob_ in ("src/**/*.cpp", "include/**/*.hxx")
 ]
 
+# The other way round: game functions the mods call (or could override) that
+# return BOOL, int or u32 in the game, where SunshineHeaderInterface says
+# bool. The mods would read the low byte of a whole word, which is right only
+# while the game returns 0 or 1 (checkGroundAtWalking returns up to 3); and
+# declared bool, an override of one of the virtual ones would return a byte to
+# a caller that tests the word. Declared as the game declares them, the mods
+# read the whole word, and an override returning bool does not compile.
+# (Found by comparing the mods' calls, with clang's types, against the game's
+# DWARF; the patch targets are covered by the shim, Kuribo/sdk/kuribo_sdk.h.)
+SHI_WORD_RET = [
+    ("int", "moveToNextNode|entryMatColorAnimator|traceSpline|checkCurAnm|checkCurAnmFromIndex|"
+            "checkCurBckFromIndex|curAnmEndsNext|rocketCheck|checkBackTrig|checkGroundPlane|"
+            "checkStickRotate|isAnimeLoopOrStop|isLast1AnimeFrame|changePlayerStatus|"
+            "changePlayerJumping|changePlayerDropping|checkGroundAtWalking|isMario|jumpMain|"
+            "hasMapCollision|onYoshi|isDummy|isPumpOK|DVDOpen|DVDFastOpen|DVDClose|"
+            "DVDPrepareStreamAsync|DVDCancelStreamAsync|DVDStopStreamAtEndAsync|"
+            "DVDGetStreamErrorStatusAsync|DVDGetStreamPlayAddrAsync|DVDCheckDisk|"
+            "OSDisableInterrupts|OSCreateThread|OSJoinThread|OSIsThreadTerminated"),
+    ("u32", "startVoice|startVoiceIfNoVoice"),
+]
+SHI_WORD_FIXES = [
+    (glob_, r"\bbool(\s+(?:%s)\s*\()" % names, ty + r"\1", "game functions returning a word return one")
+    for ty, names in SHI_WORD_RET for glob_ in ("include/**/*.hxx", "include/**/*.h")
+] + [
+    # BOOL and s32 arguments: clang passes a bool zero-extended to the word
+    # anyway, but the declarations then say what the game reads.
+    ("include/Dolphin/OS.h", r"(OSRestoreInterrupts\()bool(\s+enable\))", r"\1int\2",
+     "BOOL arguments are words"),
+    ("include/Dolphin/OS.h", r"(OS(?:Send|Receive)Message\([^;]*,\s*)bool(\s+block\))", r"\1s32\2",
+     "BOOL arguments are words"),
+]
+
 ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
@@ -131,7 +163,7 @@ BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
      "code writes go to the patch registry"),
 ]
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX])
-SHI_FIXES = BOOL_RET_FIXES + [
+SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.

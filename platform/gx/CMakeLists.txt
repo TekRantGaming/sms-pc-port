@@ -12,6 +12,7 @@ set(SMS_GX_SOURCES
     src/gx_api.cpp
     src/gx_fifo.cpp
     src/gx_hires.cpp
+    src/gx_launcher.cpp
     src/gx_overlay.cpp
     src/gx_platform.cpp
     src/gx_render.cpp
@@ -42,6 +43,16 @@ endif()
 if(DEFINED SMS_PORT_SRC)
     set(SMS_GX_TYPES_INCLUDE ${SMS_PORT_SRC}/port_include)
 endif()
+
+# Dear ImGui (third_party/imgui, MIT) draws the pre-game launcher.
+set(SMS_GX_IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui)
+set(SMS_GX_IMGUI_SOURCES
+    ${SMS_GX_IMGUI_DIR}/imgui.cpp
+    ${SMS_GX_IMGUI_DIR}/imgui_draw.cpp
+    ${SMS_GX_IMGUI_DIR}/imgui_tables.cpp
+    ${SMS_GX_IMGUI_DIR}/imgui_widgets.cpp
+    ${SMS_GX_IMGUI_DIR}/imgui_impl_sdl2.cpp
+    ${SMS_GX_IMGUI_DIR}/imgui_impl_opengl3.cpp)
 
 add_library(sms_gx STATIC ${SMS_GX_SOURCES} ${SMS_GX_GD_SOURCES})
 target_include_directories(sms_gx
@@ -96,6 +107,9 @@ find_path(SMS_GX_EGL_INCLUDE EGL/egl.h)
 if(TARGET SDL2::SDL2)
     target_compile_definitions(sms_gx PRIVATE SMS_GX_HAVE_SDL2=1)
     target_link_libraries(sms_gx PUBLIC SDL2::SDL2)
+    target_sources(sms_gx PRIVATE ${SMS_GX_IMGUI_SOURCES})
+    target_include_directories(sms_gx PRIVATE ${SMS_GX_IMGUI_DIR})
+    set_source_files_properties(${SMS_GX_IMGUI_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
     message(STATUS "sms_gx: SDL2 window support")
 else()
     message(STATUS "sms_gx: SDL2 not found - no window support")

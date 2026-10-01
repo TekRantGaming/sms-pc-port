@@ -26,11 +26,40 @@ frame_rate = 60
 # resolution = 1
 # Window size, in multiples of 640x480.
 # window_scale = 1
-# Wait for the display's refresh when presenting.
+# Wait for the display's refresh when presenting: off, on or adaptive.
 # vsync = off
+
+# The launcher (a settings menu shown before the game) edits this file.
+# Turn it off to start the game directly; hold Shift at start to show it anyway.
+# launcher = on
+
+# Window: windowed, borderless (fullscreen at desktop resolution) or fullscreen
+# (exclusive). F11 or Alt+Enter toggles fullscreen while playing.
+# window_mode = windowed
+# Monitor to open on (0 is the primary one).
+# display = 0
+# Exclusive fullscreen mode, as WxH@Hz, or desktop.
+# fullscreen_mode = desktop
+# Picture shape: keep (letterboxed), stretch (fill the window) or integer.
+# aspect = keep
+# Scaling to the window: bilinear (area-averaged when supersampling), sharp or
+# nearest.
+# present_filter = bilinear
+
+# Anti-aliasing: MSAA samples (0, 2, 4 or 8) and the FXAA post-process.
+# msaa = 0
+# fxaa = off
+# Anisotropic texture filtering: 0 (off), 2, 4, 8 or 16.
+# anisotropic = 0
+# Contrast-adaptive sharpening, 0 to 100.
+# sharpen = 0
+# Brightness curve: 1.0 is the original picture.
+# brightness = 1.0
 
 # skip_movies = off
 # audio = on
+# Master volume, 0 to 100.
+# volume = 100
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
 

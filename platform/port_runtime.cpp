@@ -22,6 +22,9 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
+#include <spawn.h>
+#include <errno.h>
+extern char** environ;
 #ifdef __APPLE__
 #include <sys/ucontext.h>
 #endif
@@ -263,6 +266,24 @@ void* port_low_alloc(unsigned long size)
 #if UINTPTR_MAX <= 0xFFFFFFFFu
 	return malloc(size);
 #elif defined(_WIN32)
+	// The first call (the boot thread's stack, before any window exists)
+	// reserves a pool below 2 GiB that later stacks are committed from: a large
+	// internal resolution, MSAA and texture packs make the GPU driver claim
+	// much of the low address space once rendering starts.
+	static char* pool;
+	static size_t poolUsed;
+	const size_t kPool = 128ul << 20;
+	if (!pool)
+		for (uintptr_t at = 0x10000000u; at + kPool <= 0x80000000u && !pool; at += 0x100000u)
+			pool = (char*)VirtualAlloc((void*)at, kPool, MEM_RESERVE, PAGE_NOACCESS);
+	const size_t grain = (size + 0xFFFFu) & ~(size_t)0xFFFFu;
+	if (pool && poolUsed + grain <= kPool) {
+		void* p = VirtualAlloc(pool + poolUsed, size, MEM_COMMIT, PAGE_READWRITE);
+		if (p) {
+			poolUsed += grain;
+			return p;
+		}
+	}
 	// Walk hint addresses from 256 MiB up to 2 GiB (64 KiB allocation grain).
 	for (uintptr_t at = 0x10000000u; at + size <= 0x80000000u; at += 0x10000u) {
 		void* p = VirtualAlloc((void*)at, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -371,6 +392,7 @@ static void map_hw_sink()
 // Window/headless switches belong to the GX layer (weak: absent without it).
 extern "C" __attribute__((weak)) int GXPC_ParseArgs(int* argc, char** argv);
 extern "C" __attribute__((weak)) void GXPC_SetHeadless(int headless);
+extern "C" __attribute__((weak)) int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPath, int force);
 
 // The 32-bit NVIDIA GLX library must match the kernel module's version
 // exactly, or context creation fails (X_GLXCreateContext BadValue). If this
@@ -423,20 +445,125 @@ static const struct {
 	{ "overlay", "SMS_OVERLAY" },
 	{ "save_dir", "SMS_SAVE_DIR" },
 	{ "disc_image", "SMS_DISC_IMAGE" },
+	// PC options (the launcher sets these; platform/gx reads them)
+	{ "window_mode", "SMS_WINDOW_MODE" },         // windowed, borderless or fullscreen
+	{ "display", "SMS_DISPLAY" },                 // monitor index, 0 = primary
+	{ "fullscreen_mode", "SMS_FULLSCREEN_MODE" }, // WxH@Hz or desktop
+	{ "aspect", "SMS_ASPECT" },                   // keep, stretch or integer
+	{ "present_filter", "SMS_PRESENT_FILTER" },   // bilinear, sharp or nearest
+	{ "msaa", "SMS_MSAA" },                       // 0, 2, 4 or 8
+	{ "fxaa", "SMS_FXAA" },
+	{ "anisotropic", "SMS_ANISO" },               // 0, 2, 4, 8 or 16
+	{ "sharpen", "SMS_SHARPEN" },                 // 0..100
+	{ "brightness", "SMS_GAMMA" },                // 1.0 = unchanged
+	{ "volume", "SMS_VOLUME" },                   // 0..100
+	{ "launcher", "SMS_LAUNCHER" },               // show the launcher at start
 };
+
+// The settings file in use: SMS_SETTINGS, ./settings.txt, or two levels up
+// when started from build/<os>-<arch>/. NULL when there is none yet.
+static const char* settings_path()
+{
+	if (const char* p = getenv("SMS_SETTINGS"))
+		return p;
+	for (const char* p : { "settings.txt", "../../settings.txt" })
+		if (access(p, R_OK) == 0)
+			return p;
+	return NULL;
+}
+
+// The key bindings file platform/pad reads (the same search as settings.txt).
+static const char* bindings_path()
+{
+	if (const char* p = getenv("SMS_BINDINGS"))
+		return p;
+	for (const char* p : { "bindings.txt", "../../bindings.txt" })
+		if (access(p, R_OK) == 0)
+			return p;
+	const char* s = settings_path();
+	return s && !strncmp(s, "../../", 6) ? "../../bindings.txt" : "bindings.txt";
+}
+
+// The launcher runs in a child process: its window, OpenGL driver and SDL
+// claim address space anywhere, and the game needs MEM1, its image and its
+// stacks at fixed addresses below 4 GiB. The child exits with 0 to play.
+static int launcher_in_child(char* argv0, int force)
+{
+	(void)argv0;
+	const char* path = settings_path();
+#ifdef _WIN32
+	wchar_t exe[MAX_PATH * 2];
+	if (!GetModuleFileNameW(NULL, exe, sizeof exe / sizeof exe[0]))
+		return GXPC_RunLauncher(path ? path : "settings.txt", bindings_path(), force);
+	wchar_t cmd[MAX_PATH * 2 + 64];
+	_snwprintf(cmd, sizeof cmd / sizeof cmd[0], L"\"%ls\" --launcher-child%ls", exe, force ? L" --launcher" : L"");
+	cmd[sizeof cmd / sizeof cmd[0] - 1] = 0;
+	STARTUPINFOW si;
+	PROCESS_INFORMATION pi;
+	memset(&si, 0, sizeof si);
+	si.cb = sizeof si;
+	if (!CreateProcessW(exe, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+		port_log("[port] launcher: cannot start (error %lu); starting the game\n", GetLastError());
+		return 1;
+	}
+	WaitForSingleObject(pi.hProcess, INFINITE);
+	DWORD code = 1;
+	GetExitCodeProcess(pi.hProcess, &code);
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+	return code == 0;
+#else
+	// a fresh process (not fork): AppKit cannot be used in a forked child
+	char child[] = "--launcher-child", forced[] = "--launcher";
+	char* args[] = { argv0, child, force ? forced : NULL, NULL };
+	pid_t pid    = 0;
+	fflush(NULL);
+	if (posix_spawn(&pid, argv0, NULL, NULL, args, environ) != 0) {
+		port_log("[port] launcher: cannot start %s; showing it in this process\n", argv0);
+		return GXPC_RunLauncher(path ? path : "settings.txt", bindings_path(), force);
+	}
+	int status = 0;
+	while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+	}
+	return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#endif
+}
+
+// Shows the launcher before anything reads the settings, unless the game runs
+// headless or --no-launcher / SMS_LAUNCHER=0 asks to skip it (--launcher
+// shows it even when settings.txt turns it off). Quitting there exits.
+static void run_launcher(int argc, char** argv)
+{
+	if (!GXPC_RunLauncher)
+		return;
+	int force = 0;
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--headless") || !strcmp(argv[i], "--no-launcher"))
+			return;
+		if (!strcmp(argv[i], "--launcher"))
+			force = 1;
+	}
+	for (int i = 1; i < argc; i++)
+		if (!strcmp(argv[i], "--launcher-child")) {
+			const char* path = settings_path();
+			exit(GXPC_RunLauncher(path ? path : "settings.txt", bindings_path(), force) ? 0 : 1);
+		}
+	if (const char* h = getenv("SMS_HEADLESS"))
+		if (*h && strcmp(h, "0"))
+			return;
+	if (const char* l = getenv("SMS_LAUNCHER"))
+		if (!strcmp(l, "0") || !strcmp(l, "off"))
+			return;
+	if (!launcher_in_child(argv[0], force)) {
+		port_log("[port] launcher: quit\n");
+		exit(0);
+	}
+}
 
 static void load_settings()
 {
-	const char* path = getenv("SMS_SETTINGS");
+	const char* path = settings_path();
 	FILE* f          = path ? fopen(path, "r") : NULL;
-	if (!path) {
-		path = "settings.txt";
-		f    = fopen(path, "r");
-		if (!f) {
-			path = "../../settings.txt"; // running from build/<os>-<arch>/
-			f    = fopen(path, "r");
-		}
-	}
 	if (!f)
 		return;
 	char line[1024];
@@ -493,6 +620,7 @@ static void load_settings()
 
 extern "C" void port_init(int argc, char** argv)
 {
+	run_launcher(argc, argv);
 	load_settings();
 	pick_glx_vendor();
 	if (const char* m = getenv("SMS_SKIP_MOVIES"))

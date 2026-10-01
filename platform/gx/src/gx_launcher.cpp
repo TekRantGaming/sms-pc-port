@@ -1,0 +1,1027 @@
+// Pre-game launcher: a settings menu shown in its own window before the game
+// starts (GXPC_RunLauncher). It edits settings.txt and bindings.txt in place,
+// keeping their comments, so everything it sets can also be set by hand; the
+// game then reads both files as it always has.
+//
+// Dear ImGui (third_party/imgui) draws it through SDL2 and OpenGL 3.3, with
+// its own GL loader: the game's renderer is not involved.
+#include "sms_gx/gx_pc.h"
+
+#ifdef SMS_GX_HAVE_SDL2
+#include <SDL.h>
+#include <SDL_opengl.h>
+
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl2.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
+#include <algorithm>
+#include <map>
+#include <string>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dirent.h>
+#endif
+
+namespace {
+
+// ------------------------------------------------------------------ files
+std::string trim(const std::string& s) {
+    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+}
+
+bool readLines(const std::string& path, std::vector<std::string>& out) {
+    out.clear();
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return false;
+    char buf[2048];
+    while (fgets(buf, sizeof buf, f)) {
+        std::string l = buf;
+        while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
+        out.push_back(l);
+    }
+    fclose(f);
+    return true;
+}
+
+bool writeLines(const std::string& path, const std::vector<std::string>& lines) {
+    std::string tmp = path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "w");
+    if (!f) return false;
+    for (const std::string& l : lines) fprintf(f, "%s\n", l.c_str());
+    fclose(f);
+    remove(path.c_str());
+    return rename(tmp.c_str(), path.c_str()) == 0;
+}
+
+bool isDir(const std::string& p) {
+    struct stat st;
+    return stat(p.c_str(), &st) == 0 && (st.st_mode & S_IFDIR);
+}
+
+std::vector<std::string> listDirs(const std::string& dir) {
+    std::vector<std::string> out;
+#ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA((dir + "\\*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do {
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && fd.cFileName[0] != '.') out.push_back(fd.cFileName);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    if (DIR* d = opendir(dir.c_str())) {
+        while (dirent* e = readdir(d))
+            if (e->d_name[0] != '.' && isDir(dir + "/" + e->d_name)) out.push_back(e->d_name);
+        closedir(d);
+    }
+#endif
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// settings.txt: `name = value` lines; a commented `# name = value` line is
+// where a setting is written back when it was not set before.
+struct SettingsFile {
+    std::string path;
+    std::vector<std::string> lines;
+    std::map<std::string, std::string> values;
+
+    static bool parse(const std::string& line, bool allowComment, std::string& key, std::string& val) {
+        std::string s = trim(line);
+        if (allowComment && !s.empty() && s[0] == '#') s = trim(s.substr(1));
+        else if (s.empty() || s[0] == '#') return false;
+        size_t eq = s.find('=');
+        if (eq == std::string::npos) return false;
+        key = trim(s.substr(0, eq));
+        if (key.empty() || key.find(' ') != std::string::npos) return false;
+        val = trim(s.substr(eq + 1));
+        size_t c = val.find(" #");
+        if (c != std::string::npos) val = trim(val.substr(0, c));
+        return true;
+    }
+    void load() {
+        values.clear();
+        readLines(path, lines);
+        for (const std::string& l : lines) {
+            std::string k, v;
+            if (parse(l, false, k, v)) values[k] = v;
+        }
+    }
+    std::string get(const char* key, const char* def) const {
+        auto it = values.find(key);
+        return it == values.end() || it->second.empty() ? def : it->second;
+    }
+    void set(const char* key, const std::string& v) { values[key] = v; }
+    bool save() {
+        std::map<std::string, bool> done;
+        for (std::string& l : lines) {  // active lines first
+            std::string k, v;
+            if (parse(l, false, k, v) && values.count(k) && !done[k]) {
+                l = k + " = " + values[k];
+                done[k] = true;
+            }
+        }
+        for (std::string& l : lines) {  // then the commented examples
+            std::string k, v;
+            if (parse(l, true, k, v) && values.count(k) && !done[k] && trim(l)[0] == '#') {
+                l = k + " = " + values[k];
+                done[k] = true;
+            }
+        }
+        bool header = false;
+        for (auto& kv : values)
+            if (!done[kv.first]) {
+                if (!header) {
+                    lines.push_back("");
+                    lines.push_back("# Set from the launcher");
+                    header = true;
+                }
+                lines.push_back(kv.first + " = " + kv.second);
+            }
+        return writeLines(path, lines);
+    }
+};
+
+// ------------------------------------------------------------------ key bindings
+const char* const kControls[] = {
+    "A", "B", "X", "Y", "Z", "L", "R", "START",
+    "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
+    "STICK_UP", "STICK_DOWN", "STICK_LEFT", "STICK_RIGHT",
+    "CSTICK_UP", "CSTICK_DOWN", "CSTICK_LEFT", "CSTICK_RIGHT",
+    "HALF_TILT", "QUIT",
+};
+const char* const kControlLabels[] = {
+    "A button", "B button", "X button", "Y button", "Z button", "L trigger", "R trigger", "Start",
+    "D-pad up", "D-pad down", "D-pad left", "D-pad right",
+    "Stick up", "Stick down", "Stick left", "Stick right",
+    "C-stick up", "C-stick down", "C-stick left", "C-stick right",
+    "Half tilt (walk)", "Quit game",
+};
+const int kNumControls = int(sizeof kControls / sizeof kControls[0]);
+const char* const kDefaultKeys[] = {
+    "SPACE X", "LSHIFT RSHIFT C", "V", "F", "Z", "Q", "E", "ENTER",
+    "1 KP_8", "2 KP_2", "3 KP_4", "4 KP_6",
+    "UP W", "DOWN S", "LEFT A", "RIGHT D",
+    "I", "K", "J", "L",
+    "LCTRL", "ESCAPE",
+};
+// the names platform/pad understands, by SDL scancode
+struct KeyName { const char* name; int code; };
+const KeyName kKeyNames[] = {
+    {"A", 4}, {"B", 5}, {"C", 6}, {"D", 7}, {"E", 8}, {"F", 9}, {"G", 10}, {"H", 11}, {"I", 12}, {"J", 13},
+    {"K", 14}, {"L", 15}, {"M", 16}, {"N", 17}, {"O", 18}, {"P", 19}, {"Q", 20}, {"R", 21}, {"S", 22},
+    {"T", 23}, {"U", 24}, {"V", 25}, {"W", 26}, {"X", 27}, {"Y", 28}, {"Z", 29}, {"1", 30}, {"2", 31},
+    {"3", 32}, {"4", 33}, {"5", 34}, {"6", 35}, {"7", 36}, {"8", 37}, {"9", 38}, {"0", 39}, {"ENTER", 40},
+    {"ESCAPE", 41}, {"BACKSPACE", 42}, {"TAB", 43}, {"SPACE", 44}, {"MINUS", 45}, {"EQUALS", 46},
+    {"LBRACKET", 47}, {"RBRACKET", 48}, {"SEMICOLON", 51}, {"APOSTROPHE", 52}, {"COMMA", 54},
+    {"PERIOD", 55}, {"SLASH", 56}, {"F1", 58}, {"F2", 59}, {"F3", 60}, {"F4", 61}, {"RIGHT", 79},
+    {"LEFT", 80}, {"DOWN", 81}, {"UP", 82}, {"KP_DIVIDE", 84}, {"KP_MULTIPLY", 85}, {"KP_MINUS", 86},
+    {"KP_PLUS", 87}, {"KP_ENTER", 88}, {"KP_1", 89}, {"KP_2", 90}, {"KP_3", 91}, {"KP_4", 92},
+    {"KP_5", 93}, {"KP_6", 94}, {"KP_7", 95}, {"KP_8", 96}, {"KP_9", 97}, {"KP_0", 98}, {"LCTRL", 224},
+    {"LSHIFT", 225}, {"LALT", 226}, {"RCTRL", 228}, {"RSHIFT", 229}, {"RALT", 230},
+};
+std::string keyName(int scancode) {
+    for (const KeyName& k : kKeyNames)
+        if (k.code == scancode) return k.name;
+    return "#" + std::to_string(scancode);
+}
+std::string prettyKey(const std::string& name) {
+    if (!name.empty() && name[0] == '#') {
+        const char* n = SDL_GetScancodeName(SDL_Scancode(atoi(name.c_str() + 1)));
+        return n && *n ? n : name;
+    }
+    if (name == "ESCAPE") return "Esc";
+    if (name == "LSHIFT") return "L-Shift";
+    if (name == "RSHIFT") return "R-Shift";
+    if (name == "LCTRL") return "L-Ctrl";
+    if (name == "RCTRL") return "R-Ctrl";
+    if (name == "LALT") return "L-Alt";
+    if (name == "RALT") return "R-Alt";
+    if (name.compare(0, 3, "KP_") == 0) return "Num " + name.substr(3);
+    std::string s = name;
+    for (size_t i = 1; i < s.size(); i++) s[i] = char(tolower(s[i]));
+    return s;
+}
+
+struct BindingsFile {
+    std::string path;
+    std::vector<std::string> lines;
+    std::string keys[kNumControls];
+
+    void load() {
+        for (int i = 0; i < kNumControls; i++) keys[i] = kDefaultKeys[i];
+        readLines(path, lines);
+        for (const std::string& l : lines) {
+            std::string k, v;
+            if (!SettingsFile::parse(l, false, k, v)) continue;
+            for (int i = 0; i < kNumControls; i++)
+                if (strcasecmp(k.c_str(), kControls[i]) == 0) keys[i] = v;
+        }
+    }
+    // Updates the controls' lines in place (comments and order kept) and adds
+    // a line for each changed control the file did not have.
+    bool save() {
+        std::vector<std::string> out = lines;
+        bool present[kNumControls] = {};
+        for (std::string& l : out) {
+            std::string k, v;
+            if (!SettingsFile::parse(l, false, k, v)) continue;
+            for (int i = 0; i < kNumControls; i++)
+                if (strcasecmp(k.c_str(), kControls[i]) == 0) {
+                    if (v != keys[i]) l = std::string(kControls[i]) + " = " + keys[i];
+                    present[i] = true;
+                }
+        }
+        if (out.empty()) {
+            out.push_back("# SMS port key bindings for controller 1 (written by the launcher).");
+            out.push_back("# Format: CONTROL = KEY [KEY ...]; a line replaces that control's defaults.");
+        }
+        for (int i = 0; i < kNumControls; i++)
+            if (!present[i] && keys[i] != kDefaultKeys[i]) out.push_back(std::string(kControls[i]) + " = " + keys[i]);
+        if (out == lines) return true;  // unchanged: leave the file alone
+        return writeLines(path, out);
+    }
+};
+
+// ------------------------------------------------------------------ theme
+const ImU32 kSky1 = IM_COL32(30, 136, 229, 255), kSky2 = IM_COL32(126, 211, 255, 255);
+const ImU32 kSea1 = IM_COL32(0, 172, 193, 255), kSea2 = IM_COL32(0, 96, 160, 255);
+const ImU32 kSun = IM_COL32(255, 214, 64, 255), kSunGlow = IM_COL32(255, 214, 64, 60);
+const ImVec4 kAccent = ImVec4(1.00f, 0.79f, 0.24f, 1.0f);     // sunshine yellow
+const ImVec4 kAccentHot = ImVec4(1.00f, 0.62f, 0.20f, 1.0f);  // orange
+const ImVec4 kDim = ImVec4(0.66f, 0.76f, 0.91f, 1.0f);
+
+void applyTheme(float scale) {
+    ImGuiStyle& s = ImGui::GetStyle();
+    s = ImGuiStyle();
+    s.WindowRounding = 0.0f;
+    s.ChildRounding = 14.0f;
+    s.FrameRounding = 9.0f;
+    s.GrabRounding = 9.0f;
+    s.PopupRounding = 10.0f;
+    s.ScrollbarRounding = 9.0f;
+    s.TabRounding = 9.0f;
+    s.FramePadding = ImVec2(12, 8);
+    s.ItemSpacing = ImVec2(10, 10);
+    s.WindowPadding = ImVec2(0, 0);
+    s.ScrollbarSize = 12.0f;
+    s.WindowBorderSize = 0.0f;
+    s.ChildBorderSize = 0.0f;
+    s.FrameBorderSize = 0.0f;
+    s.GrabMinSize = 18.0f;
+    ImVec4* c = s.Colors;
+    c[ImGuiCol_Text] = ImVec4(1, 1, 1, 1);
+    c[ImGuiCol_TextDisabled] = kDim;
+    c[ImGuiCol_WindowBg] = ImVec4(0.035f, 0.10f, 0.20f, 1.0f);
+    c[ImGuiCol_ChildBg] = ImVec4(0.07f, 0.17f, 0.32f, 1.0f);
+    c[ImGuiCol_PopupBg] = ImVec4(0.08f, 0.19f, 0.36f, 0.98f);
+    c[ImGuiCol_FrameBg] = ImVec4(0.11f, 0.25f, 0.45f, 1.0f);
+    c[ImGuiCol_FrameBgHovered] = ImVec4(0.15f, 0.32f, 0.56f, 1.0f);
+    c[ImGuiCol_FrameBgActive] = ImVec4(0.18f, 0.37f, 0.63f, 1.0f);
+    c[ImGuiCol_Button] = ImVec4(0.12f, 0.27f, 0.49f, 1.0f);
+    c[ImGuiCol_ButtonHovered] = ImVec4(0.18f, 0.37f, 0.64f, 1.0f);
+    c[ImGuiCol_ButtonActive] = ImVec4(0.22f, 0.43f, 0.72f, 1.0f);
+    c[ImGuiCol_Header] = ImVec4(0.12f, 0.27f, 0.49f, 1.0f);
+    c[ImGuiCol_HeaderHovered] = ImVec4(0.18f, 0.37f, 0.64f, 1.0f);
+    c[ImGuiCol_HeaderActive] = ImVec4(0.22f, 0.43f, 0.72f, 1.0f);
+    c[ImGuiCol_SliderGrab] = kAccent;
+    c[ImGuiCol_SliderGrabActive] = kAccentHot;
+    c[ImGuiCol_CheckMark] = kAccent;
+    c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_ScrollbarGrab] = ImVec4(0.20f, 0.36f, 0.58f, 1.0f);
+    c[ImGuiCol_Separator] = ImVec4(1, 1, 1, 0.08f);
+    c[ImGuiCol_NavCursor] = kAccent;
+    s.ScaleAllSizes(scale);
+}
+
+// ------------------------------------------------------------------ the menu
+enum Page { P_DISPLAY, P_GRAPHICS, P_GAMEPLAY, P_AUDIO, P_CONTROLS, P_ABOUT, P_COUNT };
+const char* const kPageNames[P_COUNT] = {"Display", "Graphics", "Gameplay", "Audio", "Controls", "About"};
+const char* const kPageBlurbs[P_COUNT] = {
+    "Window, monitor and how the picture fits your screen.",
+    "Resolution, anti-aliasing, filtering and HD textures.",
+    "Frame rate, movies, mods and the performance overlay.",
+    "Sound output and volume.",
+    "Keyboard bindings for controller 1. Game controllers work automatically.",
+    "About this build.",
+};
+
+struct Option { const char* value; const char* label; };
+
+struct Launcher {
+    SettingsFile settings;
+    BindingsFile bindings;
+    std::string baseDir;
+    Page page = P_DISPLAY;
+    ImFont* body = nullptr;
+    ImFont* bold = nullptr;
+    float scale = 1.0f;
+    int capture = -1;       // control waiting for a key press
+    bool captureAdd = false;
+    std::vector<std::string> displayNames;
+    std::vector<std::string> fullscreenModes;  // "WxH@Hz" for the chosen display
+    int modesFor = -1;
+    std::vector<std::string> mods;
+    int texturePacks = 0;
+    std::string status;
+    double statusUntil = 0;
+
+    // --- one row: label and help on the left, the control on the right
+    float rowControlX() const { return ImGui::GetContentRegionAvail().x * 0.48f; }
+    void rowBegin(const char* label, const char* help) {
+        ImGui::PushID(label);
+        ImGui::BeginGroup();
+        const float x0 = ImGui::GetCursorPosX();
+        const float wrap = rowControlX() - 16.0f * scale;
+        ImGui::PushFont(bold, 0.0f);
+        ImGui::TextUnformatted(label);
+        ImGui::PopFont();
+        if (help && *help) {
+            ImGui::PushStyleColor(ImGuiCol_Text, kDim);
+            ImGui::PushTextWrapPos(x0 + wrap);
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.86f);
+            ImGui::TextWrapped("%s", help);
+            ImGui::PopFont();
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
+        }
+        ImGui::EndGroup();
+        const float labelBottom = ImGui::GetItemRectMax().y;
+        ImGui::SameLine(x0 + rowControlX());
+        ImGui::BeginGroup();
+        rowLabelBottom = labelBottom;
+    }
+    float rowLabelBottom = 0;
+    void rowEnd() {
+        ImGui::EndGroup();
+        const float bottom = std::max(rowLabelBottom, ImGui::GetItemRectMax().y);
+        ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, bottom + 8.0f * scale));
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ImGui::GetWindowDrawList()->AddLine(p, ImVec2(p.x + ImGui::GetContentRegionAvail().x, p.y),
+                                            ImGui::GetColorU32(ImGuiCol_Separator), 1.0f);
+        ImGui::Dummy(ImVec2(0, 8.0f * scale));
+        ImGui::PopID();
+    }
+
+    // segmented buttons for a few options, a combo for many
+    bool choice(const char* label, const char* help, const char* key, const char* def,
+                const std::vector<Option>& opts, std::string* outValue = nullptr) {
+        std::string cur = settings.get(key, def);
+        bool changed = false;
+        rowBegin(label, help);
+        const float avail = ImGui::GetContentRegionAvail().x;
+        if (opts.size() <= 4) {
+            const float w = (avail - ImGui::GetStyle().ItemSpacing.x * float(opts.size() - 1)) / float(opts.size());
+            for (size_t i = 0; i < opts.size(); i++) {
+                if (i) ImGui::SameLine();
+                const bool on = cur == opts[i].value;
+                if (on) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, kAccentHot);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+                }
+                if (ImGui::Button(opts[i].label, ImVec2(w, 0)) && !on) {
+                    settings.set(key, opts[i].value);
+                    changed = true;
+                }
+                if (on) ImGui::PopStyleColor(4);
+            }
+        } else {
+            const char* preview = cur.c_str();
+            for (const Option& o : opts)
+                if (cur == o.value) preview = o.label;
+            ImGui::SetNextItemWidth(avail);
+            if (ImGui::BeginCombo("##c", preview, ImGuiComboFlags_HeightLarge)) {
+                for (const Option& o : opts) {
+                    const bool on = cur == o.value;
+                    if (ImGui::Selectable(o.label, on)) {
+                        settings.set(key, o.value);
+                        changed = true;
+                    }
+                    if (on) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        }
+        rowEnd();
+        if (outValue) *outValue = settings.get(key, def);
+        return changed;
+    }
+
+    void toggle(const char* label, const char* help, const char* key, bool def) {
+        std::string cur = settings.get(key, def ? "on" : "off");
+        bool on = cur == "on" || cur == "1" || cur == "yes" || cur == "true";
+        choice(label, help, key, def ? "on" : "off", {{"off", "Off"}, {"on", "On"}});
+        (void)on;
+    }
+
+    void sliderInt(const char* label, const char* help, const char* key, int def, int lo, int hi,
+                   const char* fmt, int step = 1) {
+        int v = atoi(settings.get(key, std::to_string(def).c_str()).c_str());
+        rowBegin(label, help);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::SliderInt("##s", &v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp)) {
+            if (step > 1) v = (v + step / 2) / step * step;
+            settings.set(key, std::to_string(v));
+        }
+        rowEnd();
+    }
+
+    void sliderFloat(const char* label, const char* help, const char* key, float def, float lo, float hi,
+                     const char* fmt) {
+        float v = float(atof(settings.get(key, "").c_str()));
+        if (settings.get(key, "").empty()) v = def;
+        rowBegin(label, help);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::SliderFloat("##s", &v, lo, hi, fmt, ImGuiSliderFlags_AlwaysClamp)) {
+            char buf[32];
+            snprintf(buf, sizeof buf, "%.2f", double(v));
+            settings.set(key, buf);
+        }
+        rowEnd();
+    }
+
+    void info(const char* label, const char* text) {
+        rowBegin(label, nullptr);
+        ImGui::PushStyleColor(ImGuiCol_Text, kDim);
+        ImGui::TextWrapped("%s", text);
+        ImGui::PopStyleColor();
+        rowEnd();
+    }
+
+    // --- environment
+    void scanDisplays() {
+        displayNames.clear();
+        for (int i = 0; i < SDL_GetNumVideoDisplays(); i++) {
+            SDL_DisplayMode m;
+            char buf[160];
+            const char* n = SDL_GetDisplayName(i);
+            if (SDL_GetDesktopDisplayMode(i, &m) == 0)
+                snprintf(buf, sizeof buf, "%d: %s (%dx%d @ %d Hz)", i + 1, n ? n : "Display", m.w, m.h, m.refresh_rate);
+            else
+                snprintf(buf, sizeof buf, "%d: %s", i + 1, n ? n : "Display");
+            displayNames.push_back(buf);
+        }
+    }
+    int chosenDisplay() const {
+        int d = atoi(settings.get("display", "0").c_str());
+        return d >= 0 && d < int(displayNames.size()) ? d : 0;
+    }
+    void scanModes(int display) {
+        if (modesFor == display) return;
+        modesFor = display;
+        fullscreenModes.clear();
+        for (int i = 0; i < SDL_GetNumDisplayModes(display); i++) {
+            SDL_DisplayMode m;
+            if (SDL_GetDisplayMode(display, i, &m) != 0) continue;
+            char buf[48];
+            snprintf(buf, sizeof buf, "%dx%d@%d", m.w, m.h, m.refresh_rate);
+            if (std::find(fullscreenModes.begin(), fullscreenModes.end(), buf) == fullscreenModes.end())
+                fullscreenModes.push_back(buf);
+        }
+    }
+    void scanMods() {
+        mods.clear();
+        const std::string dir = baseDir + "mods";
+        for (const std::string& d : listDirs(dir))
+            if (d != "textures" && isDir(dir + "/" + d + "/files")) mods.push_back(d);
+        texturePacks = int(listDirs(dir + "/textures").size());
+    }
+
+    // --- pages
+    void pageDisplay() {
+        std::string mode;
+        choice("Window mode",
+               "Borderless fills the screen at your desktop resolution and switches instantly. Exclusive fullscreen "
+               "takes over the display. F11 or Alt+Enter toggles fullscreen while playing.",
+               "window_mode", "windowed",
+               {{"windowed", "Windowed"}, {"borderless", "Borderless"}, {"fullscreen", "Exclusive"}}, &mode);
+        if (displayNames.size() > 1) {
+            std::vector<std::string> values(displayNames.size());
+            std::vector<Option> opts;
+            for (size_t i = 0; i < displayNames.size(); i++) {
+                values[i] = std::to_string(i);
+                opts.push_back({values[i].c_str(), displayNames[i].c_str()});
+            }
+            choice("Monitor", "The display the game opens on.", "display", "0", opts);
+        } else if (!displayNames.empty()) {
+            info("Monitor", displayNames[0].c_str());
+        }
+        if (mode == "fullscreen") {
+            scanModes(chosenDisplay());
+            std::vector<Option> opts = {{"desktop", "Desktop resolution"}};
+            std::vector<std::string> labels(fullscreenModes.size());
+            for (size_t i = 0; i < fullscreenModes.size(); i++) {
+                int w = 0, h = 0, hz = 0;
+                sscanf(fullscreenModes[i].c_str(), "%dx%d@%d", &w, &h, &hz);
+                char buf[64];
+                snprintf(buf, sizeof buf, "%d x %d  @ %d Hz", w, h, hz);
+                labels[i] = buf;
+                opts.push_back({fullscreenModes[i].c_str(), labels[i].c_str()});
+            }
+            choice("Fullscreen resolution", "The display mode used in exclusive fullscreen.", "fullscreen_mode",
+                   "desktop", opts);
+        } else if (mode == "windowed") {
+            choice("Window size", "The size the window opens at. It can be resized or maximized while playing.",
+                   "window_scale", "0",
+                   {{"0", "Automatic"}, {"1", "640 x 480"}, {"2", "1280 x 960"}, {"3", "1920 x 1440"},
+                    {"4", "2560 x 1920"}});
+        }
+        choice("Vertical sync",
+               "Waits for the display before showing a frame, which stops tearing. Adaptive only tears when a frame "
+               "is late.",
+               "vsync", "off", {{"off", "Off"}, {"on", "On"}, {"adaptive", "Adaptive"}});
+
+        // widescreen: "auto" writes the chosen display's own aspect ratio
+        std::string ws = settings.get("widescreen", "off");
+        if (ws == "on" || ws == "1") settings.set("widescreen", "16:9");
+        std::string autoAspect;
+        SDL_DisplayMode dm;
+        if (SDL_GetDesktopDisplayMode(chosenDisplay(), &dm) == 0 && dm.h > 0) {
+            int a = dm.w, b = dm.h;
+            while (b) { int t = a % b; a = b; b = t; }
+            autoAspect = std::to_string(dm.w / a) + ":" + std::to_string(dm.h / a);
+        }
+        std::vector<Option> wopts = {{"off", "Off (4:3, original)"}, {"16:9", "16:9"}, {"16:10", "16:10"},
+                                     {"21:9", "21:9 ultrawide"}, {"32:9", "32:9 super ultrawide"}};
+        std::string autoLabel = "Match monitor (" + autoAspect + ")";
+        bool known = false;
+        for (const Option& o : wopts) known = known || autoAspect == o.value;
+        if (!autoAspect.empty() && !known) wopts.push_back({autoAspect.c_str(), autoLabel.c_str()});
+        choice("Widescreen",
+               "Shows more of the world to the sides instead of stretching. Menus and the HUD keep their 4:3 shape.",
+               "widescreen", "off", wopts, &ws);
+        if (ws != "off" && ws != "0")
+            choice("HUD position", "In widescreen, keep the HUD in the middle or move the counters to the edges.",
+                   "widescreen_hud", "centre", {{"centre", "Centre"}, {"edges", "Screen edges"}});
+        choice("Aspect ratio", "Keep the correct shape with black bars, stretch to fill the window, or use whole "
+               "multiples of the original picture.",
+               "aspect", "keep", {{"keep", "Keep"}, {"stretch", "Stretch"}, {"integer", "Integer"}});
+        choice("Scaling filter",
+               "How the picture is scaled to the window. Smooth averages extra pixels when supersampling; Sharp keeps "
+               "crisp pixel edges; Nearest is unfiltered.",
+               "present_filter", "bilinear", {{"bilinear", "Smooth"}, {"sharp", "Sharp"}, {"nearest", "Nearest"}});
+    }
+
+    void pageGraphics() {
+        SDL_DisplayMode dm;
+        int recommend = 2;
+        if (SDL_GetDesktopDisplayMode(chosenDisplay(), &dm) == 0) recommend = std::max(1, (dm.h + 527) / 528);
+        recommend = std::min(recommend, 8);
+        static const char* const kRes[] = {
+            "1x  -  640 x 528 (original)", "2x  -  1280 x 1056 (720p+)", "3x  -  1920 x 1584 (1080p+)",
+            "4x  -  2560 x 2112 (1440p+)", "5x  -  3200 x 2640 (4K)", "6x  -  3840 x 3168 (4K+)",
+            "7x  -  4480 x 3696 (5K)", "8x  -  5120 x 4224 (8K-class)"};
+        std::vector<std::string> labels(8), values(8);
+        std::vector<Option> opts;
+        for (int i = 0; i < 8; i++) {
+            values[i] = std::to_string(i + 1);
+            labels[i] = kRes[i];
+            if (i + 1 == recommend) labels[i] += "   - recommended";
+            opts.push_back({values[i].c_str(), labels[i].c_str()});
+        }
+        char help[256];
+        snprintf(help, sizeof help,
+                 "The resolution the game renders at, in multiples of the GameCube's 640 x 528. %dx matches your "
+                 "monitor; higher values supersample for an even cleaner image.",
+                 recommend);
+        choice("Internal resolution", help, "resolution", "1", opts);
+        choice("Anti-aliasing (MSAA)", "Smooths the jagged edges of 3D geometry. 4x is a good balance.", "msaa", "0",
+               {{"0", "Off"}, {"2", "2x"}, {"4", "4x"}, {"8", "8x"}});
+        toggle("FXAA", "A fast post-process edge smoother. Also softens edges MSAA misses, such as foliage.", "fxaa",
+               false);
+        choice("Anisotropic filtering", "Keeps ground and wall textures sharp at steep angles.", "anisotropic", "0",
+               {{"0", "Off"}, {"2", "2x"}, {"4", "4x"}, {"8", "8x"}, {"16", "16x"}});
+        sliderInt("Sharpening", "Contrast-adaptive sharpening of the final picture.", "sharpen", 0, 0, 100, "%d%%");
+        sliderFloat("Brightness", "1.00 is the original image.", "brightness", 1.0f, 0.5f, 2.0f, "%.2f");
+        char tp[200];
+        snprintf(tp, sizeof tp,
+                 texturePacks ? "Replaces the game's textures with high-resolution ones from mods/textures (%d pack%s "
+                                "installed)."
+                              : "Replaces the game's textures with high-resolution ones. No pack is installed yet: "
+                                "run tools/mods/get.py textures.",
+                 texturePacks, texturePacks == 1 ? "" : "s");
+        toggle("HD texture packs", tp, "texture_packs", true);
+        sliderInt("Texture pack memory", "Video memory kept for texture pack images, in MiB, before the least used "
+                  "are freed.",
+                  "texture_pack_mb", 1536, 512, 8192, "%d MiB", 256);
+    }
+
+    void pageGameplay() {
+        choice("Frame rate", "60 runs gameplay at twice the original frame rate, at the game's normal speed. "
+               "Menus and movies stay at 30.",
+               "frame_rate", "30", {{"30", "30 fps (original)"}, {"60", "60 fps"}});
+        toggle("Skip intro movies", "Go straight to the title screen.", "skip_movies", false);
+        toggle("Performance overlay", "Show the frame rate and timings at start. Toggle in game with the ` key.",
+               "overlay", false);
+        std::vector<Option> opts = {{"none", "None"}};
+        for (const std::string& m : mods) opts.push_back({m.c_str(), m.c_str()});
+        choice("Game mod", mods.empty() ? "No mods found in mods/. See mods/README.md."
+                                        : "Game file mods from mods/<name>/files.",
+               "mod", "none", opts);
+    }
+
+    void pageAudio() {
+        toggle("Sound", "Turn all sound output on or off.", "audio", true);
+        sliderInt("Master volume", nullptr, "volume", 100, 0, 100, "%d%%");
+    }
+
+    void pageControls() {
+        int pads = 0;
+        for (int i = 0; i < SDL_NumJoysticks(); i++)
+            if (SDL_IsGameController(i)) {
+                const char* n = SDL_GameControllerNameForIndex(i);
+                info(pads++ ? "" : "Controller", n ? n : "Game controller");
+            }
+        if (!pads) info("Controller", "None connected. Any controller SDL recognises works: plug it in at any time.");
+        for (int i = 0; i < kNumControls; i++) {
+            ImGui::PushID(i);
+            rowBegin(kControlLabels[i], nullptr);
+            const float w = ImGui::GetContentRegionAvail().x;
+            std::string shown;
+            {
+                std::string s = bindings.keys[i];
+                size_t p = 0;
+                while (p < s.size()) {
+                    size_t q = s.find(' ', p);
+                    std::string k = s.substr(p, q == std::string::npos ? std::string::npos : q - p);
+                    if (!k.empty()) shown += (shown.empty() ? "" : "  /  ") + prettyKey(k);
+                    if (q == std::string::npos) break;
+                    p = q + 1;
+                }
+            }
+            if (capture == i) {
+                ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+                ImGui::Button(captureAdd ? "Press a key to add..." : "Press a key...", ImVec2(w * 0.6f, 0));
+                ImGui::PopStyleColor(2);
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel", ImVec2(-FLT_MIN, 0))) capture = -1;
+            } else {
+                if (ImGui::Button(shown.empty() ? "(none)" : shown.c_str(), ImVec2(w * 0.6f, 0))) {
+                    capture = i;
+                    captureAdd = false;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Add", ImVec2((w * 0.4f - ImGui::GetStyle().ItemSpacing.x * 2) / 2, 0))) {
+                    capture = i;
+                    captureAdd = true;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset", ImVec2(-FLT_MIN, 0))) bindings.keys[i] = kDefaultKeys[i];
+            }
+            rowEnd();
+            ImGui::PopID();
+        }
+    }
+
+    void pageAbout() {
+        toggle("Show this menu at startup",
+               "When off, the game starts straight away. Hold Shift while starting it to see this menu again.",
+               "launcher", true);
+        info("Settings file", settings.path.c_str());
+        info("Key bindings", bindings.path.c_str());
+        info("In-game keys", "F11 or Alt+Enter: fullscreen.   ` (backtick): performance overlay.   "
+             "F7 with the overlay open: game speed.   Esc: quit.");
+        info("About", "Super Mario Sunshine PC port, built from the decompilation. The game itself is read from "
+             "your own disc image. Launcher drawn with Dear ImGui.");
+    }
+
+    // --- chrome
+    void drawHeader(ImVec2 p0, ImVec2 p1, float t) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const float h = p1.y - p0.y, w = p1.x - p0.x;
+        const float seaY = p0.y + h * 0.70f;
+        dl->AddRectFilledMultiColor(p0, ImVec2(p1.x, seaY), kSky1, kSky1, kSky2, kSky2);
+        // sun with slowly turning rays
+        const ImVec2 sun(p1.x - w * 0.11f, p0.y + h * 0.40f);
+        const float r = h * 0.22f;
+        for (int i = 0; i < 12; i++) {
+            float a = t * 0.15f + float(i) * 3.14159265f / 6.0f;
+            dl->AddTriangleFilled(ImVec2(sun.x + cosf(a - 0.10f) * r * 1.25f, sun.y + sinf(a - 0.10f) * r * 1.25f),
+                                  ImVec2(sun.x + cosf(a) * r * 2.0f, sun.y + sinf(a) * r * 2.0f),
+                                  ImVec2(sun.x + cosf(a + 0.10f) * r * 1.25f, sun.y + sinf(a + 0.10f) * r * 1.25f),
+                                  kSunGlow);
+        }
+        dl->AddCircleFilled(sun, r * 1.18f, kSunGlow, 48);
+        dl->AddCircleFilled(sun, r, kSun, 48);
+        // sea with moving waves
+        dl->AddRectFilledMultiColor(ImVec2(p0.x, seaY), p1, kSea1, kSea1, kSea2, kSea2);
+        for (int band = 0; band < 3; band++) {
+            const float y = seaY + float(band) * h * 0.09f + h * 0.03f;
+            const float amp = h * 0.012f * float(band + 1);
+            ImVec2 pts[64];
+            for (int i = 0; i < 64; i++) {
+                float x = p0.x + w * float(i) / 63.0f;
+                pts[i] = ImVec2(x, y + sinf(x * 0.02f / scale + t * (1.2f + band * 0.4f) + band) * amp);
+            }
+            dl->AddPolyline(pts, 64, IM_COL32(255, 255, 255, 70 - band * 18), 0, 2.0f * scale);
+        }
+        // title
+        const float pad = 34.0f * scale;
+        const char* title = "SUPER MARIO SUNSHINE";
+        const float titleSize = 46.0f * scale;
+        const ImVec2 tp(p0.x + pad, p0.y + h * 0.17f);
+        dl->AddText(bold, titleSize, ImVec2(tp.x + 3 * scale, tp.y + 4 * scale), IM_COL32(10, 40, 90, 140), title);
+        dl->AddText(bold, titleSize, tp, IM_COL32(255, 255, 255, 255), title);
+        dl->AddText(bold, 20.0f * scale, ImVec2(tp.x + 2 * scale, tp.y + titleSize + 4 * scale),
+                    IM_COL32(255, 225, 120, 255), "PC PORT   \xC2\xB7   LAUNCHER");
+    }
+
+    bool frame(bool& quit) {
+        ImGuiIO& io = ImGui::GetIO();
+        const ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->Pos);
+        ImGui::SetNextWindowSize(vp->Size);
+        ImGui::Begin("launcher", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus);
+        const float t = float(ImGui::GetTime());
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const float W = vp->Size.x, H = vp->Size.y;
+        const float headerH = std::min(170.0f * scale, H * 0.24f);
+        drawHeader(origin, ImVec2(origin.x + W, origin.y + headerH), t);
+
+        const float pad = 24.0f * scale, footerH = 76.0f * scale, sideW = 230.0f * scale;
+        const float bodyY = headerH + pad, bodyH = H - headerH - footerH - pad * 1.5f;
+        bool play = false;
+
+        // sidebar
+        ImGui::SetCursorPos(ImVec2(pad, bodyY));
+        ImGui::BeginChild("nav", ImVec2(sideW, bodyH), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+        ImGui::SetCursorPos(ImVec2(12 * scale, 14 * scale));
+        ImGui::BeginGroup();
+        ImGui::PushFont(bold, ImGui::GetStyle().FontSizeBase * 1.08f);
+        for (int i = 0; i < P_COUNT; i++) {
+            const bool on = page == i;
+            ImGui::PushStyleColor(ImGuiCol_Header, on ? kAccent : ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, on ? kAccentHot : ImVec4(1, 1, 1, 0.08f));
+            ImGui::PushStyleColor(ImGuiCol_Text, on ? ImVec4(0.08f, 0.12f, 0.22f, 1.0f) : ImVec4(1, 1, 1, 1));
+            ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f * scale);
+            char id[64];
+            snprintf(id, sizeof id, "   %s##nav%d", kPageNames[i], i);
+            if (ImGui::Selectable(id, true, 0, ImVec2(sideW - 24 * scale, 46 * scale))) {
+                page = Page(i);
+                capture = -1;
+            }
+            ImGui::PopStyleVar(2);
+            ImGui::PopStyleColor(3);
+        }
+        ImGui::PopFont();
+        ImGui::EndGroup();
+        ImGui::EndChild();
+
+        // page
+        ImGui::SetCursorPos(ImVec2(pad * 2 + sideW, bodyY));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(28 * scale, 22 * scale));
+        ImGui::BeginChild("page", ImVec2(W - sideW - pad * 3, bodyH), ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PushFont(bold, ImGui::GetStyle().FontSizeBase * 1.6f);
+        ImGui::TextUnformatted(kPageNames[page]);
+        ImGui::PopFont();
+        ImGui::PushStyleColor(ImGuiCol_Text, kDim);
+        ImGui::TextUnformatted(kPageBlurbs[page]);
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(0, 10 * scale));
+        switch (page) {
+        case P_DISPLAY: pageDisplay(); break;
+        case P_GRAPHICS: pageGraphics(); break;
+        case P_GAMEPLAY: pageGameplay(); break;
+        case P_AUDIO: pageAudio(); break;
+        case P_CONTROLS: pageControls(); break;
+        default: pageAbout(); break;
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+
+        // footer
+        const float fy = H - footerH;
+        ImGui::SetCursorPos(ImVec2(pad, fy + (footerH - 56 * scale) / 2));
+        ImGui::BeginGroup();
+        ImGui::PushStyleColor(ImGuiCol_Text, kDim);
+        if (!status.empty() && ImGui::GetTime() < statusUntil) {
+            ImGui::PushStyleColor(ImGuiCol_Text, kAccent);
+            ImGui::TextUnformatted(status.c_str());
+            ImGui::PopStyleColor();
+        } else {
+            ImGui::TextUnformatted("Enter: play     Esc: quit     Arrows / controller: navigate");
+        }
+        ImGui::TextUnformatted("Settings are saved to settings.txt when you press Play.");
+        ImGui::PopStyleColor();
+        ImGui::EndGroup();
+
+        const float bw = 150 * scale, bh = 56 * scale, playW = 220 * scale;
+        ImGui::SetCursorPos(ImVec2(W - pad - playW - (bw + 12 * scale) * 2, fy + (footerH - bh) / 2));
+        if (ImGui::Button("Quit", ImVec2(bw, bh))) quit = true;
+        ImGui::SameLine(0, 12 * scale);
+        if (ImGui::Button("Save", ImVec2(bw, bh))) {
+            const bool ok = settings.save() & bindings.save();
+            status = ok ? "Settings saved." : "Could not write the settings files.";
+            statusUntil = ImGui::GetTime() + 3.0;
+        }
+        ImGui::SameLine(0, 12 * scale);
+        ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, kAccentHot);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+        ImGui::PushFont(bold, ImGui::GetStyle().FontSizeBase * 1.35f);
+        // the play button pulses gently
+        const float pulse = 0.5f + 0.5f * sinf(t * 3.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, bh * 0.5f);
+        if (ImGui::Button("PLAY  \xE2\x96\xB6", ImVec2(playW, bh))) play = true;
+        ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin() - ImVec2(3, 3) * pulse * scale,
+                                            ImGui::GetItemRectMax() + ImVec2(3, 3) * pulse * scale,
+                                            IM_COL32(255, 214, 64, int(120 * (1.0f - pulse))), bh * 0.5f, 0,
+                                            2.0f * scale);
+        ImGui::PopStyleVar();
+        ImGui::PopFont();
+        ImGui::PopStyleColor(4);
+
+        if (capture < 0 && !io.WantTextInput && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
+                if (!ImGui::IsAnyItemActive()) play = true;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) quit = true;
+            if (ImGui::IsKeyPressed(ImGuiKey_GamepadStart, false)) play = true;
+        }
+        ImGui::End();
+        return play;
+    }
+};
+
+bool shiftHeld() {
+#ifdef _WIN32
+    return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+#else
+    return (SDL_GetModState() & KMOD_SHIFT) != 0;
+#endif
+}
+
+ImFont* loadFont(const char* const* paths, float size) {
+    ImGuiIO& io = ImGui::GetIO();
+    for (const char* const* p = paths; *p; p++) {
+        FILE* f = fopen(*p, "rb");
+        if (!f) continue;
+        fclose(f);
+        if (ImFont* font = io.Fonts->AddFontFromFileTTF(*p, size)) return font;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPath, int force) {
+    Launcher L;
+    L.settings.path = settingsPath && *settingsPath ? settingsPath : "settings.txt";
+    L.bindings.path = bindingsPath && *bindingsPath ? bindingsPath : "bindings.txt";
+    L.settings.load();
+    const std::string show = L.settings.get("launcher", "on");
+    if (!force && (show == "off" || show == "0" || show == "no" || show == "false") && !shiftHeld()) return 1;
+    {
+        const std::string& p = L.settings.path;
+        size_t slash = p.find_last_of("/\\");
+        L.baseDir = slash == std::string::npos ? std::string() : p.substr(0, slash + 1);
+    }
+    L.bindings.load();
+
+#ifdef SDL_HINT_WINDOWS_DPI_SCALING
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
+#endif
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
+        fprintf(stderr, "[launcher] SDL_Init failed: %s; starting the game\n", SDL_GetError());
+        return 1;
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_Rect usable = {0, 0, 1280, 800};
+    SDL_GetDisplayUsableBounds(0, &usable);
+    const int ww = std::min(1180, int(usable.w * 0.9f)), wh = std::min(800, int(usable.h * 0.9f));
+    SDL_Window* win = SDL_CreateWindow("Super Mario Sunshine - Launcher", SDL_WINDOWPOS_CENTERED,
+                                       SDL_WINDOWPOS_CENTERED, ww, wh,
+                                       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    SDL_GLContext ctx = win ? SDL_GL_CreateContext(win) : nullptr;
+    if (!ctx) {
+        fprintf(stderr, "[launcher] no OpenGL 3.3 window: %s; starting the game\n", SDL_GetError());
+        if (win) SDL_DestroyWindow(win);
+        SDL_Quit();
+        return 1;
+    }
+    SDL_SetWindowMinimumSize(win, 900, 600);
+    SDL_GL_MakeCurrent(win, ctx);
+    SDL_GL_SetSwapInterval(1);
+    // the few GL calls made here, outside ImGui's own loader
+    typedef void(APIENTRY * ViewportFn)(GLint, GLint, GLsizei, GLsizei);
+    typedef void(APIENTRY * ClearColorFn)(GLfloat, GLfloat, GLfloat, GLfloat);
+    typedef void(APIENTRY * ClearFn)(GLbitfield);
+    const ViewportFn glViewportP = (ViewportFn)SDL_GL_GetProcAddress("glViewport");
+    const ClearColorFn glClearColorP = (ClearColorFn)SDL_GL_GetProcAddress("glClearColor");
+    const ClearFn glClearP = (ClearFn)SDL_GL_GetProcAddress("glClear");
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+    // SDL window units are already DPI-scaled (SDL_HINT_WINDOWS_DPI_SCALING);
+    // the framebuffer scale makes fonts rasterize at full density.
+    L.scale = 1.0f;
+    applyTheme(L.scale);
+    static const char* const kBody[] = {"C:\\Windows\\Fonts\\segoeui.ttf",
+                                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                                        "/System/Library/Fonts/Supplemental/Arial.ttf", nullptr};
+    static const char* const kBold[] = {"C:\\Windows\\Fonts\\seguisb.ttf", "C:\\Windows\\Fonts\\segoeuib.ttf",
+                                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                                        "/System/Library/Fonts/Supplemental/Arial Bold.ttf", nullptr};
+    static const char* const kSymbols[] = {"C:\\Windows\\Fonts\\seguisym.ttf", nullptr};
+    L.body = loadFont(kBody, 18.0f);
+    if (!L.body) L.body = io.Fonts->AddFontDefault();
+    L.bold = loadFont(kBold, 18.0f);
+    if (!L.bold) L.bold = L.body;
+    {  // the play arrow comes from a symbol font when the bold one lacks it
+        ImFontConfig cfg;
+        cfg.MergeMode = true;
+        for (const char* const* p = kSymbols; *p; p++) {
+            FILE* f = fopen(*p, "rb");
+            if (!f) continue;
+            fclose(f);
+            io.Fonts->AddFontFromFileTTF(*p, 18.0f, &cfg);
+            break;
+        }
+    }
+    io.FontDefault = L.body;
+    ImGui::GetStyle().FontSizeBase = 18.0f;
+
+    ImGui_ImplSDL2_InitForOpenGL(win, ctx);
+    ImGui_ImplOpenGL3_Init("#version 330 core");
+
+    L.scanDisplays();
+    L.scanMods();
+
+    bool play = false, quit = false;
+    while (!play && !quit) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (L.capture >= 0 && ev.type == SDL_KEYDOWN && !ev.key.repeat) {
+                const std::string name = keyName(int(ev.key.keysym.scancode));
+                std::string& keys = L.bindings.keys[L.capture];
+                keys = L.captureAdd && !keys.empty() ? keys + " " + name : name;
+                L.capture = -1;
+                continue;  // the key that was bound does not also navigate
+            }
+            if (L.capture >= 0 && ev.type == SDL_KEYUP) continue;
+            ImGui_ImplSDL2_ProcessEvent(&ev);
+            if (ev.type == SDL_QUIT) quit = true;
+            if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) quit = true;
+            if (ev.type == SDL_DISPLAYEVENT) {
+                L.scanDisplays();
+                L.modesFor = -1;
+            }
+        }
+        if (SDL_GetWindowFlags(win) & SDL_WINDOW_MINIMIZED) {
+            SDL_Delay(30);
+            continue;
+        }
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+        play = L.frame(quit);
+        ImGui::Render();
+        int dw = 0, dh = 0;
+        SDL_GL_GetDrawableSize(win, &dw, &dh);
+        glViewportP(0, 0, dw, dh);
+        glClearColorP(0.035f, 0.10f, 0.20f, 1.0f);
+        glClearP(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        SDL_GL_SwapWindow(win);
+    }
+    if (play) {
+        if (!L.settings.save()) fprintf(stderr, "[launcher] could not write %s\n", L.settings.path.c_str());
+        if (!L.bindings.save()) fprintf(stderr, "[launcher] could not write %s\n", L.bindings.path.c_str());
+    }
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+    SDL_GL_DeleteContext(ctx);
+    SDL_DestroyWindow(win);
+    SDL_Quit();
+    return play ? 1 : 0;
+}
+
+#else  // no SDL2: no launcher, the game starts directly
+extern "C" int GXPC_RunLauncher(const char*, const char*, int) { return 1; }
+#endif

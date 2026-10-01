@@ -88,6 +88,28 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `SMS_FRAME_RATE=60` | gameplay at 60 frames per second (the game's own timing, not sped up); logos, menus and movies stay at 30 |
 | `SMS_WIDESCREEN_HUD=edges` | with widescreen, move the gameplay HUD's counters to the left edge and the water gauge to the right one |
 
+### Launcher and PC options
+
+Before the game starts, a launcher window offers every option below (and key rebinding) in Display, Graphics, Gameplay, Audio and Controls pages, then writes them to `settings.txt` and `bindings.txt` when you press Play.
+It works with the mouse, the keyboard or a controller.
+`launcher = off` in `settings.txt` (or `--no-launcher`, or `SMS_LAUNCHER=0`) starts the game directly; hold Shift while starting, or pass `--launcher`, to show it anyway.
+It runs as a separate process so its window and GPU driver leave the game's low address space alone.
+
+| `settings.txt` | Variable | Effect |
+| --- | --- | --- |
+| `window_mode = borderless` | `SMS_WINDOW_MODE` | `windowed`, `borderless` (fullscreen at desktop resolution) or `fullscreen` (exclusive); F11 or Alt+Enter toggles while playing |
+| `display = 1` | `SMS_DISPLAY` | the monitor to open on (0 is the primary one) |
+| `fullscreen_mode = 2560x1440@144` | `SMS_FULLSCREEN_MODE` | the display mode for exclusive fullscreen (`desktop` by default) |
+| `vsync = adaptive` | `SMS_VSYNC` | `on`, `off` or `adaptive` (tears only when a frame is late) |
+| `msaa = 4` | `SMS_MSAA` | multisample anti-aliasing: 2, 4 or 8 samples |
+| `fxaa = on` | `SMS_FXAA` | FXAA post-process anti-aliasing |
+| `anisotropic = 16` | `SMS_ANISO` | anisotropic texture filtering |
+| `sharpen = 30` | `SMS_SHARPEN` | contrast-adaptive sharpening, 0 to 100 |
+| `brightness = 1.2` | `SMS_GAMMA` | brightness curve (1.0 is the original) |
+| `aspect = stretch` | `SMS_ASPECT` | `keep` (letterboxed), `stretch` or `integer` (whole multiples of 640x528) |
+| `present_filter = sharp` | `SMS_PRESENT_FILTER` | `bilinear` (area-averaged when the internal resolution exceeds the window, so it supersamples), `sharp` or `nearest` |
+| `volume = 70` | `SMS_VOLUME` | master volume, 0 to 100 |
+
 Optional mods, such as HD texture packs, go in [`mods/`](mods/README.md); `python3 tools/mods/get.py textures` downloads and installs the UHD texture pack there.
 
 Saves go to a memory card in slot A, kept as files in `~/.local/share/sms-port/card-a` on Linux and macOS (`$XDG_DATA_HOME/sms-port/card-a` if that is set) and in `%APPDATA%\sms-port\card-a` on Windows.

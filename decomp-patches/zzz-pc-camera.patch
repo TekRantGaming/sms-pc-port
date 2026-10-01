@@ -1,0 +1,81 @@
+Reason: port: PC camera options: free camera (no automatic swing back behind Mario in the normal camera; L still recentres), mouse look added to the C-stick, and a camera speed multiplier on manual rotation (platform/pad, settings.txt camera_*)
+--- a/src/Camera/CameraNormal.cpp
++++ b/src/Camera/CameraNormal.cpp
+@@ -15,6 +15,14 @@
+ #include <Camera/CameraMarioData.hpp>
+ #include <sms_modhook.h>
+ 
++#ifdef TARGET_PC
++// PC camera options (platform/pad): with the free camera the normal camera no
++// longer swings back behind Mario by itself (L still recentres it), and mouse
++// look adds the mouse's motion to the C-stick's.
++extern "C" int port_free_camera;
++extern "C" int port_camera_take_mouse(f32* dx, f32* dy);
++#endif
++
+ static const char* dummyMactorStringValue1 = "\0\0\0\0\0\0\0\0\0\0\0";
+ static const char* SMS_NO_MEMORY_MESSAGE   = "メモリが足りません\n";
+ 
+@@ -194,6 +202,15 @@
+ {
+ 	f32 fVar2 = unk120->mCompSPos[6];
+ 	f32 fVar3 = unk120->mCompSPos[7];
++#ifdef TARGET_PC
++	{
++		f32 mouseX, mouseY;
++		if (port_camera_take_mouse(&mouseX, &mouseY)) {
++			fVar2 += mouseX;
++			fVar3 += mouseY;
++		}
++	}
++#endif
+ 
+ 	unk250 = 0.0f;
+ 
+@@ -240,7 +257,11 @@
+ 				calcNoticeTargetYrot_(
+ 				    ((TFireWanwanTailHit*)gpMarioOriginal->mHeldObject)
+ 				        ->getHostPos());
+-		} else {
++		} else
++#ifdef TARGET_PC
++		if (!port_free_camera)
++#endif
++		{
+ 			if (!SMS_IsMarioTouchGround4cm()) {
+ 				unk250 = CLBLinearInbetween(
+ 				    CNParams(this)->mJumpFollowSpeedXmin,
+--- a/src/Camera/cameragc.cpp
++++ b/src/Camera/cameragc.cpp
+@@ -36,6 +36,11 @@
+ #include <Player/MarioDirtyStrings.hpp>
+ #include <sms_modhook.h>
+ 
++#ifdef TARGET_PC
++// PC camera speed (platform/pad, SMS_CAMERA_SPEED): scales manual rotation.
++extern "C" f32 port_camera_speed_x, port_camera_speed_y;
++#endif
++
+ CPolarSubCamera* gpCamera;
+ 
+ // The map has all three of these in this TU's .sdata ahead of cStartCamName.
+@@ -382,6 +387,9 @@
+ 	if (SMS_IsMarioOpeningDoor())
+ 		return;
+ 
++#ifdef TARGET_PC
++	param_1 *= port_camera_speed_y;
++#endif
+ 	mCurrentTarget.unk28 -= param_1 * mCurrentParams->mXRotRatioManualSpeed;
+ 	if (isLButtonCameraSpecifyMode(mMode)) {
+ 		mCurrentTarget.unk28 = MsClamp(mCurrentTarget.unk28, 0.0f, 1.0f);
+@@ -395,6 +403,9 @@
+ 	if (SMS_IsMarioOpeningDoor())
+ 		return;
+ 
++#ifdef TARGET_PC
++	param_1 *= port_camera_speed_x;
++#endif
+ 	s16 thing = param_1
+ 	            * CLBLinearInbetween(mCurrentParams->mYAngleManualSpeedXMin,
+ 	                                 mCurrentParams->mYAngleManualSpeedXMax,

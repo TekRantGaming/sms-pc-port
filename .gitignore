@@ -12,3 +12,5 @@
 /mods/*
 !/mods/README.md
 __pycache__/
+# Release packages (packaging/package.sh).
+/dist/

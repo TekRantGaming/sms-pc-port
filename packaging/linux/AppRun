@@ -1,0 +1,14 @@
+#!/bin/sh
+# AppImage entry point. The AppImage itself is read-only, so the game's
+# settings, key bindings, the disc image the launcher installs (rom/) and mods
+# live in a per-user folder, beside the memory card the port already keeps
+# there: $XDG_DATA_HOME/sms-port (~/.local/share/sms-port), or SMS_DATA_DIR.
+HERE="$(dirname "$(readlink -f "$0")")"
+DATA="${SMS_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/sms-port}"
+mkdir -p "$DATA/rom" "$DATA/mods/textures"
+for f in settings.txt bindings.txt; do
+	[ -f "$DATA/$f" ] || cp "$HERE/usr/share/sms-port/$f" "$DATA/$f"
+done
+cd "$DATA" || exit 1
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$HERE/usr/bin/sms" "$@"

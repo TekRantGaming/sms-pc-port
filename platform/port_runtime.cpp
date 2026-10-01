@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 #include <signal.h>
 #include <execinfo.h>
 #include "port_host.h"
@@ -22,6 +24,7 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
+#include <dirent.h>
 #include <spawn.h>
 #include <errno.h>
 extern char** environ;
@@ -457,6 +460,12 @@ static const struct {
 	{ "sharpen", "SMS_SHARPEN" },                 // 0..100
 	{ "brightness", "SMS_GAMMA" },                // 1.0 = unchanged
 	{ "volume", "SMS_VOLUME" },                   // 0..100
+	{ "camera_invert_x", "SMS_CAMERA_INVERT_X" },
+	{ "camera_invert_y", "SMS_CAMERA_INVERT_Y" },
+	{ "camera_speed", "SMS_CAMERA_SPEED" },       // percent, 100 = retail
+	{ "free_camera", "SMS_FREE_CAMERA" },         // no automatic swing-back
+	{ "mouse_camera", "SMS_MOUSE_CAMERA" },       // mouse look
+	{ "mouse_sensitivity", "SMS_MOUSE_SENSITIVITY" }, // percent
 	{ "launcher", "SMS_LAUNCHER" },               // show the launcher at start
 };
 
@@ -470,6 +479,42 @@ static const char* settings_path()
 		if (access(p, R_OK) == 0)
 			return p;
 	return NULL;
+}
+
+// The one GameCube disc image in rom/ beside the settings file (where the
+// launcher's installer puts it), or "" when there is none or more than one.
+static std::string find_rom_image()
+{
+	std::string dir = settings_path() ? settings_path() : "settings.txt";
+	size_t slash    = dir.find_last_of("/\\");
+	dir             = (slash == std::string::npos ? std::string() : dir.substr(0, slash + 1)) + "rom";
+	std::vector<std::string> found;
+#ifdef _WIN32
+	WIN32_FIND_DATAA fd;
+	HANDLE h = FindFirstFileA((dir + "\\*").c_str(), &fd);
+	if (h != INVALID_HANDLE_VALUE) {
+		do
+			if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+				found.push_back(dir + "/" + fd.cFileName);
+		while (FindNextFileA(h, &fd));
+		FindClose(h);
+	}
+#else
+	if (DIR* d = opendir(dir.c_str())) {
+		while (dirent* e = readdir(d))
+			if (e->d_name[0] != '.')
+				found.push_back(dir + "/" + e->d_name);
+		closedir(d);
+	}
+#endif
+	std::string image;
+	int n = 0;
+	for (const std::string& f : found)
+		if (gcdisc_probe(f.c_str())) {
+			image = f;
+			n++;
+		}
+	return n == 1 ? image : std::string();
 }
 
 // The key bindings file platform/pad reads (the same search as settings.txt).
@@ -515,10 +560,13 @@ static int launcher_in_child(char* argv0, int force)
 #else
 	// a fresh process (not fork): AppKit cannot be used in a forked child
 	char child[] = "--launcher-child", forced[] = "--launcher";
-	char* args[] = { argv0, child, force ? forced : NULL, NULL };
+	static char self[4096];
+	if (!gcdisc_self_path(self, sizeof self)) // argv[0] may be a bare name found on PATH
+		snprintf(self, sizeof self, "%s", argv0);
+	char* args[] = { self, child, force ? forced : NULL, NULL };
 	pid_t pid    = 0;
 	fflush(NULL);
-	if (posix_spawn(&pid, argv0, NULL, NULL, args, environ) != 0) {
+	if (posix_spawn(&pid, self, NULL, NULL, args, environ) != 0) {
 		port_log("[port] launcher: cannot start %s; showing it in this process\n", argv0);
 		return GXPC_RunLauncher(path ? path : "settings.txt", bindings_path(), force);
 	}
@@ -554,6 +602,22 @@ static void run_launcher(int argc, char** argv)
 	if (const char* l = getenv("SMS_LAUNCHER"))
 		if (!strcmp(l, "0") || !strcmp(l, "off"))
 			return;
+	// Tell the launcher where the game comes from when it is not its business
+	// (a disc argument, the environment, or an image bundled into the
+	// executable); otherwise its installer looks after rom/ itself.
+	const char* source = NULL;
+	for (int i = 1; i < argc && !source; i++)
+		if (argv[i][0] != '-')
+			source = argv[i];
+	if (!source)
+		source = getenv("SMS_DISC_IMAGE") ? getenv("SMS_DISC_IMAGE") : getenv("SMS_DISC_ROOT");
+	if (!source)
+		if (GCDisc* e = gcdisc_open_embedded(0)) {
+			gcdisc_close(e);
+			source = "bundled";
+		}
+	if (source)
+		port_setenv("SMS_LAUNCHER_DISC", source, 1);
 	if (!launcher_in_child(argv[0], force)) {
 		port_log("[port] launcher: quit\n");
 		exit(0);
@@ -652,6 +716,17 @@ extern "C" void port_init(int argc, char** argv)
 			port_disc_root     = argv[i];
 			port_disc_explicit = 1;
 		}
+	// Started without a game source (a double-click, or the launcher): the
+	// image the installer put in rom/ beside settings.txt, unless one is
+	// bundled into the executable.
+	if (!port_disc_explicit && !getenv("SMS_DISC_IMAGE")) {
+		if (GCDisc* e = gcdisc_open_embedded(0))
+			gcdisc_close(e);
+		else if (!find_rom_image().empty()) {
+			port_setenv("SMS_DISC_IMAGE", find_rom_image().c_str(), 1);
+			port_log("[port] game: %s\n", find_rom_image().c_str());
+		}
+	}
 #ifdef _WIN32
 	for (int sig : {SIGSEGV, SIGFPE, SIGILL, SIGABRT})
 		signal(sig, crash_handler);

@@ -90,8 +90,9 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 
 ### Launcher and PC options
 
-Before the game starts, a launcher window offers every option below (and key rebinding) in Display, Graphics, Gameplay, Audio and Controls pages, then writes them to `settings.txt` and `bindings.txt` when you press Play.
+Before the game starts, a launcher window offers every option below (and key rebinding) in Install, Display, Graphics, Camera, Gameplay, Audio and Controls pages, then writes them to `settings.txt` and `bindings.txt` when you press Play.
 It works with the mouse, the keyboard or a controller.
+Its Install page takes your disc image (Browse, or drop the file on the window), checks that it is GMSE01 revision 0, and copies it into `rom/` beside `settings.txt` (or uses it where it is), recording it as `disc_image`; started without a disc argument, the game also finds the one image in that `rom/` folder by itself.
 `launcher = off` in `settings.txt` (or `--no-launcher`, or `SMS_LAUNCHER=0`) starts the game directly; hold Shift while starting, or pass `--launcher`, to show it anyway.
 It runs as a separate process so its window and GPU driver leave the game's low address space alone.
 
@@ -109,6 +110,17 @@ It runs as a separate process so its window and GPU driver leave the game's low 
 | `aspect = stretch` | `SMS_ASPECT` | `keep` (letterboxed), `stretch` or `integer` (whole multiples of 640x528) |
 | `present_filter = sharp` | `SMS_PRESENT_FILTER` | `bilinear` (area-averaged when the internal resolution exceeds the window, so it supersamples), `sharp` or `nearest` |
 | `volume = 70` | `SMS_VOLUME` | master volume, 0 to 100 |
+| `camera_invert_x = on` | `SMS_CAMERA_INVERT_X` | invert the camera's horizontal control (C-stick, right stick, camera keys and mouse) |
+| `camera_invert_y = on` | `SMS_CAMERA_INVERT_Y` | invert the camera's vertical control |
+| `free_camera = on` | `SMS_FREE_CAMERA` | the normal camera stays where you point it instead of swinging back behind Mario; L recentres it |
+| `camera_speed = 150` | `SMS_CAMERA_SPEED` | manual camera rotation speed in percent (100 is the original) |
+| `mouse_camera = on` | `SMS_MOUSE_CAMERA` | mouse look: the window captures the mouse while focused; F10 releases it, a click takes it back |
+| `mouse_sensitivity = 150` | `SMS_MOUSE_SENSITIVITY` | mouse look speed in percent |
+
+### Releases
+
+`packaging/package.sh` turns a build into a release package without game data: a zip of `sms.exe` and its DLLs on Windows (MSYS2 MINGW64), and a 64-bit AppImage on Linux (after `SMS_ARCH=64 ./build.sh`), which keeps its settings, installed disc image and mods in `~/.local/share/sms-port`.
+The workflow in `.github/workflows/release.yml` builds both on every push and publishes them as a GitHub release when a `v*` tag is pushed.
 
 Optional mods, such as HD texture packs, go in [`mods/`](mods/README.md); `python3 tools/mods/get.py textures` downloads and installs the UHD texture pack there.
 

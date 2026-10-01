@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Super Mario Sunshine (PC Port)
+Comment=Native PC port of Super Mario Sunshine; needs your own disc image
+Exec=sms
+Icon=sms-pc-port
+Categories=Game;
+Terminal=false

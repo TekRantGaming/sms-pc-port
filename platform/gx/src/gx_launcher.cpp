@@ -27,8 +27,13 @@
 #include <string>
 #include <vector>
 
+#include <atomic>
+#include <thread>
+
 #ifdef _WIN32
 #include <windows.h>
+#include <commdlg.h>
+#include <direct.h>
 #else
 #include <dirent.h>
 #endif
@@ -307,11 +312,14 @@ void applyTheme(float scale) {
 }
 
 // ------------------------------------------------------------------ the menu
-enum Page { P_DISPLAY, P_GRAPHICS, P_GAMEPLAY, P_AUDIO, P_CONTROLS, P_ABOUT, P_COUNT };
-const char* const kPageNames[P_COUNT] = {"Display", "Graphics", "Gameplay", "Audio", "Controls", "About"};
+enum Page { P_INSTALL, P_DISPLAY, P_GRAPHICS, P_CAMERA, P_GAMEPLAY, P_AUDIO, P_CONTROLS, P_ABOUT, P_COUNT };
+const char* const kPageNames[P_COUNT] = {"Install", "Display", "Graphics", "Camera",
+                                         "Gameplay", "Audio", "Controls", "About"};
 const char* const kPageBlurbs[P_COUNT] = {
+    "Point the launcher at your own Super Mario Sunshine disc image to install the game.",
     "Window, monitor and how the picture fits your screen.",
     "Resolution, anti-aliasing, filtering and HD textures.",
+    "Camera direction, speed, free camera and mouse look.",
     "Frame rate, movies, mods and the performance overlay.",
     "Sound output and volume.",
     "Keyboard bindings for controller 1. Game controllers work automatically.",
@@ -320,11 +328,210 @@ const char* const kPageBlurbs[P_COUNT] = {
 
 struct Option { const char* value; const char* label; };
 
+// ------------------------------------------------------------------ installer
+// What a disc image is, from its header (plain/NKit ISO or GCM, or a Dolphin
+// CISO, whose first block starts 0x8000 bytes in).
+struct DiscCheck {
+    bool ok = false;
+    std::string summary;  // a line for the player: what it is, or what is wrong
+};
+
+FILE* openUtf8(const std::string& path, const char* mode) {
+#ifdef _WIN32
+    wchar_t wpath[1024], wmode[8];
+    if (!MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wpath, 1024)) return nullptr;
+    MultiByteToWideChar(CP_UTF8, 0, mode, -1, wmode, 8);
+    return _wfopen(wpath, wmode);
+#else
+    return fopen(path.c_str(), mode);
+#endif
+}
+
+long long fileSize(const std::string& path) {
+    FILE* f = openUtf8(path, "rb");
+    if (!f) return -1;
+#ifdef _WIN32
+    _fseeki64(f, 0, SEEK_END);
+    long long n = _ftelli64(f);
+#else
+    fseeko(f, 0, SEEK_END);
+    long long n = (long long)ftello(f);
+#endif
+    fclose(f);
+    return n;
+}
+
+DiscCheck checkDisc(const std::string& path) {
+    DiscCheck r;
+    FILE* f = openUtf8(path, "rb");
+    if (!f) {
+        r.summary = "Cannot open this file.";
+        return r;
+    }
+    unsigned char h[0x440] = {};
+    size_t n = fread(h, 1, sizeof h, f);
+    std::string kind = "ISO image";
+    if (n >= 4 && !memcmp(h, "CISO", 4)) {
+        kind = "Dolphin CISO image";
+#ifdef _WIN32
+        _fseeki64(f, 0x8000, SEEK_SET);
+#else
+        fseeko(f, 0x8000, SEEK_SET);
+#endif
+        n = fread(h, 1, sizeof h, f);
+    }
+    fclose(f);
+    if (n >= 4 && (!memcmp(h, "RVZ\x01", 4) || !memcmp(h, "WIA\x01", 4))) {
+        r.summary = "RVZ and WIA images are compressed in a way the port cannot read. In Dolphin, right-click the "
+                    "game, choose Convert File and pick ISO, then select the new file.";
+        return r;
+    }
+    const unsigned magic = unsigned(h[0x1C]) << 24 | unsigned(h[0x1D]) << 16 | unsigned(h[0x1E]) << 8 | h[0x1F];
+    if (n < 0x440 || magic != 0xC2339F3Du) {
+        r.summary = "This is not a GameCube disc image.";
+        return r;
+    }
+    if (!memcmp(h + 0x200, "NKIT", 4)) kind = "NKit image";
+    const std::string id(reinterpret_cast<const char*>(h), 6);
+    if (id.compare(0, 3, "GMS") != 0) {
+        r.summary = "This is a different GameCube game (" + id + "), not Super Mario Sunshine.";
+        return r;
+    }
+    if (id != "GMSE01") {
+        const char* region = id[3] == 'P' ? "European" : id[3] == 'J' ? "Japanese" : "other";
+        r.summary = std::string("This is the ") + region + " release (" + id +
+                    "). The port needs the North American release, GMSE01.";
+        return r;
+    }
+    if (h[7] != 0) {
+        r.summary = "This is revision " + std::to_string(h[7]) + ". The port needs revision 0 of GMSE01.";
+        return r;
+    }
+    char size[32];
+    snprintf(size, sizeof size, "%.2f GB", double(fileSize(path)) / 1e9);
+    r.ok = true;
+    r.summary = "Super Mario Sunshine, North America (GMSE01, revision 0), " + kind + ", " + size + ".";
+    return r;
+}
+
+// Asks the desktop for a file: the Windows file dialog, zenity or kdialog on
+// Linux, AppleScript on macOS. Empty when cancelled or unavailable.
+std::string browseForImage() {
+#ifdef _WIN32
+    typedef BOOL(WINAPI * GetOpenFileNameWFn)(LPOPENFILENAMEW);
+    static HMODULE dlg = LoadLibraryA("comdlg32.dll");
+    GetOpenFileNameWFn open = dlg ? (GetOpenFileNameWFn)GetProcAddress(dlg, "GetOpenFileNameW") : nullptr;
+    if (!open) return std::string();
+    wchar_t file[1024] = L"";
+    OPENFILENAMEW ofn;
+    memset(&ofn, 0, sizeof ofn);
+    ofn.lStructSize = sizeof ofn;
+    ofn.lpstrFilter = L"GameCube disc images (*.iso, *.gcm, *.ciso)\0*.iso;*.gcm;*.ciso\0All files\0*.*\0";
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = 1024;
+    ofn.lpstrTitle = L"Select your Super Mario Sunshine disc image";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (!open(&ofn)) return std::string();
+    char utf8[2048];
+    WideCharToMultiByte(CP_UTF8, 0, file, -1, utf8, sizeof utf8, nullptr, nullptr);
+    return utf8;
+#else
+    const char* const cmds[] = {
+#ifdef __APPLE__
+        "osascript -e 'POSIX path of (choose file with prompt \"Select your Super Mario Sunshine disc image\")' "
+        "2>/dev/null",
+#else
+        "zenity --file-selection --title='Select your Super Mario Sunshine disc image' "
+        "--file-filter='GameCube disc images | *.iso *.gcm *.ciso *.ISO *.GCM' --file-filter='All files | *' "
+        "2>/dev/null",
+        "kdialog --getopenfilename . '*.iso *.gcm *.ciso' 2>/dev/null",
+#endif
+    };
+    for (const char* cmd : cmds) {
+        FILE* p = popen(cmd, "r");
+        if (!p) continue;
+        char buf[4096] = "";
+        const bool got = fgets(buf, sizeof buf, p) != nullptr;
+        const int rc = pclose(p);
+        std::string s = trim(buf);
+        if (got && rc == 0 && !s.empty()) return s;
+        if (rc == 0 || rc == 256) return std::string();  // ran, and the player cancelled
+    }
+    return std::string();
+#endif
+}
+
+// Copies the image into rom/ on a worker thread.
+struct InstallJob {
+    std::thread worker;
+    std::atomic<bool> running{false}, cancel{false}, done{false}, failed{false};
+    std::atomic<long long> copied{0};
+    long long total = 0;
+    std::string dest, error;
+
+    void start(const std::string& src, const std::string& to) {
+        if (worker.joinable()) worker.join();
+        dest = to;
+        error.clear();
+        total = fileSize(src);
+        copied = 0;
+        cancel = done = failed = false;
+        running = true;
+        worker = std::thread([this, src]() { run(src); });
+    }
+    void run(const std::string src) {
+        const std::string part = dest + ".part";
+        FILE* in = openUtf8(src, "rb");
+        FILE* out = in ? openUtf8(part, "wb") : nullptr;
+        if (!in || !out) {
+            error = in ? "Cannot write to " + part : "Cannot read " + src;
+            if (in) fclose(in);
+            failed = true;
+            running = false;
+            return;
+        }
+        std::vector<char> buf(8 << 20);
+        size_t n;
+        while (!cancel && (n = fread(buf.data(), 1, buf.size(), in)) > 0) {
+            if (fwrite(buf.data(), 1, n, out) != n) {
+                error = "Writing failed: is the disk full?";
+                break;
+            }
+            copied += (long long)n;
+        }
+        fclose(in);
+        const bool ok = fclose(out) == 0 && error.empty() && !cancel;
+        if (ok) {
+            remove(dest.c_str());
+            if (rename(part.c_str(), dest.c_str()) != 0) error = "Cannot rename " + part;
+        }
+        if (!ok || !error.empty()) {
+            remove(part.c_str());
+            if (error.empty() && !cancel) error = "Copy failed.";
+            failed = !cancel;
+        } else {
+            done = true;
+        }
+        running = false;
+    }
+    ~InstallJob() {
+        cancel = true;
+        if (worker.joinable()) worker.join();
+    }
+};
+
 struct Launcher {
     SettingsFile settings;
     BindingsFile bindings;
     std::string baseDir;
     Page page = P_DISPLAY;
+    // installer
+    std::string discSource;  // SMS_LAUNCHER_DISC: the game comes from elsewhere
+    std::string installed;   // the image the game will use, "" when none
+    char pickPath[1024] = "";
+    std::string pickedFor;   // pickPath when it was last checked
+    DiscCheck picked;
+    InstallJob job;
     ImFont* body = nullptr;
     ImFont* bold = nullptr;
     float scale = 1.0f;
@@ -688,6 +895,207 @@ struct Launcher {
         }
     }
 
+    // --- installer
+    int installMode = 0;  // 0: copy into rom/, 1: use the image where it is
+    double suppressClicks = 0;  // mouse buttons are ignored until then (after a file dialog)
+
+    static std::string absPath(const std::string& p) {
+#ifdef _WIN32
+        wchar_t w[1024], full[1024];
+        if (!MultiByteToWideChar(CP_UTF8, 0, p.c_str(), -1, w, 1024) || !_wfullpath(full, w, 1024)) return p;
+        char out[2048];
+        WideCharToMultiByte(CP_UTF8, 0, full, -1, out, sizeof out, nullptr, nullptr);
+        std::string s = out;
+        for (char& c : s)
+            if (c == '\\') c = '/';
+        return s;
+#else
+        char buf[4096];
+        return realpath(p.c_str(), buf) ? std::string(buf) : p;
+#endif
+    }
+
+    void refreshInstalled() {
+        installed.clear();
+        if (!discSource.empty()) {
+            installed = discSource == "bundled" ? "Built into this executable" : discSource;
+            return;
+        }
+        const std::string img = settings.get("disc_image", "");
+        if (!img.empty() && fileSize(img) > 0) {
+            installed = img;
+            return;
+        }
+        std::vector<std::string> found;
+#ifdef _WIN32
+        WIN32_FIND_DATAA fd;
+        HANDLE h = FindFirstFileA((baseDir + "rom\\*").c_str(), &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) found.push_back(baseDir + "rom/" + fd.cFileName);
+            while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+#else
+        if (DIR* d = opendir((baseDir + "rom").c_str())) {
+            while (dirent* e = readdir(d))
+                if (e->d_name[0] != '.') found.push_back(baseDir + "rom/" + e->d_name);
+            closedir(d);
+        }
+#endif
+        std::vector<std::string> ok;
+        for (const std::string& f : found)
+            if (checkDisc(f).ok) ok.push_back(f);
+        if (ok.size() == 1) installed = ok[0];
+    }
+
+    void statusCard() {
+        const bool ready = !installed.empty();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        const float w = ImGui::GetContentRegionAvail().x, h = 78.0f * scale;
+        dl->AddRectFilled(p, p + ImVec2(w, h), ready ? IM_COL32(28, 110, 72, 255) : IM_COL32(150, 82, 20, 255),
+                          12.0f * scale);
+        dl->AddCircleFilled(p + ImVec2(38 * scale, h / 2), 16 * scale,
+                            ready ? IM_COL32(120, 230, 160, 255) : IM_COL32(255, 200, 90, 255), 24);
+        ImGui::SetCursorScreenPos(p + ImVec2(70 * scale, 14 * scale));
+        ImGui::BeginGroup();
+        ImGui::PushFont(bold, ImGui::GetStyle().FontSizeBase * 1.15f);
+        ImGui::TextUnformatted(ready ? "Ready to play" : "Game not installed");
+        ImGui::PopFont();
+        ImGui::PushTextWrapPos(p.x + w - 16 * scale);
+        ImGui::TextUnformatted(ready ? installed.c_str() : "Select your disc image below to install it.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+        ImGui::SetCursorScreenPos(p + ImVec2(0, h + 16 * scale));
+    }
+
+    void pageInstall() {
+        statusCard();
+        if (!discSource.empty()) {
+            info("Game source", discSource == "bundled"
+                                    ? "This executable carries the game's files, so nothing needs installing."
+                                    : "The game image was given on the command line or by SMS_DISC_IMAGE.");
+            return;
+        }
+        rowBegin("Disc image",
+                 "Your own Super Mario Sunshine disc: North America (GMSE01), revision 0, as an ISO, GCM, NKit "
+                 "ISO or Dolphin CISO. You can also drop the file onto this window.");
+        const float bw = 130.0f * scale;
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - bw - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::InputTextWithHint("##path", "Path to the disc image", pickPath, sizeof pickPath);
+        ImGui::SameLine();
+        if (ImGui::Button("Browse...", ImVec2(bw, 0)) && !job.running) {
+            const std::string s = browseForImage();
+            if (!s.empty()) snprintf(pickPath, sizeof pickPath, "%s", s.c_str());
+            // the click that closed the dialog must not land on a button here
+            SDL_PumpEvents();
+            SDL_FlushEvents(SDL_MOUSEMOTION, SDL_MOUSEWHEEL);
+            ImGui::GetIO().AddMouseButtonEvent(0, false);
+            suppressClicks = ImGui::GetTime() + 0.35;
+        }
+        const std::string path = trim(pickPath);
+        if (path != pickedFor) {
+            pickedFor = path;
+            picked = path.empty() ? DiscCheck() : checkDisc(path);
+        }
+        if (!path.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, picked.ok ? ImVec4(0.55f, 0.92f, 0.65f, 1) : ImVec4(1, 0.72f, 0.4f, 1));
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(picked.summary.c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
+        }
+        rowEnd();
+
+        rowBegin("Install method",
+                 "Copying puts the image in the game's rom folder (about 1.2 GB), so it keeps working if the original "
+                 "moves. Using it in place needs no space but the file must stay where it is.");
+        const char* modes[] = {"Copy into the game folder", "Use it where it is"};
+        const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        for (int i = 0; i < 2; i++) {
+            if (i) ImGui::SameLine();
+            const bool on = installMode == i;
+            if (on) {
+                ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+            }
+            if (ImGui::Button(modes[i], ImVec2(half, 0))) installMode = i;
+            if (on) ImGui::PopStyleColor(3);
+        }
+        rowEnd();
+
+        if (job.running) {
+            const float frac = job.total > 0 ? float(double(job.copied) / double(job.total)) : 0.0f;
+            char label[64];
+            snprintf(label, sizeof label, "Installing... %.0f%%", double(frac) * 100.0);
+            ImGui::ProgressBar(frac, ImVec2(ImGui::GetContentRegionAvail().x - 150 * scale, 44 * scale), label);
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(-FLT_MIN, 44 * scale))) job.cancel = true;
+            return;
+        }
+        if (job.done) {
+            job.done = false;
+            settings.set("disc_image", absPath(job.dest));
+            settings.save();
+            refreshInstalled();
+            status = "Installed. Press Play to start the game.";
+            statusUntil = ImGui::GetTime() + 6.0;
+        }
+        if (job.failed) {
+            job.failed = false;
+            status = "Install failed: " + job.error;
+            statusUntil = ImGui::GetTime() + 8.0;
+        }
+        ImGui::BeginDisabled(!picked.ok);
+        ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, kAccentHot);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+        if (ImGui::Button(installed.empty() ? "Install" : "Install this image instead", ImVec2(320 * scale, 48 * scale))) {
+            if (installMode == 1) {
+                settings.set("disc_image", absPath(path));
+                settings.save();
+                refreshInstalled();
+                status = "Done. Press Play to start the game.";
+                statusUntil = ImGui::GetTime() + 6.0;
+            } else {
+                std::string ext = path.substr(path.find_last_of('.') + 1);
+                for (char& c : ext) c = char(tolower(c));
+                std::string lower = path;
+                for (char& c : lower) c = char(tolower(c));
+                if (lower.size() > 9 && lower.compare(lower.size() - 9, 9, ".nkit.iso") == 0) ext = "nkit.iso";
+                const std::string dir = baseDir + "rom";
+#ifdef _WIN32
+                _mkdir(dir.c_str());
+#else
+                mkdir(dir.c_str(), 0755);
+#endif
+                job.start(path, dir + "/GMSE01." + ext);
+            }
+        }
+        ImGui::PopStyleColor(4);
+        ImGui::EndDisabled();
+    }
+
+    void pageCamera() {
+        toggle("Invert horizontal (X)", "Flip left and right camera movement, on the C-stick, right stick and mouse.",
+               "camera_invert_x", false);
+        toggle("Invert vertical (Y)", "Flip up and down camera movement.", "camera_invert_y", false);
+        toggle("Free camera",
+               "The camera stays where you point it instead of swinging back behind Mario as he runs, like the free "
+               "camera of the Super Mario 64 PC port. Press L to recentre it.",
+               "free_camera", false);
+        sliderInt("Camera speed", "How fast the camera turns with the stick. 100% is the original speed.",
+                  "camera_speed", 100, 25, 300, "%d%%", 5);
+        toggle("Mouse look",
+               "Turn the camera with the mouse. The game captures the mouse while it has focus: F10 releases it, "
+               "click the window to take it back.",
+               "mouse_camera", false);
+        sliderInt("Mouse sensitivity", nullptr, "mouse_sensitivity", 100, 10, 500, "%d%%", 5);
+    }
+
     void pageAbout() {
         toggle("Show this menu at startup",
                "When off, the game starts straight away. Hold Shift while starting it to see this menu again.",
@@ -797,6 +1205,8 @@ struct Launcher {
         ImGui::PopStyleColor();
         ImGui::Dummy(ImVec2(0, 10 * scale));
         switch (page) {
+        case P_INSTALL: pageInstall(); break;
+        case P_CAMERA: pageCamera(); break;
         case P_DISPLAY: pageDisplay(); break;
         case P_GRAPHICS: pageGraphics(); break;
         case P_GAMEPLAY: pageGameplay(); break;
@@ -857,6 +1267,12 @@ struct Launcher {
             if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) quit = true;
             if (ImGui::IsKeyPressed(ImGuiKey_GamepadStart, false)) play = true;
         }
+        if (play && (installed.empty() || job.running)) {  // nothing to play yet
+            play = false;
+            page = P_INSTALL;
+            status = job.running ? "Wait for the install to finish." : "Install the game first: select your disc image.";
+            statusUntil = ImGui::GetTime() + 5.0;
+        }
         ImGui::End();
         return play;
     }
@@ -888,13 +1304,19 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
     L.settings.path = settingsPath && *settingsPath ? settingsPath : "settings.txt";
     L.bindings.path = bindingsPath && *bindingsPath ? bindingsPath : "bindings.txt";
     L.settings.load();
-    const std::string show = L.settings.get("launcher", "on");
-    if (!force && (show == "off" || show == "0" || show == "no" || show == "false") && !shiftHeld()) return 1;
     {
         const std::string& p = L.settings.path;
         size_t slash = p.find_last_of("/\\");
         L.baseDir = slash == std::string::npos ? std::string() : p.substr(0, slash + 1);
     }
+    if (const char* src = getenv("SMS_LAUNCHER_DISC")) L.discSource = src;
+    L.refreshInstalled();
+    // `launcher = off` skips the menu, but never when there is no game to play
+    const std::string show = L.settings.get("launcher", "on");
+    if (!force && !L.installed.empty() && (show == "off" || show == "0" || show == "no" || show == "false") &&
+        !shiftHeld())
+        return 1;
+    if (L.installed.empty()) L.page = P_INSTALL;
     L.bindings.load();
 
 #ifdef SDL_HINT_WINDOWS_DPI_SCALING
@@ -984,7 +1406,16 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
                 continue;  // the key that was bound does not also navigate
             }
             if (L.capture >= 0 && ev.type == SDL_KEYUP) continue;
+            if ((ev.type == SDL_MOUSEBUTTONDOWN || ev.type == SDL_MOUSEBUTTONUP) && ImGui::GetTime() < L.suppressClicks)
+                continue;
             ImGui_ImplSDL2_ProcessEvent(&ev);
+            if (ev.type == SDL_DROPFILE) {  // a disc image dropped onto the window
+                if (L.discSource.empty() && !L.job.running) {
+                    snprintf(L.pickPath, sizeof L.pickPath, "%s", ev.drop.file);
+                    L.page = P_INSTALL;
+                }
+                SDL_free(ev.drop.file);
+            }
             if (ev.type == SDL_QUIT) quit = true;
             if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) quit = true;
             if (ev.type == SDL_DISPLAYEVENT) {

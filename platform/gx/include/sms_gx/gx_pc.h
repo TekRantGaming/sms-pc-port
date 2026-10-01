@@ -48,6 +48,8 @@ void GXPC_SetWindowIcon(const uint8_t* rgba, int w, int h);
  * Skipped when settings.txt has `launcher = off` (unless Shift is held, or
  * force is set). Returns 1 to start the game, 0 when the player quit. */
 int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPath, int force);
+/* 1 while the window holds the mouse for mouse look (SMS_MOUSE_CAMERA). */
+int GXPC_MouseCaptured(void);
 /* Widescreen: the displayed width over the GameCube's 4:3 (1 = off). Set
  * before the context exists; the EFB, the display and the window widen, and
  * draws map the game's 640-wide coordinates into it (see gx_render.cpp). The

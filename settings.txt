@@ -60,6 +60,16 @@ frame_rate = 60
 # audio = on
 # Master volume, 0 to 100.
 # volume = 100
+
+# Camera: invert either axis (C-stick, right stick, camera keys and mouse),
+# a free camera that stays where you point it (L recentres it), rotation speed
+# in percent, and mouse look (F10 releases the mouse) with its sensitivity.
+# camera_invert_x = off
+# camera_invert_y = off
+# free_camera = off
+# camera_speed = 100
+# mouse_camera = off
+# mouse_sensitivity = 100
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
 

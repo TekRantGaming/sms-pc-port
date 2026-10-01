@@ -105,6 +105,17 @@ void setFullscreen(bool on) {
     SDL_ShowCursor(on ? SDL_DISABLE : SDL_ENABLE);
 }
 
+// SMS_MOUSE_CAMERA=1: mouse look. The mouse is captured (relative mode) while
+// the window has focus; F10 releases it, a click in the window takes it back,
+// and losing focus always frees it.
+bool s_mouseCamera = false, s_mouseCaptured = false, s_mouseReleased = false;
+
+void captureMouse(bool on) {
+    if (!s_mouseCamera) on = false;
+    if (on == s_mouseCaptured) return;
+    if (SDL_SetRelativeMouseMode(on ? SDL_TRUE : SDL_FALSE) == 0) s_mouseCaptured = on;
+}
+
 void applyIcon() {
     if (!s_window || s_icon.empty()) return;
     SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(s_icon.data(), s_iconW, s_iconH, 32, s_iconW * 4,
@@ -198,6 +209,11 @@ bool openWindow(int scale) {
     if (mode != WM_WINDOWED) {
         s_fullscreenKind = mode;
         setFullscreen(true);
+    }
+    s_mouseCamera = envTrue("SMS_MOUSE_CAMERA");
+    if (s_mouseCamera) {
+        logmsg("mouse look on (F10 releases the mouse)");
+        captureMouse((SDL_GetWindowFlags(s_window) & SDL_WINDOW_INPUT_FOCUS) != 0);
     }
     return true;
 }
@@ -310,6 +326,13 @@ void GXPC_SetWindowIcon(const uint8_t* rgba, int w, int h) {
 #endif
 }
 void GXPC_SetAutoPresent(int enable) { s_autoPresent = enable != 0; }
+int GXPC_MouseCaptured(void) {
+#ifdef SMS_GX_HAVE_SDL2
+    return s_mouseCaptured;
+#else
+    return 0;
+#endif
+}
 int GXPC_IsHeadless(void) { return s_mode != MODE_WINDOW; }
 uint32_t GXPC_FrameCount(void) { return s_frame; }
 
@@ -405,6 +428,23 @@ void sms_gx_pump_events(void) {
         if ((ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) && ev.key.keysym.scancode == SDL_SCANCODE_GRAVE) {
             if (ev.type == SDL_KEYDOWN && !ev.key.repeat) GXPC_OverlayToggle();
             continue;
+        }
+        if (s_mouseCamera) {
+            if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_FOCUS_LOST) captureMouse(false);
+            if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_FOCUS_GAINED && !s_mouseReleased)
+                captureMouse(true);
+            if (ev.type == SDL_MOUSEBUTTONDOWN && !s_mouseCaptured) {
+                s_mouseReleased = false;
+                captureMouse(true);
+                continue;
+            }
+            if (ev.type == SDL_KEYDOWN && ev.key.keysym.scancode == SDL_SCANCODE_F10) {
+                if (!ev.key.repeat) {
+                    s_mouseReleased = s_mouseCaptured;
+                    captureMouse(!s_mouseCaptured);
+                }
+                continue;
+            }
         }
         // F11 or Alt+Enter toggles fullscreen and is kept from the pad layer
         if ((ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) &&

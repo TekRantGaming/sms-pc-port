@@ -61,10 +61,13 @@ Without it, the build is the plain port: every hook below is in the source but f
 
 For bisecting, `SMS_MOD_LIST=1` prints every registered patch and `SMS_MOD_DISABLE=addr,addr` switches patches off by retail address; `SMS_MOD_REPORT=1` lists, at exit, patches the game never reached.
 
-## Status (2026-09-27)
+## Status (2026-10-01)
 
 - The 32- and 64-bit ports both run all three modules on the Eclipse disc: BSE's first-boot settings screen (saved to the memory card), Eclipse's title screen and file select, its Tutorial stage with its dialogue, HUD and the moveset, and its first stage.
   With the same input the two play the same run.
+- Rechecked after the maths, memory and decomp changes up to `a695da2`: a headless scripted run (`SMS_VI_DETERMINISTIC`, the settings saved by a first boot, then `SMS_AUTOPRESS` through the Tutorial's dialogue, a walk and a jump, the pause menu's Exit Area, and the title that follows) gives byte-identical frames in the 32- and 64-bit builds.
+  Leaving the Tutorial had found three faults: BSE's sun code passed a `Vec` through a `(...)` cast by value, two `f32` raw_fn macros still called retail addresses, and the decomp's 64-bit `JKRArchive` had outgrown SunshineHeaderInterface's (the layout patch is regenerated after any decomp change to a class the mods see or allocate).
+- Still open: `TBossPakkun` is 460 bytes in SunshineHeaderInterface's 32-bit layout and 464 in the port's (data to 461), and Eclipse's `TFireyPetey` derives from it; `verify.py` reports it.
 - **Patches.** Every patch of the three modules is either hooked or waived: `tools/mods/port_status.py` lists none left to do (widescreen and frame-rate patches are waived, the port has its own; six more sit in code the mods compile out, which `--registered` shows as inactive).
 - **Retail addresses and offsets in the mods' code.** Game data the mods reach by retail address goes to the port's objects ([rawdata.cpp](../platform/mods/eclipse/rawdata.cpp)); members they reach by retail offset go through `SMS_OFFSET`.
   A retail data address not listed there stops the game with a message naming it.

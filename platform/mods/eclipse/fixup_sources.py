@@ -179,6 +179,20 @@ SHI_FIXES = [
      "TMapObjBall ends at 0x198 as in the game"),
     ("include/SMS/MoveBG/ResetFruit.hxx", r"(\n([ \t]*))(u16 _19C;\n)", r"\1f32 _198;\1\3",
      "TMapObjBall ends at 0x198 as in the game"),
+    # J3DTevBlock's setters come in pairs whose vtable slots hold the
+    # by-pointer one first (__vt__13J3DTevBlock16: setTevKColor
+    # FUlPC10J3DGXColor, then FUl10J3DGXColor); SHI declares the by-value one
+    # first. On the PowerPC both take an address, so either slot works there;
+    # natively the by-value call reached the by-pointer function with the
+    # colour as the pointer (Eclipse's TDarkZhine::perform, its switch blocks).
+    ("include/JSystem/J3D/J3DMaterial.hxx",
+     r"(?m)^([ \t]*virtual void (\w+)\((?![^)]*\*)[^)]*\)[ \t]*= 0;\n)([ \t]*virtual void \2\([^)]*\*[^)]*\)[ \t]*= 0;\n)",
+     r"\3\1", "J3DTevBlock's vtable as in the game"),
+    # The by-value one takes the port's J3DGXColor, which has a user-written
+    # copy constructor and so goes by address: SHI's plain union would go by
+    # value. A const reference is passed as the port's function expects.
+    ("include/JSystem/J3D/J3DMaterial.hxx", r"(setTevKColor\(s32 idx, )J3DGXColor color\)",
+     r"\1const J3DGXColor &color)", "J3DTevBlock's vtable as in the game"),
 ]
 
 

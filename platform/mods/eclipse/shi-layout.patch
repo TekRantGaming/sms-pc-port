@@ -9325,7 +9325,7 @@
 @@ -19,9 +19,29 @@
  
      virtual void load(JSUMemoryInputStream &);
-     virtual bool calcRecycle() override;
+     virtual int calcRecycle() override;
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u32 _15C;

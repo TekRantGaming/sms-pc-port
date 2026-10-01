@@ -46,7 +46,9 @@ endif()
 # -fnew-alignment=4: the game's operator new (JKRHeap) guarantees 4-byte
 # alignment, not the 16 clang would otherwise assume for aligned SSE stores;
 # -fno-aligned-new keeps every allocation on that operator (the game's heaps).
-set(_opts ${_arch} -fnew-alignment=4 -fno-aligned-new -O2 -g -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
+# -fstandalone-debug: every game class the mods use is described in their
+# debug info, which tools/mods/abi_check.py compares with the game's.
+set(_opts ${_arch} -fnew-alignment=4 -fno-aligned-new -O2 -g -fstandalone-debug -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
   -fno-use-init-array
   -include ${PORT_MODS}/eclipse/shim/sms_mod_prelude.h
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20> $<$<COMPILE_LANGUAGE:C>:-std=gnu11>)

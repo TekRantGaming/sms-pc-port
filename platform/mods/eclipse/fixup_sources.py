@@ -87,8 +87,8 @@ BOOL_RET_FIXES = [
 # declared bool, an override of one of the virtual ones would return a byte to
 # a caller that tests the word. Declared as the game declares them, the mods
 # read the whole word, and an override returning bool does not compile.
-# (Found by comparing the mods' calls, with clang's types, against the game's
-# DWARF; the patch targets are covered by the shim, Kuribo/sdk/kuribo_sdk.h.)
+# tools/mods/abi_check.py, run after each Eclipse build, finds new ones; the
+# patch targets the game calls are covered by the shim (Kuribo/sdk/kuribo_sdk.h).
 SHI_WORD_RET = [
     ("int", "moveToNextNode|entryMatColorAnimator|traceSpline|checkCurAnm|checkCurAnmFromIndex|"
             "checkCurBckFromIndex|curAnmEndsNext|rocketCheck|checkBackTrig|checkGroundPlane|"
@@ -97,13 +97,18 @@ SHI_WORD_RET = [
             "hasMapCollision|onYoshi|isDummy|isPumpOK|DVDOpen|DVDFastOpen|DVDClose|"
             "DVDPrepareStreamAsync|DVDCancelStreamAsync|DVDStopStreamAtEndAsync|"
             "DVDGetStreamErrorStatusAsync|DVDGetStreamPlayAddrAsync|DVDCheckDisk|"
-            "OSDisableInterrupts|OSCreateThread|OSJoinThread|OSIsThreadTerminated"),
+            "OSDisableInterrupts|OSCreateThread|OSJoinThread|OSIsThreadTerminated|calcRecycle|"
+            "belongToGround|isReachedToGoal"),
     ("u32", "startVoice|startVoiceIfNoVoice"),
 ]
 SHI_WORD_FIXES = [
     (glob_, r"\bbool(\s+(?:%s)\s*\()" % names, ty + r"\1", "game functions returning a word return one")
     for ty, names in SHI_WORD_RET for glob_ in ("include/**/*.hxx", "include/**/*.h")
 ] + [
+    # And the JStage functions the port declares bool (its default
+    # implementations return false), which SunshineHeaderInterface calls u32.
+    ("include/JSystem/JStage/*.hxx", r"\bvirtual (?:u32|unsigned long)(\s+JSG(?:GetName|GetData|GetSystemData|CreateObject)\s*\()",
+     r"virtual bool\1", "JStage's bool results are bools"),
     # BOOL and s32 arguments: clang passes a bool zero-extended to the word
     # anyway, but the declarations then say what the game reads.
     ("include/Dolphin/OS.h", r"(OSRestoreInterrupts\()bool(\s+enable\))", r"\1int\2",

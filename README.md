@@ -1,55 +1,237 @@
-# Super Mario Sunshine — PC Port
+<div align="center">
 
-A native PC port of **Super Mario Sunshine** (GameCube, North America, GMSE01), built from the [matching decompilation](https://github.com/chasem-dev/sms-english). It adds a full launcher and the options you would expect from a PC release: high resolutions, anti-aliasing, fullscreen modes, HD textures, camera options and key rebinding.
+<img src="docs/images/banner.png" alt="Super Mario Sunshine PC Port" width="100%">
 
-![Delfino Plaza at 5x internal resolution with 4x MSAA and the UHD texture pack](docs/images/delfino-plaza-5x-hd.jpg)
+<br>
 
-**[Download for Windows or Linux](https://github.com/TekRantGaming/sms-pc-port/releases/latest)**: unzip or run, point the launcher at your disc image, and play.
+[![Latest release](https://img.shields.io/github/v/release/TekRantGaming/sms-pc-port?style=for-the-badge&label=release&color=ffc93c&labelColor=0b1e3a)](https://github.com/TekRantGaming/sms-pc-port/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/TekRantGaming/sms-pc-port/total?style=for-the-badge&color=1e88e5&labelColor=0b1e3a)](https://github.com/TekRantGaming/sms-pc-port/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/TekRantGaming/sms-pc-port/release.yml?branch=main&style=for-the-badge&labelColor=0b1e3a)](https://github.com/TekRantGaming/sms-pc-port/actions)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-00acc1?style=for-the-badge&labelColor=0b1e3a)
 
-> No game data is included. The port reads the models, textures, levels, music and movies from **your own disc image** of Super Mario Sunshine (North America, GMSE01, revision 0) at run time.
+### A native PC port of Super Mario Sunshine, with the launcher and options of a modern PC release.
 
-![The same frame at the original 640x528 and in the PC port at 5x resolution with 4x MSAA and HD textures](docs/images/before-after.jpg)
+[<img src="https://img.shields.io/badge/Download-Windows%20x64-ffc93c?style=for-the-badge&logo=windows&logoColor=white&labelColor=0b1e3a" alt="Download for Windows" height="40">](https://github.com/TekRantGaming/sms-pc-port/releases/latest)
+&nbsp;
+[<img src="https://img.shields.io/badge/Download-Linux%20AppImage-ffc93c?style=for-the-badge&logo=linux&logoColor=white&labelColor=0b1e3a" alt="Download for Linux" height="40">](https://github.com/TekRantGaming/sms-pc-port/releases/latest)
 
-## Features
+<sub>Built from the <a href="https://github.com/chasem-dev/sms-english">matching decompilation</a>. <b>No game data included</b>: bring your own disc image of Super Mario Sunshine (North America, GMSE01, revision 0).</sub>
 
-**Launcher.** A menu opens before the game. It works with the mouse, the keyboard or a controller, and saves everything to `settings.txt` and `bindings.txt`.
+</div>
 
-- **Install.** Browse for your disc image or drop it on the window. The launcher checks the game, region and revision, then copies the image into place or uses it where it is.
-- **Display.** Windowed, borderless or exclusive fullscreen (with a resolution and refresh-rate picker), monitor choice, and vsync (off, on or adaptive). Widescreen 16:9, 16:10, 21:9, 32:9 or matched to your monitor, with the HUD centred or at the screen edges. Keep, stretch or integer aspect, and a smooth, sharp or nearest scaling filter. F11 or Alt+Enter toggles fullscreen in game.
-- **Graphics.** Internal resolution from 1x to 8x, with one recommended for your monitor. MSAA 2x/4x/8x, FXAA, anisotropic filtering up to 16x, contrast-adaptive sharpening and brightness.
-- **HD textures.** One click downloads and installs the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (qashto, razius) from its own release. Then switch it on or off, or remove it. Any Dolphin texture pack works in `mods/textures`.
-- **Camera.** Invert X and Y separately, a free camera that stays where you point it instead of swinging back behind Mario (L recentres it), camera speed, and mouse look with sensitivity.
-- **Gameplay and audio.** 60 fps gameplay at the original speed, skip intro movies, game file mods, a performance overlay and master volume.
-- **Controls.** Rebind every keyboard control. Xbox, PlayStation and other controllers work automatically.
+<br>
 
-| | |
+## Highlights
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**Up to 8x resolution**<br>
+Render at up to 5120 x 4224, with a setting recommended for your monitor. A high setting supersamples down to your screen.
+
+</td>
+<td width="33%" valign="top">
+
+**Real anti-aliasing**<br>
+2x, 4x or 8x MSAA, FXAA, anisotropic filtering up to 16x and contrast-adaptive sharpening.
+
+</td>
+<td width="33%" valign="top">
+
+**HD textures in one click**<br>
+The launcher downloads and installs the UHD Texture Pack, which remakes over 2,000 textures. Switch it on or off at any time.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**Every display mode**<br>
+Windowed, borderless or exclusive fullscreen at any resolution and refresh rate. Widescreen up to 32:9, and vsync off, on or adaptive.
+
+</td>
+<td valign="top">
+
+**Modern camera**<br>
+Invert X and Y separately, a free camera that stays where you point it, adjustable speed, and mouse look.
+
+</td>
+<td valign="top">
+
+**60 fps and rebinding**<br>
+Gameplay at 60 fps at the original speed. Rebind every key, and use Xbox, PlayStation and other controllers automatically.
+
+</td>
+</tr>
+</table>
+
+## The launcher
+
+Everything is set up before the game starts, in a launcher that works with the mouse, the keyboard or a controller. Settings are saved to plain-text `settings.txt` and `bindings.txt` files, so they can also be edited by hand.
+
+<div align="center">
+<img src="docs/images/launcher-tour.gif" alt="A tour of the launcher's pages" width="88%">
+</div>
+
+<br>
+
+<table>
+<tr>
+<td width="55%"><img src="docs/images/page-install.png" alt="Install page"></td>
+<td valign="middle">
+
+### Install
+Point the launcher at your disc image with **Browse**, or drag the file onto the window.
+
+- Checks that it is the right game, region and revision, with clear advice if not (including converting Dolphin RVZ files)
+- Copies it into the game folder with a progress bar, or uses it where it is
+- Accepts ISO, GCM, NKit ISO and Dolphin CISO images
+
+</td>
+</tr>
+<tr>
+<td valign="middle">
+
+### Display
+- **Windowed**, **borderless** or **exclusive fullscreen**, with a resolution and refresh-rate picker
+- Choose the monitor
+- **Vsync** off, on or adaptive
+- **Widescreen** 16:9, 16:10, 21:9, 32:9, or matched to your monitor, with the HUD centred or at the screen edges
+- Keep, stretch or integer **aspect**, and a smooth, sharp or nearest **scaling filter**
+
+</td>
+<td width="55%"><img src="docs/images/page-display.png" alt="Display page"></td>
+</tr>
+<tr>
+<td><img src="docs/images/page-graphics.png" alt="Graphics page"></td>
+<td valign="middle">
+
+### Graphics
+- **Internal resolution** from 1x (640 x 528) to 8x, with one recommended for your display
+- **MSAA** 2x, 4x or 8x, and **FXAA**
+- **Anisotropic filtering** up to 16x
+- **Sharpening** and **brightness**
+- **HD texture pack**: install, switch on or off, set its memory budget
+
+</td>
+</tr>
+<tr>
+<td valign="middle">
+
+### Camera
+- **Invert horizontal** and **invert vertical**, separately, on the C-stick, right stick, camera keys and mouse
+- **Free camera**: the camera stays where you point it instead of swinging back behind Mario, like the free camera of the Super Mario 64 PC port. Press L to recentre it
+- **Camera speed** from 25% to 300%
+- **Mouse look** with its own sensitivity
+
+</td>
+<td><img src="docs/images/page-camera.png" alt="Camera page"></td>
+</tr>
+<tr>
+<td><img src="docs/images/page-gameplay.png" alt="Gameplay page"></td>
+<td valign="middle">
+
+### Gameplay and audio
+- **60 fps** gameplay, at the game's normal speed
+- **Skip the intro movies**
+- **Game mods** from `mods/`
+- A **performance overlay** with frame times
+- **Sound** on or off, and **master volume**
+
+</td>
+</tr>
+<tr>
+<td valign="middle">
+
+### Controls
+- **Rebind** every control: click it and press a key, add second keys, or reset
+- Shows the **controllers** connected; Xbox, PlayStation, Switch Pro and others work automatically
+
+### About
+- Show the launcher at start, or go straight to the game (hold **Shift** to bring it back)
+- The in-game hotkeys and where your settings live
+
+</td>
+<td><img src="docs/images/page-controls.png" alt="Controls page"></td>
+</tr>
+</table>
+
+### HD textures in one click
+
+<div align="center">
+<img src="docs/images/texture-install.png" alt="Installing the HD texture pack from the launcher" width="80%">
+</div>
+
+The [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) by qashto and razius is downloaded from its own GitHub release and installed for you, with progress, resume and Cancel. Nothing else needs installing. Any texture pack made for Dolphin also works when placed in `mods/textures/`.
+
+## In game
+
+<div align="center">
+<img src="docs/images/before-after.jpg" alt="The original 640x528 picture beside the PC port at 5x resolution with 4x MSAA and HD textures" width="100%">
+<br><sub>The game's own demo in Delfino Plaza: the original 640 x 528 picture (left) and the PC port at 5x resolution with 4x MSAA and HD textures (right).</sub>
+<br><br>
+<img src="docs/images/delfino-plaza-5x-hd.jpg" alt="Delfino Plaza at 5x resolution with HD textures" width="100%">
+</div>
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/gameplay-fludd.jpg" alt="Spraying goop with FLUDD in Delfino Plaza"></td>
+<td width="50%"><img src="docs/images/gameplay-plaza.jpg" alt="Mario and FLUDD in Delfino Plaza"></td>
+</tr>
+</table>
+
+### GameCube vs PC port
+
+| | GameCube | PC port |
+| --- | :---: | :---: |
+| Resolution | 640 x 528 | up to 5120 x 4224 (8x) |
+| Frame rate in gameplay | 30 fps | 30 or 60 fps |
+| Aspect ratio | 4:3 | 4:3 to 32:9 |
+| Anti-aliasing | none | MSAA 2x/4x/8x, FXAA |
+| Texture filtering | bilinear | up to 16x anisotropic |
+| Textures | original | original or the UHD pack |
+| Display modes | TV | windowed, borderless, exclusive fullscreen |
+| Camera | C-stick | inverted axes, free camera, speed, mouse look |
+| Controls | GameCube controller | keyboard (rebindable), any SDL controller |
+
+### Hotkeys
+
+| Key | Action |
 | --- | --- |
-| ![Install page](docs/images/launcher-install.jpg) | ![Display page](docs/images/launcher-display.jpg) |
-| ![Graphics page](docs/images/launcher-graphics.jpg) | ![HD texture pack installed](docs/images/launcher-texture-pack.jpg) |
-| ![Camera page](docs/images/launcher-camera.jpg) | ![Controls page](docs/images/launcher-controls.jpg) |
+| <kbd>F11</kbd> or <kbd>Alt</kbd>+<kbd>Enter</kbd> | toggle fullscreen |
+| <kbd>F10</kbd> | release or recapture the mouse (mouse look) |
+| <kbd>`</kbd> | performance overlay |
+| <kbd>F7</kbd> (overlay open) | game speed x1 / x2 / x4 / x10 |
+| <kbd>Esc</kbd> | quit |
 
-![Spraying goop in Delfino Plaza](docs/images/gameplay-fludd.jpg)
-![Mario and FLUDD in Delfino Plaza](docs/images/gameplay-plaza.jpg)
+Default keyboard controls: move with WASD or the arrow keys, A is Space, B is Shift, X is V, Y is F, Z is Z, L/R are Q/E, Start is Enter, and the C-stick is I/J/K/L. All of them can be changed on the Controls page.
 
-## Playing a release
+## Getting started
 
-1. Download the latest release: `SMS-PC-Port-*-windows-x64.zip` (unzip it and run `sms.exe`) or `SMS-PC-Port-*-linux-x86_64.AppImage` (`chmod +x` it and run it).
-2. On the launcher's **Install** page, select your disc image and press Install.
-3. Optionally install the HD texture pack on the **Graphics** page, and pick your settings.
+1. **Download** the [latest release](https://github.com/TekRantGaming/sms-pc-port/releases/latest).
+   - **Windows:** `SMS-PC-Port-*-windows-x64.zip`. Unzip it anywhere and run `sms.exe`.
+   - **Linux:** `SMS-PC-Port-*-linux-x86_64.AppImage`. Make it executable (`chmod +x`) and run it.
+2. On the launcher's **Install** page, select your disc image and press **Install**.
+3. Optionally install the **HD texture pack** on the Graphics page, and choose your settings.
 4. Press **Play**.
 
-On Linux, settings, the installed disc image and mods live in `~/.local/share/sms-port`. Saves go to `%APPDATA%\sms-port\card-a` on Windows and `~/.local/share/sms-port/card-a` on Linux.
+**Requirements:** Windows 10 or 11 (64-bit), or 64-bit Linux, and a GPU with OpenGL 3.3. Higher internal resolutions and MSAA need a more capable GPU. An RTX 4070 Ti holds 60 fps at 5x with 4x MSAA.
+
+Saves go to `%APPDATA%\sms-port\card-a` on Windows and `~/.local/share/sms-port/card-a` on Linux. The Linux AppImage keeps its settings, installed disc image and mods in `~/.local/share/sms-port`.
 
 ## Credits
 
-- The port and the decompilation it builds on: [chasem-dev/sms-pc-port](https://github.com/chasem-dev/sms-pc-port) and [chasem-dev/sms-english](https://github.com/chasem-dev/sms-english), and everyone who contributed to them.
-- [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) by qashto and razius.
-- [Dear ImGui](https://github.com/ocornut/imgui) (MIT) draws the launcher.
-- Super Mario Sunshine is © Nintendo. This project is not affiliated with or endorsed by Nintendo. Play it with a copy of the game you own.
+- **The port and the decompilation** it builds on: [chasem-dev/sms-pc-port](https://github.com/chasem-dev/sms-pc-port) and [chasem-dev/sms-english](https://github.com/chasem-dev/sms-english), and everyone who contributed to them.
+- **[Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack)** by qashto and razius.
+- **[Dear ImGui](https://github.com/ocornut/imgui)** (MIT) draws the launcher.
+
+<sub>Super Mario Sunshine is © Nintendo. This project is not affiliated with or endorsed by Nintendo, contains no game data, and is meant to be played with a copy of the game you own.</sub>
 
 ---
 
-The sections below describe building the port from source.
+# Building from source
+
 
 ## Decompilation progress
 
@@ -65,7 +247,7 @@ Fuzzy similarity measures approximate code similarity; the other two tracks show
 | Linux (x86) | 32-bit (default) | plays | `build/linux-32/sms` |
 | Linux (x86-64) | 64-bit (`SMS_ARCH=64`) | plays; still being tested stage by stage ([docs/64-BIT.md](docs/64-BIT.md)) | `build/linux-64/sms` |
 | macOS (Intel, or Apple Silicon under Rosetta 2) | 64-bit | plays | `build/macos-64/sms` |
-| Windows (MSYS2 MINGW64) | 64-bit | boots under Wine; native runtime checks | `build/windows-64/sms.exe` |
+| Windows (MSYS2 MINGW64) | 64-bit | plays | `build/windows-64/sms.exe` |
 
 The game code keeps pointers in 4-byte fields, so it was written for a 32-bit machine.
 The 64-bit builds keep every address the game sees below 4 GiB; see [docs/64-BIT.md](docs/64-BIT.md).
@@ -112,6 +294,9 @@ The same two scripts work on every system:
 
 `./build.sh --help`, `./run.sh --help` and `./clean.sh --help` print the details.
 When both a 32-bit and a 64-bit build exist, `./run.sh` runs the 32-bit one unless `SMS_ARCH=64` is set.
+
+<details>
+<summary><b>Settings reference</b>: every option in <code>settings.txt</code> and its environment variable</summary>
 
 ## Options
 
@@ -170,6 +355,11 @@ Optional mods, such as HD texture packs, go in [`mods/`](mods/README.md); `pytho
 Saves go to a memory card in slot A, kept as files in `~/.local/share/sms-port/card-a` on Linux and macOS (`$XDG_DATA_HOME/sms-port/card-a` if that is set) and in `%APPDATA%\sms-port\card-a` on Windows.
 Every other switch (debugging, tracing, graphics) is listed in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#environment-variables).
 
+</details>
+
+<details>
+<summary><b>Frame rate, the performance overlay and default controls</b></summary>
+
 ## Frame rate
 
 The game runs at 30 frames a second, and like on the GameCube a frame that takes longer than two retraces (33 ms) waits for the next one, so a slow frame shows as 20 or 15 fps rather than 28.
@@ -207,6 +397,8 @@ Keyboard defaults:
 To change them, edit [`bindings.txt`](bindings.txt) (`CONTROL = KEY KEY ...`, one control per line; a line replaces that control's defaults), or point `SMS_BINDINGS` at another file.
 
 On the file-select screen, walk Mario left under a block for about half a second and press A to jump into it.
+
+</details>
 
 ## Repository layout
 

@@ -37,6 +37,8 @@ How the port is put together and where changes go. To build and play, see the [R
 - `rand()` is MSL's (RAND_MAX 32767, same LCG) via `port_compat.h`; glibc's 2^31 range overflows the game's `1.f / (RAND_MAX + 1)`.
 - The game's MSL maths is the console's (`sinf`, `cosf`, `tanf`, `atanf`, `atan2f`, `acosf`, `expf`, `powf`, fdlibm's `atan2`, and the header inlines `std::fmodf` and `sqrtf`) via `port_compat.h` and `platform/misc/msl_math.c`, which follows the DOL's matched objects instruction for instruction; `tools/mslmath/check.sh` compares it with those objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), items 10 and 15).
 - The SDK's matrix library (`PSMTX*`, `PSVEC*`, `C_MTX*`) is `platform/mtx`, which follows the DOL's paired-single and C routines instruction for instruction, with single-rounding fused multiply-adds; `tools/mtxmath/check.sh` compares it with the DOL's objects under `qemu-ppc` and between the 32 and 64-bit builds ([64-BIT.md](64-BIT.md), item 11).
+- The float arithmetic of the SDK's GX functions the DOL links (`GXInitLightDistAttn`, `GXInitSpecularDir`, `GXProject`, `GXDrawSphere` with MSL's `sinf` and `cosf`) is `platform/gx/src/gx_sdk_math.h`, in the DOL's order; `sms_gx` is built without contraction on every host, and `tools/gxmath/check.sh` compares it with the DOL's objects under `qemu-ppc` ([64-BIT.md](64-BIT.md), item 18).
+- The Gekko's quantised integer store (`psq_st` through a GQR, the audio code's `OSf32tos8`) is `port_gekko_quantize` in `port_fpu.h` (`fpu-07`); `tools/quantize/check.sh` checks it ([64-BIT.md](64-BIT.md), item 18).
 
 ## Tools
 
@@ -54,6 +56,8 @@ How the port is put together and where changes go. To build and play, see the [R
 | `tools/warn_scan.py`, `tools/syntax_check.py` | one g++ warning class over all units; `-fsyntax-only` over all units |
 | `tools/gen_sources.py`, `tools/gen_stubs.py` | regenerate `cmake/decomp_sources.cmake` and `platform/sdk_stubs.cpp` |
 | `tools/fpprobe/` | PowerPC FPU behaviour probe (a DOL run in Dolphin) |
+| `tools/mslmath/`, `tools/mtxmath/`, `tools/gxmath/` (`check.sh`) | MSL's maths, the MTX/VEC and JSystem paired-single routines, and the SDK's GX arithmetic against the DOL's own objects under `qemu-ppc`, and between the 32 and 64-bit builds |
+| `tools/quantize/check.sh` | the quantised store model (`port_gekko_quantize`) on every float |
 
 The Linux debugging tools (`gdbrun.sh`, `hangdump.sh`, `run_capture.sh`, `syntax_check.py`) use `build/linux-32/`; set `SMS_ARCH=64` for `build/linux-64/`, or `SMS_BUILD=dir` for any other build folder.
 Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
@@ -114,6 +118,7 @@ Each file in `decomp-patches/` starts with a `Reason:` line; they are applied in
 | `thp-01..02` | Host THP decoder (portable bit reader and IDCT, big-endian audio header); see `platform/thp/README.md`. |
 | `endian-18` | `JSUInputStream`'s typed reads keep the value when a read fails at the end of the stream, as the console does, instead of byte-swapping it (see [Memory and undefined-behaviour checks](#memory-and-undefined-behaviour-checks)). |
 | `fpu-02..04` | MWCC's float-to-unsigned conversions at every site where the DOL makes them, with the runtime's result (`port_cvt_fp2unsigned` and `port_cvt_dbl_usll` in `port_fpu.h`: 0 below zero and for NaN, 0xFFFFFFFF from 2^32 up): the hit-check table index and the iris wipe's first row (`fpu-02..03`), and the 37 other source sites (`fpu-04`; `TMarDirector`'s wipe fade is in `framerate-35`). See [Float-to-integer conversions](#float-to-integer-conversions). |
+| `fpu-07` | `OSf32tos8` (`JASTrack`'s two calls) stores through GQR4 as the Gekko does, saturated to -128..127 and converted towards zero (`port_gekko_quantize` in `port_fpu.h`); the inline had no host body. See [64-BIT.md](64-BIT.md), item 18. |
 | `bounds-01..02` | Retail out-of-bounds accesses whose result depends on byte order or data layout, given the console's result: `TGCConsole2`'s unset pane index, the two 16-byte null textures read as 32. |
 | `uninit-01..03` | Retail reads of uninitialised stack values made deterministic: the stack light objects' direction, the logo wipe's pen vector z, the plaza tightrope colour. |
 

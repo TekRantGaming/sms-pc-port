@@ -133,6 +133,65 @@ SHI_WORD_FIXES = [
      "BOOL arguments are words"),
 ]
 
+# Integer and float widths where the game and the mods call each other
+# (tools/mods/abi_check.py lists them). On the PowerPC a callee extends a
+# u8, s8, u16 or s16 result to the whole of r3 and the mods, built by clang,
+# take r3 to be extended for the type they declare, using it as it is: a mod
+# reading a narrower type than the game returns sees the game's whole word
+# (patchYStorageWalkEnd hands TMario::walkEnd's word back to the game
+# unmasked), and one reading a wider type the extended value. Natively the
+# callee leaves the bits above a narrow result undefined and the reader
+# extends what it reads itself: a wider read sees garbage, a narrower one
+# another value. Declared as the game declares them, the mods read what
+# they read on the console.
+def game_types(path, rx, repl):
+    return (path, rx, repl, "the game's result and argument types: " + path)
+
+
+SHI_GAME_TYPES = [
+    game_types("include/SMS/Player/Mario.hxx", r"\bu8(\s+(?:jumpingBasic|jumpProcess|walkEnd)\s*\()", r"int\1"),
+    game_types("include/SMS/System/Application.hxx", r"\bu8(\s+gameLoop\s*\()", r"int\1"),
+    game_types("include/SMS/Graph/GraphWeb.hxx", r"\bs16(\s+getRandomButDirLimited\s*\()", r"int\1"),
+    game_types("include/SMS/rand.h", r'extern "C" u16 rand\(\);', 'extern "C" int rand();'),
+    game_types("include/SMS/System/Resolution.hxx", r"\bint(\s+SMSGet(?:Title|Game)Render(?:Width|Height)\s*\(\s*\);)",
+               r"u16\1"),
+    game_types("include/SMS/MapObj/MapObjBase.hxx", r"\bvirtual u32(\s+getHitObjNumMax\s*\()", r"virtual u16\1"),
+    game_types("include/SMS/MoveBG/EggYoshi.hxx", r"\bvirtual u32(\s+getHitObjNumMax\s*\()", r"virtual u16\1"),
+    game_types("include/SMS/MSound/MSound.hxx", r"\bbool(\s+getMapInfoGround\s*\(u32\);)", r"u32\1"),
+    game_types("include/JSystem/JAudio/JAIBasic.hxx", r"\bvirtual bool(\s+getMapInfoFxline\s*\()", r"virtual u16\1"),
+    game_types("include/JSystem/JAudio/JAIBasic.hxx", r"\bvirtual bool(\s+getMapInfoGround\s*\()", r"virtual u32\1"),
+    game_types("include/JSystem/JUtility/JUTFont.hxx", r"\bvirtual bool(\s+getLeading\s*\(\s*\)\s*const)", r"virtual int\1"),
+    game_types("include/JSystem/JUtility/JUTResFont.hxx", r"\bvirtual bool(\s+getLeading\s*\(\s*\)\s*const)", r"virtual int\1"),
+    game_types("include/JSystem/JKernel/JKRArchivePri.hxx", r"\bvirtual s32(\s+becomeCurrent\s*\()", r"virtual bool\1"),
+    game_types("include/JSystem/JKernel/JKRHeap.hxx", r"\bvirtual u32(\s+dump_sort\s*\()", r"virtual bool\1"),
+    game_types("include/JSystem/JKernel/JKRHeap.hxx", r"\bvirtual u8(\s+changeGroupID\s*\()", r"virtual s32\1"),
+    game_types("include/JSystem/JStage/JSGCamera.hxx", r"\bvirtual s32(\s+JSGGetViewType\s*\(\s*\)\s*const)", r"virtual bool\1"),
+    # The game's axis is a (signed) char; the mods pass 'x', 'y' or 'z'.
+    game_types("include/Dolphin/MTX.h", r"(PSMTXRotRad\(Mtx \w+, )u8(\s+axis)", r"\1signed char\2"),
+]
+
+# The mods' patch targets as the game calls them.
+PATCH_TYPE_FIXES = [
+    # In place of TMario::walkEnd, which returns BOOL: the console's code
+    # (bl walkEnd, then blr) hands walkEnd's whole word back to the game.
+    ("src/patches/ystorage.cpp", r"static u8 (patchYStorageWalkEnd\()", r"static int \1",
+     "patch targets return what the game reads"),
+    # In place of SMSGetAnmFrameRate, whose float the game reads from f1:
+    # declared s16, the function converts the rate in f0 and leaves the
+    # float the game reads in f1 on the console; natively the result is ax
+    # and xmm0 or st(0) holds no f32.
+    ("src/patches/sun.cpp", r"static s16 (captureSunData\(\))", r"static f32 \1",
+     "patch targets return what the game reads"),
+]
+ECLIPSE_PATCH_TYPE_FIXES = [
+    # In place of TFlagManager::getBool(0x50004); it reads none of its
+    # arguments, declared (TNameRef *, u16, const char *).
+    ("src/stage/behavior.cpp",
+     r"static bool checkForMareGate\(JDrama::TNameRef \*actor, u16 keycode, const char \*name\)",
+     r"static bool checkForMareGate(TFlagManager *flags, u32 flag)",
+     "patch targets take what the game passes"),
+]
+
 # Big-endian data the mods read and write themselves. The scene files (.bin)
 # stay big-endian in the port: the game's typed stream reads convert
 # (decomp-patches 0013), and its raw multi-byte reads were made big-endian
@@ -188,7 +247,7 @@ BSE_BE_FIXES = [
              r"    return GetResourceTextureHeader(sTinyArrowResTIMG);\n}"),
 ]
 
-ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + ECLIPSE_BE_FIXES + [
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + ECLIPSE_BE_FIXES + ECLIPSE_PATCH_TYPE_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -205,7 +264,7 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DE
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + BSE_BE_FIXES + [
+BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + BSE_BE_FIXES + PATCH_TYPE_FIXES + [
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),
@@ -239,7 +298,7 @@ BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDAT
      "code writes go to the patch registry"),
 ]
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
-SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + [
+SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.

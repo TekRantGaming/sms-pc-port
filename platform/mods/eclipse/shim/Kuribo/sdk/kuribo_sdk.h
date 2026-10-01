@@ -27,19 +27,25 @@ static inline uintptr_t __sms_mod_fnptr(uintptr_t v) { return v; }
 static inline uintptr_t __sms_mod_fnptr(void* v) { return (uintptr_t)v; }
 
 // A patch's function as the game calls it. The game calls a mod's function
-// through its own type for the call it replaces, and declares many of those
-// BOOL (a whole word) or u32 where the mod's function returns bool. On the
-// PowerPC a bool fills r3 (0 or 1), so either way the caller reads 0 or 1;
-// natively a bool is returned in the low byte alone (setcc %al), the rest of
-// the register holding whatever it held, and bool arguments are a byte the
-// callee may take to be 0 or 1 and zero-extended. So a function with a bool
-// result or argument is registered through a thunk: its result as a whole
-// pointer-sized word, 0 or 1, whatever type the game reads it as, and each
-// bool argument taken from the low byte the caller passed (read as a word and
-// masked: clang would take an unsigned char argument to be zero-extended),
-// whether the game passes a bool or a BOOL. Other functions are registered as
-// they are.
-// L is a lambda that returns the function (each patch has its own).
+// through its own type for the call it replaces, which need not be the mod
+// function's: BOOL (a whole word) or u32 where the mod's function returns
+// bool, BOOL where it returns u8 (BetterSunshineEngine's
+// patchYStorageWalkEnd in place of TMario::walkEnd). On the PowerPC the
+// callee extends a bool, u8, s8, u16 or s16 result to the whole of r3 (0 or 1,
+// clrlwi, extsb, extsh), so the caller reads the same value whatever type it
+// reads it as; natively such a result is the low byte or half alone (setcc
+// %al), the rest of the register holding whatever it held, and bool arguments
+// are a byte the callee may take to be 0 or 1 and zero-extended. So a function
+// with a bool or narrow integer result, or a bool argument, is registered
+// through a thunk: its result as a whole pointer-sized word, 0 or 1 for a
+// bool, zero- or sign-extended as the mod declares it for the others, whatever
+// type the game reads it as; and each bool argument taken from the low byte
+// the caller passed (read as a word and masked: clang would take an unsigned
+// char argument to be zero-extended), whether the game passes a bool or a
+// BOOL. Other functions are registered as they are.
+// L is a lambda that returns the function (each patch has its own). get() is
+// kept out of line so that each patch target's type is in the debug info,
+// where tools/mods/abi_check.py compares it with the port's hook.
 template <class T> struct __sms_mod_arg { typedef T type; };
 template <> struct __sms_mod_arg<bool> { typedef unsigned int type; };
 template <class T> static inline T __sms_mod_take(typename __sms_mod_arg<T>::type v) { return v; }
@@ -50,24 +56,57 @@ template <class... A> struct __sms_mod_any_bool { static const bool value = fals
 template <class A0, class... A> struct __sms_mod_any_bool<A0, A...> {
 	static const bool value = __sms_mod_has_bool<A0>::value || __sms_mod_any_bool<A...>::value;
 };
-template <class R> struct __sms_mod_ret { typedef R type; };
-template <> struct __sms_mod_ret<bool> { typedef intptr_t type; };
+// An integer or enum narrower than a register (not bool), and the word the
+// PowerPC callee extends it to.
+template <class R, bool = __is_enum(R)> struct __sms_mod_int { typedef R type; };
+template <class R> struct __sms_mod_int<R, true> { typedef __underlying_type(R) type; };
+template <class I, bool = __is_integral(I) && !__is_same(I, bool)> struct __sms_mod_small {
+	static const bool value = false;
+};
+template <class I> struct __sms_mod_small<I, true> { static const bool value = sizeof(I) < sizeof(int); };
+template <class R> struct __sms_mod_narrow {
+	static const bool value = __sms_mod_small<typename __sms_mod_int<R>::type>::value;
+};
+template <class R, bool = __sms_mod_narrow<R>::value> struct __sms_mod_ret { typedef R type; };
+template <bool S> struct __sms_mod_ext { typedef uintptr_t type; };
+template <> struct __sms_mod_ext<true> { typedef intptr_t type; };
+template <class R> struct __sms_mod_ret<R, true> {
+	typedef typename __sms_mod_ext<__is_signed(typename __sms_mod_int<R>::type)>::type type;
+};
+template <> struct __sms_mod_ret<bool, false> { typedef intptr_t type; };
+template <class R> struct __sms_mod_wide {
+	static const bool value = __sms_mod_has_bool<R>::value || __sms_mod_narrow<R>::value;
+};
+// The result as the PowerPC callee leaves it in r3.
+template <class R, class V> static constexpr typename __sms_mod_ret<R>::type __sms_mod_give(V v)
+{
+	if constexpr (__sms_mod_has_bool<R>::value)
+		return v ? 1 : 0;
+	else if constexpr (__sms_mod_narrow<R>::value)
+		return (typename __sms_mod_ret<R>::type)(typename __sms_mod_int<R>::type)v;
+	else
+		return v;
+}
+static_assert(__sms_mod_give<unsigned char>(0x1FF) == 0xFF && __sms_mod_give<signed char>(0x1FF) == -1 &&
+              __sms_mod_give<short>(0x18000) == -0x8000 && __sms_mod_give<unsigned short>(-1) == 0xFFFF &&
+              __sms_mod_give<bool>(2) == 1 && __is_same(__sms_mod_ret<int>::type, int),
+              "narrow results are extended as the PowerPC callee extends them");
 
 template <class L, class F> struct __sms_mod_word_abi {
-	static F get() { return L{}(); }
+	__attribute__((noinline, used)) static F get() { return L{}(); }
 };
 template <class L, class R, class... A> struct __sms_mod_word_abi<L, R (*)(A...)> {
 	typedef typename __sms_mod_ret<R>::type W;
 	static W thunk(typename __sms_mod_arg<A>::type... a)
 	{
-		if constexpr (__sms_mod_has_bool<R>::value)
-			return L{}()(__sms_mod_take<A>(a)...) ? 1 : 0;
+		if constexpr (__sms_mod_wide<R>::value)
+			return __sms_mod_give<R>(L{}()(__sms_mod_take<A>(a)...));
 		else
 			return L{}()(__sms_mod_take<A>(a)...);
 	}
-	static uintptr_t get()
+	__attribute__((noinline, used)) static uintptr_t get()
 	{
-		if constexpr (__sms_mod_has_bool<R>::value || __sms_mod_any_bool<A...>::value)
+		if constexpr (__sms_mod_wide<R>::value || __sms_mod_any_bool<A...>::value)
 			return __sms_mod_fnptr(&thunk);
 		else
 			return __sms_mod_fnptr(L{}());
@@ -78,14 +117,14 @@ template <class L, class R, class C, class... A> struct __sms_mod_word_abi<L, R 
 	typedef typename __sms_mod_ret<R>::type W;
 	static W thunk(C* self, typename __sms_mod_arg<A>::type... a)
 	{
-		if constexpr (__sms_mod_has_bool<R>::value)
-			return (self->*L{}())(__sms_mod_take<A>(a)...) ? 1 : 0;
+		if constexpr (__sms_mod_wide<R>::value)
+			return __sms_mod_give<R>((self->*L{}())(__sms_mod_take<A>(a)...));
 		else
 			return (self->*L{}())(__sms_mod_take<A>(a)...);
 	}
-	static uintptr_t get()
+	__attribute__((noinline, used)) static uintptr_t get()
 	{
-		if constexpr (__sms_mod_has_bool<R>::value || __sms_mod_any_bool<A...>::value)
+		if constexpr (__sms_mod_wide<R>::value || __sms_mod_any_bool<A...>::value)
 			return __sms_mod_fnptr(&thunk);
 		else
 			return __sms_mod_fnptr(L{}());
@@ -95,14 +134,14 @@ template <class L, class R, class C, class... A> struct __sms_mod_word_abi<L, R 
 	typedef typename __sms_mod_ret<R>::type W;
 	static W thunk(const C* self, typename __sms_mod_arg<A>::type... a)
 	{
-		if constexpr (__sms_mod_has_bool<R>::value)
-			return (self->*L{}())(__sms_mod_take<A>(a)...) ? 1 : 0;
+		if constexpr (__sms_mod_wide<R>::value)
+			return __sms_mod_give<R>((self->*L{}())(__sms_mod_take<A>(a)...));
 		else
 			return (self->*L{}())(__sms_mod_take<A>(a)...);
 	}
-	static uintptr_t get()
+	__attribute__((noinline, used)) static uintptr_t get()
 	{
-		if constexpr (__sms_mod_has_bool<R>::value || __sms_mod_any_bool<A...>::value)
+		if constexpr (__sms_mod_wide<R>::value || __sms_mod_any_bool<A...>::value)
 			return __sms_mod_fnptr(&thunk);
 		else
 			return __sms_mod_fnptr(L{}());

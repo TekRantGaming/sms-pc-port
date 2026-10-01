@@ -103,17 +103,18 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/eclipse/ra
   PROPERTIES COMPILE_OPTIONS "-std=gnu++11;-fno-access-control")
 
 add_dependencies(sms sms_eclipse_build)
-# After each link, check that the game and the mods agree on bool and
-# whole-word results and arguments where they call each other by name
-# (tools/mods/abi_check.py, from the binary's debug info: about half a
-# minute). A failed check is redone on the next build.
-option(SMS_ECLIPSE_ABI_CHECK "Check the mods' bool/BOOL declarations against the game's after linking" ON)
+# After each link, check that the game and the mods agree on the widths and
+# signedness of the integer and float results and arguments where they call
+# each other: by name, through game virtual functions, and at the patch
+# targets (tools/mods/abi_check.py, from the binary's debug info: about half
+# a minute). A failed check is redone on the next build.
+option(SMS_ECLIPSE_ABI_CHECK "Check the mods' result and argument types against the game's after linking" ON)
 if(SMS_ECLIPSE_ABI_CHECK)
   add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/sms_abi_check.stamp
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py $<TARGET_FILE:sms> ${_eclipse_lib}
     COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/sms_abi_check.stamp
     DEPENDS sms ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py
-    COMMENT "Checking the mods' bool and word declarations against the game's" VERBATIM)
+    COMMENT "Checking the mods' result and argument types against the game's" VERBATIM)
   add_custom_target(sms_abi_check ALL DEPENDS ${CMAKE_BINARY_DIR}/sms_abi_check.stamp)
 endif()
 target_compile_definitions(sms PRIVATE SMS_ECLIPSE=1)

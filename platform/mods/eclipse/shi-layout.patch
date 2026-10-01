@@ -4,12 +4,12 @@
      void setPort();
      void setLookat();
      void scissorBounds(JUTRect *, JUTRect *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     JUTRect _D8;
++    JUTRect _D8;
 +#endif
-+
+ 
+-    JUTRect _D8;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _DC;
@@ -231,16 +231,16 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_19[1];
-+    bool mConnectParent;
-+#else
      bool mConnectParent;
++#else
++    bool mConnectParent;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_20[4];
-+    JSUPtrList mChildrenList;
-+#else
      JSUPtrList mChildrenList;
++#else
++    JSUPtrList mChildrenList;
 +#endif
 +
      JSUPtrLink mPtrLink;
@@ -319,9 +319,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_17[11];
-+    JUtility::TColor mColorMask;
-+#else
      JUtility::TColor mColorMask;
++#else
++    JUtility::TColor mColorMask;
 +#endif
 +
      JUtility::TColor mColorOverlay;
@@ -449,6 +449,17 @@
 +  // _0
      u16 _4;
 -    u16 _6;  // padding?
+-};
+-
+-class J3DAnmColor {};
+-
+-class J3DAnmTevRegKey {};
+-
+-class J3DAnmTextureSRTKey {};
+-
+-class J3DMatColorAnm {};
+-
+-class J3DTevKColorAnm {};
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -461,9 +472,8 @@
 +    u8 _pc64_tail[8];
 +#else
 +#endif
- };
- 
--class J3DAnmColor {};
++};
++
 +class J3DAnmColor {
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[9];
@@ -471,8 +481,7 @@
 +    u8 _pc32_tail[5];
 +#endif
 +};
- 
--class J3DAnmTevRegKey {};
++
 +class J3DAnmTevRegKey {
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[9];
@@ -480,8 +489,7 @@
 +    u8 _pc32_tail[5];
 +#endif
 +};
- 
--class J3DAnmTextureSRTKey {};
++
 +class J3DAnmTextureSRTKey {
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[9];
@@ -489,8 +497,7 @@
 +    u8 _pc32_tail[5];
 +#endif
 +};
- 
--class J3DMatColorAnm {};
++
 +class J3DMatColorAnm {
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[1];
@@ -498,8 +505,7 @@
 +    u8 _pc32_tail[1];
 +#endif
 +};
- 
--class J3DTevKColorAnm {};
++
 +class J3DTevKColorAnm {
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[1];
@@ -592,9 +598,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[2];
-+    s16 mNumFrames;
-+#else
      s16 mNumFrames;
++#else
++    s16 mNumFrames;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -687,12 +693,12 @@
  
      void calcNrmMtx(J3DModel *);
      void initMtxIndexArray(J3DModelData *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _4;
++    u32 _4;
 +#endif
-+
+ 
+-    u32 _4;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _8;
@@ -778,12 +784,12 @@
  
      void addMesh(J3DMaterial *);
      void initialize();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _18;
++    u16 _18;
 +#endif
-+
+ 
+-    u16 _18;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u8 _1A;
@@ -950,13 +956,15 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_8[2];
      J3DTevBlock *mTevBlock;
+-};
+-
+-struct J3DTevSwapModeInfo {};
 +#else
 +    J3DTevBlock *mTevBlock;
 +#endif
 +
- };
- 
--struct J3DTevSwapModeInfo {};
++};
++
 +struct J3DTevSwapModeInfo {
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[1];
@@ -1163,9 +1171,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_5[20];
-+    u32 mMatOffset;
-+#else
      u32 mMatOffset;
++#else
++    u32 mMatOffset;
 +#endif
 +
  };
@@ -1188,9 +1196,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_2[16];
-+    J3DTexture *mTexture;
-+#else
      J3DTexture *mTexture;
++#else
++    J3DTexture *mTexture;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -1410,9 +1418,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_4[20];
-+    TVec3f mBaseScale;
-+#else
      TVec3f mBaseScale;
++#else
++    TVec3f mBaseScale;
 +#endif
 +
      Mtx mBaseMtx;
@@ -1499,9 +1507,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_21[88];
-+    J3DSkinDeform *mSkinDeform;
-+#else
      J3DSkinDeform *mSkinDeform;
++#else
++    J3DSkinDeform *mSkinDeform;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -1516,9 +1524,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_24[16];
-+    J3DVertexBuffer *mVtxBuffer;
-+#else
      J3DVertexBuffer *mVtxBuffer;
++#else
++    J3DVertexBuffer *mVtxBuffer;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -1549,18 +1557,18 @@
      virtual void calcOut();
      virtual u32 getType() const;
      virtual ~J3DNode();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _4;
++    u32 _4;
 +#endif
-+
+ 
+-    u32 _4;
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[8];
-+    int (*mCallback)(J3DNode *, int);
-+#else
      int (*mCallback)(J3DNode *, int);
 -    u32 _C;  // padding?
++#else
++    int (*mCallback)(J3DNode *, int);
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -1680,12 +1688,12 @@
      void loadVtxArray() const;
      void makeVcdVatCmd();
      void makeVtxArrayCmd();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _0;
++    u32 _0;
 +#endif
-+
+ 
+-    u32 _0;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u16 _4;
@@ -2416,18 +2424,18 @@
      void setVolume(f32, u32, u8);
      void setWaveReadMode(s32, s32);
      void stop(u32);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u8 _pc32_0[4];
-     u8 _0;
++    u8 _0;
 +#endif
-+
+ 
+-    u8 _0;
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[5];
-+    u8 _1;
-+#else
      u8 _1;
++#else
++    u8 _1;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -2521,10 +2529,10 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[8];
 +           // 3C
-+        TNameRef *mRootRef;
+         TNameRef *mRootRef;
 +#else
 +           // 3C
-         TNameRef *mRootRef;
++        TNameRef *mRootRef;
 +#endif
 +
      };
@@ -2558,14 +2566,14 @@
          ~TViewConnecter() override;
  
          void perform(u32, JDrama::TGraphics *) override;
--
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_0[4];
 +        TViewObj *mCamera;
 +#else
-         TViewObj *mCamera;
++        TViewObj *mCamera;
 +#endif
-+
+ 
+-        TViewObj *mCamera;
          TViewObj *mViewObj;
          TFlagT<u16> mViewFlags;
      };
@@ -2575,17 +2583,17 @@
  
          void startRendering();
          void endRendering();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-         bool _00;
++        bool _00;
 +#endif
-+
+ 
+-        bool _00;
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[8];
-+        GXRenderModeObj mRenderObj;
-+#else
          GXRenderModeObj mRenderObj;
++#else
++        GXRenderModeObj mRenderObj;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -2595,9 +2603,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[20];
-+        u16 mRetraceCount;
-+#else
          u16 mRetraceCount;
++#else
++        u16 mRetraceCount;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -2711,12 +2719,12 @@
  
          void setNextXFB(const void *);
          void waitForRetrace(u16);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-         GXRenderModeObj _0;
++        GXRenderModeObj _0;
 +#endif
-+
+ 
+-        GXRenderModeObj _0;
 +#if __SIZEOF_POINTER__ == 8
 +#else
          GXRenderModeObj _3C;
@@ -2821,12 +2829,12 @@
      virtual s32 getResSize(const void *) const;
      virtual s16 countFile(const char *);
      virtual JKRArcFinder *getFirstFile(const char *) const;
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 *_38;
++    u32 *_38;
 +#endif
-+
+ 
+-    u32 *_38;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u8 _3C;
@@ -2890,7 +2898,7 @@
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
-+    u8 _pc64_12[60];
++    u8 _pc64_12[68];
 +    int mountDirection;
 +#else
 +    int mountDirection;
@@ -2915,13 +2923,13 @@
  public:
      JKRDisposer();
      virtual ~JKRDisposer();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _4;
--    JSUPtrLink mPtrLink;  // _8
++    u32 _4;
 +#endif
-+
+ 
+-    u32 _4;
+-    JSUPtrLink mPtrLink;  // _8
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[8];
 +    JSUPtrLink mPtrLink;
@@ -2971,12 +2979,12 @@
      virtual ~JKRArcFinder() override;
  
      virtual bool findNextFile();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u8 _10;
++    u8 _10;
 +#endif
-+
+ 
+-    u8 _10;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u8 _11;
@@ -3254,13 +3262,13 @@
      bool open(s32, JKRArchive::EMountDirection);
      bool open(void *, size_t, JKRMemBreakFlag);
      void unmountFixed();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _60;
--    u32 _64;  // related to offsets
++    u32 _60;
 +#endif
-+
+ 
+-    u32 _60;
+-    u32 _64;  // related to offsets
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u32 _64;
@@ -3279,14 +3287,14 @@
      void loadBaseEmitterBlock(JPABaseParticle * /*JPADataBlock **/);
      void setGlobalRTMatrix(Mtx);
      void setGlobalSRTMatrix(Mtx);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _10[0xE4 / 4];
++    u32 _10[0xE4 / 4];
++#endif
+ 
+-    u32 _10[0xE4 / 4];
 -    JSUPtrList mParticleList;       // _F4
 -    JSUPtrList mChildParticleList;  // _100
-+#endif
-+
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[416];
 +    JSUPtrList mParticleList;
@@ -3342,18 +3350,18 @@
      void getCurrentPosition(TVec3f &);
      void incTimer();
      void initGlobalPosition();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u8 _pc32_0[4];
-     u8 _00[0x10];
++    u8 _00[0x10];
 +#endif
-+
+ 
+-    u8 _00[0x10];
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[36];
-+    u16 mStateFlags;
-+#else
      u16 mStateFlags;
++#else
++    u16 mStateFlags;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -3455,12 +3463,12 @@
      void print(const char *);
      void print_f(const char *, ...);
      void scroll(int);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u8 _00[0x4E];
++    u8 _00[0x4E];
 +#endif
-+
+ 
+-    u8 _00[0x4E];
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[96];
@@ -3477,12 +3485,12 @@
      virtual bool isLeadByte_ShiftJIS(int byte);
      void setCharColor(JUtility::TColor color);
      void setGradColor(JUtility::TColor top, JUtility::TColor bottom);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u8 _4;
++    u8 _4;
 +#endif
-+
+ 
+-    u8 _4;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _8;
@@ -3720,12 +3728,12 @@
      void loadImage(int, GXTexMapID tmapID);
  
      void protected_initiate();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _1C;
++    u32 _1C;
 +#endif
-+
+ 
+-    u32 _1C;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _20;
@@ -3745,10 +3753,10 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_4[48];
-+    ResFONT *mFont;
-+#else
      ResFONT *mFont;
 -    u32 _4C;  // padding?
++#else
++    ResFONT *mFont;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -3827,9 +3835,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_11[4];
-+    u8 mFilterMinMode;
-+#else
      u8 mFilterMinMode;
++#else
++    u8 mFilterMinMode;
 +#endif
 +
      u8 mFilterMagMode;
@@ -3947,12 +3955,12 @@
      bool isMarioLeanMirror() const;
      bool isMarioRocketing() const;
      bool isMarioSlider() const;
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     f32 _0;
++    f32 _0;
 +#endif
-+
+ 
+-    f32 _0;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _4;
@@ -4003,12 +4011,12 @@
      void *getUseShakeData();
      void keepShake(EnumCamShakeMode mode, f32 strength);
      void startShake(EnumCamShakeMode mode, f32 strength);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _0;
++    u16 _0;
 +#endif
-+
+ 
+-    u16 _0;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u16 _2;
@@ -4155,14 +4163,14 @@
      ~TCubeGeneralInfo() override;
  
      void load(JSUMemoryInputStream &in) override;
--
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_0[2];
 +    TVec3f mTranslation;
 +#else
-     TVec3f mTranslation;
++    TVec3f mTranslation;
 +#endif
-+
+ 
+-    TVec3f mTranslation;
      TVec3f mRotation;
      TVec3f mScale;
 +#if __SIZEOF_POINTER__ == 8
@@ -4179,10 +4187,10 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_5[4];
 + // Always 2
-+    u32 mDataNo;
+     u32 mDataNo;
 +#else
 + // Always 2
-     u32 mDataNo;
++    u32 mDataNo;
 +#endif
 +
  };
@@ -4192,14 +4200,14 @@
      ~TCubeCameraInfo() override;
  
      void load(JSUMemoryInputStream &in) override;
--
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_0[2];
 +    TVec3f mTranslation;
 +#else
-     TVec3f mTranslation;
++    TVec3f mTranslation;
 +#endif
-+
+ 
+-    TVec3f mTranslation;
      TVec3f mRotation;
      TVec3f mScale;
 +#if __SIZEOF_POINTER__ == 8
@@ -4216,10 +4224,10 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_5[4];
 +  // Always 2
-+    u32 mDataNo;
+     u32 mDataNo;
 +#else
 +  // Always 2
-     u32 mDataNo;
++    u32 mDataNo;
 +#endif
 +
      TCameraMapTool *mMapTool;
@@ -4256,9 +4264,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[28];
-+    J3DFrameCtrl mGlowBtk;
-+#else
      J3DFrameCtrl mGlowBtk;
++#else
++    J3DFrameCtrl mGlowBtk;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -4268,9 +4276,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[8];
-+    J3DFrameCtrl mGlowBrk;
-+#else
      J3DFrameCtrl mGlowBrk;
++#else
++    J3DFrameCtrl mGlowBrk;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -4363,10 +4371,10 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[4];
 +  // 0x0064
-+    TCameraKindParam *mCamParams;
+     TCameraKindParam *mCamParams;
 +#else
 +  // 0x0064
-     TCameraKindParam *mCamParams;
++    TCameraKindParam *mCamParams;
 +#endif
 +
      TCameraInbetween *mInbetween;  // 0x006C
@@ -4477,13 +4485,13 @@
      void calcOtherFPosFromCenterAndRadius(JGeometry::TVec2<f32> *, const JGeometry::TVec2<f32> &,
                                            f32);
      void getZBufValue();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _44[3];
--    J3DFrameCtrl mFrameCtrl;  // 0x0050
++    u32 _44[3];
 +#endif
-+
+ 
+-    u32 _44[3];
+-    J3DFrameCtrl mFrameCtrl;  // 0x0050
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[24];
 +    J3DFrameCtrl mFrameCtrl;
@@ -5041,12 +5049,12 @@
      virtual void reset();
      virtual void behaveToWater();
      virtual void moveObject();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _68;
++    u32 _68;
 +#endif
-+
+ 
+-    u32 _68;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _6C;
@@ -5070,12 +5078,12 @@
          LEAVEMAP       = 17,
          LAUGHATTARGET2 = 18,
      };
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     s16 _00;
++    s16 _00;
 +#endif
-+
+ 
+-    s16 _00;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      s16 _02;
@@ -5100,9 +5108,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_5[62];
-+    f32 mWarpSpeed;
-+#else
      f32 mWarpSpeed;
++#else
++    f32 mWarpSpeed;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -5180,9 +5188,10 @@
 -    u8 _1A6; //padding?
 -    u8 _1A7; //padding?
 -    u32 _1A8;  // padding?
-+#endif
- 
+-
 -    u32 _1AC[0x34 / 4]; // unknown
++#endif
++
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u8 _1A6;
@@ -5212,9 +5221,10 @@
 + // unknown
  
      u32 _1E0;
-+#endif
- 
+-
 -    u32 _1E4[0xC / 4]; // Unknown
++#endif
++
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u32 _1E4[0xC / 4];
@@ -5226,10 +5236,8 @@
  
      u32 _1F0;
 -    u32 _1F4; //TNerveWalkerGenerate*
--    u32 _1F8;
 +#endif
- 
--    u32 _1FC; // Unknown
++
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u32 _1F4;
@@ -5238,10 +5246,13 @@
 +#if __SIZEOF_POINTER__ == 8
 +#else
 + //TNerveWalkerGenerate*
-+    u32 _1F8;
-+#endif
- 
+     u32 _1F8;
+-
+-    u32 _1FC; // Unknown
+-
 -    TVec3f _200;  // 0x200 - 0x20B, detah particle related?
++#endif
++
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u32 _1FC;
@@ -5537,13 +5548,13 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_9[8];
-+    u32 _118;
-+#else
-+    u8 _pc32_9[4];
      u32 _118;
 -    u32 *_11C;  // array
 -    u32 _120;
 -    TGraphTracer *mGraphTracer; // _124
++#else
++    u8 _pc32_9[4];
++    u32 _118;
 +#endif
 +
 +    u32 *_11C;
@@ -5643,9 +5654,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_27[7];
-+    f32 _144;
-+#else
      f32 _144;
++#else
++    f32 _144;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -5759,22 +5770,22 @@
      s8 waitForChoice(TEProgress, TEProgress, int);
      s8 waitForChoiceBM(TEProgress, TEProgress, int);
      s8 waitForStart(TEProgress);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _0C;
++    u16 _0C;
 +#endif
-+
+ 
+-    u16 _0C;
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[2];
-+    TEProgress mProgress;
-+#else
      TEProgress mProgress;
 -    u32 mState;                       // 0x0014
 -    u32 _18[0x28 / 4];                // 0x0018
 -    TCardBookmarkInfo mBookmarkInfo;  // 0x0040
 -    u32 _A4[0xC / 4];                 // 0x00A4
 -    u8 mSelected;                     // 0x00B0
++#else
++    TEProgress mProgress;
 +#endif
 +
 +    u32 mState;
@@ -5913,16 +5924,17 @@
          J2DPicture *mActivePicture;
          J2DPicture *mInactivePicture;
      };
-+#if __SIZEOF_POINTER__ == 8
-+#else
-+    u32 _00[0x24 / 4];
-+#endif
- 
+-
 -    u32 _00[0x24 / 4];    // 0x0000
 -    s32 mShineCount;      // 0x0024
 -    s32 mCurWater;        // 0x0028
 -    u32 _2C[0x10 / 4];    // 0x002C
 -    bool mIsRedCoinCard;  // 0x003C
++#if __SIZEOF_POINTER__ == 8
++#else
++    u32 _00[0x24 / 4];
++#endif
++
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[40];
 +    // 0x0000
@@ -5985,9 +5997,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_11[4];
-+    bool mIsTimerCardActive;
-+#else
      bool mIsTimerCardActive;
++#else
++    bool mIsTimerCardActive;
 +#endif
 +
      bool mIsDEBSAlert;       // 0x0044
@@ -6790,13 +6802,13 @@
      void startFadeinT(f32 fadeTime);
      void startFadeoutT(f32 fadeTime);
      void startWipe(u32 requestKind, f32 fadeTime, f32 delayTime);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _0C;
--    u16 _0E;  // padding?
++    u16 _0C;
 +#endif
-+
+ 
+-    u16 _0C;
+-    u16 _0E;  // padding?
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +    u16 _0E;
@@ -6859,9 +6871,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_11[7];
-+    JDrama::TScreen *mScreen1;
-+#else
      JDrama::TScreen *mScreen1;
++#else
++    JDrama::TScreen *mScreen1;
 +#endif
 +
      JDrama::TScreen *mScreen2;
@@ -6874,12 +6886,12 @@
      virtual void perform(u32, JDrama::TGraphics *) override;
  
      void setStageColor(u8 stageID);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _10;
++    u32 _10;
 +#endif
-+
+ 
+-    u32 _10;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _14;
@@ -6892,9 +6904,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[12];
-+    JUtility::TColor mColorX1;
-+#else
      JUtility::TColor mColorX1;
++#else
++    JUtility::TColor mColorX1;
 +#endif
 +
      JUtility::TColor mColorX2;
@@ -7148,12 +7160,12 @@
      virtual void update() override;
  
      void registFadeout(u16, u16);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _38;
++    u16 _38;
 +#endif
-+
+ 
+-    u16 _38;
 +
 +#if __SIZEOF_POINTER__ == 8
 +#else
@@ -7167,9 +7179,6 @@
      void perform(u32, JDrama::TGraphics *) override;
  
      virtual void draw(const JDrama::TRect &, JUtility::TColor color);
--
--    TMarioGamePad *mGamepad;  // _10
--    JUtility::TColor mColor;  // _14
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_0[4];
 +    TMarioGamePad *mGamepad;
@@ -7181,10 +7190,13 @@
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +  // _14
-     u16 _18;
--    u16 mBlendFlags;    // _1A
++    u16 _18;
 +#endif
-+
+ 
+-    TMarioGamePad *mGamepad;  // _10
+-    JUtility::TColor mColor;  // _14
+-    u16 _18;
+-    u16 mBlendFlags;    // _1A
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[2];
 +    u16 mBlendFlags;
@@ -7577,9 +7589,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_4[16];
-+    MActorAnmData *mAnmData;
-+#else
      MActorAnmData *mAnmData;
++#else
++    MActorAnmData *mAnmData;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -7677,12 +7689,12 @@
      void stopMarioVoice(u32, u8);
      void talkModeIn(bool);
      void talkModeOut();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u8 _00[0xD2];
++    u8 _00[0xD2];
 +#endif
-+
+ 
+-    u8 _00[0xD2];
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[130];
@@ -7810,12 +7822,12 @@
  
      static TItem *newAndRegisterCoin(u32);
      static TItem *newAndRegisterCoinReal();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     f32 _40;
++    f32 _40;
 +#endif
-+
+ 
+-    f32 _40;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _44;
@@ -7901,13 +7913,13 @@
      virtual TJointModel *newJointModel() const;
  
      void initJointModel();
--
 +#if __SIZEOF_POINTER__ == 8
 +    u32 mJointModelNum;
 +#else
-     size_t mJointModelNum;
++    size_t mJointModelNum;
 +#endif
-+
+ 
+-    size_t mJointModelNum;
      TJointModel **mJointModels;
 +#if __SIZEOF_POINTER__ == 8
 +#else
@@ -7930,12 +7942,12 @@
      static TMapObjBase *newAndRegisterObj(const char *, const TVec3f &, const TVec3f &,
                                            const TVec3f &);
      static TMapObjBase *newAndRegisterObjByEventID(u32, const char *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     f32 _38;
++    f32 _38;
 +#endif
-+
+ 
+-    f32 _38;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _3C;
@@ -8027,15 +8039,15 @@
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +  // 0x5D60
-+
-+    u16 _06;
-+#endif
  
 -    u16 _06;                  // 0x5D62
 -    u32 _07[0xA8 / 4];        // 0x5D64
 -    f32 mSize;                // 0x5E0C
 -    f32 _08[0x30 / 4];        // 0x5E10
 -    f32 mSphereStep;          // 0x5E40
++    u16 _06;
++#endif
++
 +#if __SIZEOF_POINTER__ == 8
 +#else
 +                  // 0x5D62
@@ -8176,12 +8188,12 @@
      void stamp(u16, f32 x, f32 y, f32 z, f32 r);
      void stampGround(u16, f32 x, f32 y, f32 z, f32 r);
      void stampModel(J3DModel *model);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _24[0x1EC / 4];
++    u32 _24[0x1EC / 4];
 +#endif
-+
+ 
+-    u32 _24[0x1EC / 4];
  
      static u8 mEdgeAlpha;
      static s32 mFlushTime;
@@ -8200,12 +8212,12 @@
      void stop(int);
      void stop();
      void update();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     f32 _0;
++    f32 _0;
 +#endif
-+
+ 
+-    f32 _0;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _4;
@@ -8290,12 +8302,12 @@
      virtual TJointObj *newJointObj() const;
  
      void initChildren();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _04;
++    u32 _04;
 +#endif
-+
+ 
+-    u32 _04;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _08;
@@ -8486,10 +8498,10 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_9[12];
-+    u16 _5C;
-+#else
      u16 _5C;
 -    u16 _5E;  // padding
++#else
++    u16 _5C;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -8621,13 +8633,13 @@
      virtual void remove() override;
      virtual void setUp() override;
      virtual void setUpTrans(const TVec3f &) override;
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _60;
--    TLiveActor *mActor;  // 0x0064
++    u16 _60;
 +#endif
-+
+ 
+-    u16 _60;
+-    TLiveActor *mActor;  // 0x0064
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_1[2];
 +    TLiveActor *mActor;
@@ -8702,12 +8714,12 @@
      virtual void calcCurrentMtx();
  
      void boundByActor(THitActor *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     f32 _148;
++    f32 _148;
 +#endif
-+
+ 
+-    f32 _148;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _14C;
@@ -8795,9 +8807,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_18[8];
-+    f32 mAdditionalHeldHeight;
-+#else
      f32 mAdditionalHeldHeight;
++#else
++    f32 mAdditionalHeldHeight;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -9063,16 +9075,16 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_2[8];
-+    s32 mLeafCount;
-+#else
      s32 mLeafCount;
++#else
++    s32 mLeafCount;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[4];
-+    TMapCollisionMove *mCollisionMove;
-+#else
      TMapCollisionMove *mCollisionMove;
++#else
++    TMapCollisionMove *mCollisionMove;
 +#endif
 +
  };
@@ -9308,12 +9320,12 @@
  
      virtual void load(JSUMemoryInputStream &);
      virtual bool calcRecycle() override;
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _15C;
++    u32 _15C;
 +#endif
-+
+ 
+-    u32 _15C;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _160;
@@ -9354,10 +9366,10 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_2[12];
 +     // _14
-+    int mGlobalAmbColorIndex;
+     int mGlobalAmbColorIndex;
 +#else
 +     // _14
-     int mGlobalAmbColorIndex;
++    int mGlobalAmbColorIndex;
 +#endif
 +
      int mGlobalLightColorIndex;
@@ -9410,9 +9422,12 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_5[4];
-+    u8 mShadowType;
-+#else
      u8 mShadowType;
+-};
+-
+-class TMBindShadowBody {};
++#else
++    u8 mShadowType;
 +#endif
 +
 +
@@ -9421,9 +9436,8 @@
 +#else
 +    u8 _pc32_tail[3];
 +#endif
- };
- 
--class TMBindShadowBody {};
++};
++
 +class TMBindShadowBody {
 +#if __SIZEOF_POINTER__ == 8
 +#else
@@ -9592,12 +9606,12 @@
      virtual void makeObjDead() override;
      virtual void initMapObj() override;
      virtual void taken(THitActor *) override;
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _154;
++    u32 _154;
 +#endif
-+
+ 
+-    u32 _154;
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_tail[8];
@@ -9678,12 +9692,12 @@
      void killByTimer(int);
      void makeObjLiving();
      void makeObjWaitingToAppear();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u16 _19C;
++    u16 _19C;
 +#endif
-+
+ 
+-    u16 _19C;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u16 _19E;
@@ -9842,7 +9856,7 @@
  
      struct TEParams : TParams {};
  
-@@ -1078,42 +1084,187 @@
+@@ -1078,42 +1084,164 @@
      u16 mSubStateTimer;  // 0x0086
      u32 mJumpSlipState;
      f32 mBaseAcceleration;       // 0x008C
@@ -10016,6 +10030,17 @@
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_44[12];
 +                               // unknown
+ 
+     struct {
+         u32 _04                   : 10;
+@@ -1134,7 +1262,32 @@
+         bool mIsInvisible         : 1;
+         bool mAboveSewerFloor     : 1;
+         u32 _00                   : 1;
+-    } mAttributes;  // 0x0118
++    } mAttributes;
++#else
++                               // unknown
 +
 +    struct {
 +        u32 _04                   : 10;
@@ -10036,17 +10061,6 @@
 +        bool mIsInvisible         : 1;
 +        bool mAboveSewerFloor     : 1;
 +        u32 _00                   : 1;
-+    } mAttributes;
-+#else
-+                               // unknown
- 
-     struct {
-         u32 _04                   : 10;
-@@ -1134,7 +1285,9 @@
-         bool mIsInvisible         : 1;
-         bool mAboveSewerFloor     : 1;
-         u32 _00                   : 1;
--    } mAttributes;  // 0x0118
 +    } mAttributes;
 +#endif
 +  // 0x0118
@@ -10131,9 +10145,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_59[22];
-+    s16 mInvincibilityFrames;
-+#else
      s16 mInvincibilityFrames;
++#else
++    s16 mInvincibilityFrames;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -10347,9 +10361,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_102[8];
-+    TLiveActor *mPriorityCollisionOwner;
-+#else
      TLiveActor *mPriorityCollisionOwner;
++#else
++    TLiveActor *mPriorityCollisionOwner;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -10580,12 +10594,12 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_151[1];
-+    u8 mBindBoneIDArray[12];
-+#else
      u8 mBindBoneIDArray[12];
 -    u8 _3D1;  // padding?
 -    u8 _3D2;  // padding?
 -    u8 _3D3;  // padding?
++#else
++    u8 mBindBoneIDArray[12];
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -11021,12 +11035,12 @@
      void createMirrorModel();
      void mtxEffectHide();
      void mtxEffectShow();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _00;
++    u32 _00;
 +#endif
-+
+ 
+-    u32 _00;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _04;
@@ -11039,9 +11053,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[24];
-+    J3DModel *mCap1;
-+#else
      J3DModel *mCap1;
++#else
++    J3DModel *mCap1;
 +#endif
 +
      J3DModel *mCap3;
@@ -11053,12 +11067,12 @@
      void read();
      void reset();
      void updateMeaning();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _A4;
++    u32 _A4;
 +#endif
-+
+ 
+-    u32 _A4;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      f32 _A8;
@@ -11071,9 +11085,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_3[12];
-+    f32 _B0;
-+#else
      f32 _B0;
++#else
++    f32 _B0;
 +#endif
 +
      f32 _B4;
@@ -11110,9 +11124,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_11[8];
-+    u32 mMeaning;
-+#else
      u32 mMeaning;
++#else
++    u32 mMeaning;
 +#endif
 +
      u32 mFrameMeaning;
@@ -11204,12 +11218,12 @@
  class TMarioSoundValues {
  public:
      TMarioSoundValues();
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _0;
++    u32 _0;
 +#endif
-+
+ 
+-    u32 _0;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _4;
@@ -11769,9 +11783,9 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_14[24];
-+    TSpcStack<u32> mStack;
-+#else
      TSpcStack<u32> mStack;
++#else
++    TSpcStack<u32> mStack;
 +#endif
 +
 +#if __SIZEOF_POINTER__ == 8
@@ -11927,14 +11941,14 @@
      virtual void perform(u32, JDrama::TGraphics *) override;
      virtual void loadAfter() override;
      virtual TNameRef *searchF(u16, const char *) override;
--
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_0[4];
 +    TIdxGroupObj *mMapGroup;
 +#else
-     TIdxGroupObj *mMapGroup;
++    TIdxGroupObj *mMapGroup;
 +#endif
-+
+ 
+-    TIdxGroupObj *mMapGroup;
      TIdxGroupObj *mEmptyGroup;
      TIdxGroupObj *mManagerGroup;
      TIdxGroupObj *mObjectGroup;
@@ -12141,20 +12155,20 @@
 +
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_11[8];
-+    OSThread mThread;
-+#else
      OSThread mThread;
 -    Commands mCommand;  // 0x0448
++#else
++    OSThread mThread;
 +#endif
 +
 +    Commands mCommand;
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_13[4];
 +  // 0x0448
-+    OSMutex mMutex;
+     OSMutex mMutex;
 +#else
 +  // 0x0448
-     OSMutex mMutex;
++    OSMutex mMutex;
 +#endif
 +
      OSCond mCond;
@@ -12183,12 +12197,12 @@
  
      virtual void perform(u32, JDrama::TGraphics *);
      virtual void launchScript(const char *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     TSpcTypedBinary<TEventWatcher> *_10;
++    TSpcTypedBinary<TEventWatcher> *_10;
 +#endif
-+
+ 
+-    TSpcTypedBinary<TEventWatcher> *_10;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      TSpcTypedBinary<TEventWatcher> *_14;
@@ -12220,12 +12234,12 @@
      s32 direct_dolby();
      s32 direct_nlogo();
      s32 setup(JDrama::TDisplay *, TMarioGamePad *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     u32 _18;
++    u32 _18;
 +#endif
-+
+ 
+-    u32 _18;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _1C;
@@ -12531,14 +12545,14 @@
          : TNameRef(name), mArchiveName(archiveName) {}
      TScenarioArchiveName(const TScenarioArchiveName &);
      ~TScenarioArchiveName() override;
--
 +#if __SIZEOF_POINTER__ == 8
 +    u8 _pc64_0[6];
 +    const char *mArchiveName;
 +#else
-     const char *mArchiveName;
++    const char *mArchiveName;
 +#endif
-+
+ 
+-    const char *mArchiveName;
  };
 \ No newline at end of file
 --- a/include/SMS/System/MenuDirector.hxx
@@ -12547,12 +12561,12 @@
      void rsetup();
      s32 setup(JDrama::TDisplay *, TMarioGamePad *);
      void setupThreadFunc(void *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     bool _18;
++    bool _18;
 +#endif
-+
+ 
+-    bool _18;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _1C;
@@ -12643,12 +12657,12 @@
      void rsetup();
      s32 setup(JDrama::TDisplay *, TMarioGamePad *);
      void setupThreadFunc(void *);
--
 +#if __SIZEOF_POINTER__ == 8
 +#else
-     bool _18;
++    bool _18;
 +#endif
-+
+ 
+-    bool _18;
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _1C;

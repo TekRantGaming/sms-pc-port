@@ -12,7 +12,7 @@ which platform/mods/eclipse/shim/sms_offsets.h resolves per host.
 
 Inputs, in $SHI_LAYOUT_WORK (see README.md): port32_all.json, port64_all.json (the port's
 layouts, exported by export.py from the plain 32- and 64-bit builds) and vlate.json
-(vlate.py over decomp/include).
+(vlate.py over the decomp's include/ and libs/*/include/).
 """
 import json, os, re, sys
 

@@ -65,7 +65,22 @@ DEBS_FIXES = [
      "news list setters without assembly"),
 ]
 
-ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + [
+# The game's nerves and actors return BOOL from execute and receiveMessage,
+# and its callers test the whole word (TSpineBase<TLiveActor>::update's
+# `cmpwi r3, 0` after the execute call). SunshineHeaderInterface declares
+# them bool. On the PowerPC a bool is a whole register, 0 or 1, so that does
+# not matter there; natively a bool is returned in the low byte alone, and
+# the game's callers read the rest of the register too: TDarkZhine's nerves
+# (`setge %al`) ended at random and left its spine with no nerve. Declared
+# int, the mods' overrides return 0 or 1 in the whole register, as they do
+# on the console.
+BOOL_RET_FIXES = [
+    (glob_, r"\bbool(\s+(?:\w+::)?(?:execute\s*\(\s*TSpineBase\b|receiveMessage\s*\(\s*THitActor\b))",
+     r"int\1", "execute and receiveMessage return a full word")
+    for glob_ in ("src/**/*.cpp", "include/**/*.hxx")
+]
+
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -116,7 +131,7 @@ BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
      "code writes go to the patch registry"),
 ]
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX])
-SHI_FIXES = [
+SHI_FIXES = BOOL_RET_FIXES + [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.

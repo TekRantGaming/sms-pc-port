@@ -115,8 +115,16 @@ endif()
 if(SMS_GX_BUILD_TESTS)
     # GXDrawSphere calls MSL's sinf and cosf, which the port links from
     # platform/misc/msl_math.c; the standalone tests link it themselves.
+    # Built as the port builds it (the top-level CMakeLists.txt): SSE maths on
+    # x86, never x87 extended precision, and no contraction. Source file
+    # properties are per directory, so the tests' copy needs its own.
     set(SMS_GX_MSL_MATH ${CMAKE_CURRENT_SOURCE_DIR}/../misc/msl_math.c)
-    set_source_files_properties(${SMS_GX_MSL_MATH} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off"
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+        set(_sms_gx_msl_opts "-msse2;-mfpmath=sse;-ffp-contract=off")
+    else()
+        set(_sms_gx_msl_opts "-ffp-contract=off")
+    endif()
+    set_source_files_properties(${SMS_GX_MSL_MATH} PROPERTIES COMPILE_OPTIONS "${_sms_gx_msl_opts}"
         INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
     add_executable(gx_selftest tests/gx_selftest.cpp ${SMS_GX_MSL_MATH})
     target_include_directories(gx_selftest PRIVATE ${SMS_GX_DECOMP_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/src)

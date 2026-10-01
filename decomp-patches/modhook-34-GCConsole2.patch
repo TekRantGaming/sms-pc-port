@@ -105,8 +105,8 @@ Reason: port: code-mod hooks (sms_modhook.h): TGCConsole2 blue-coin counts, wate
  		if (unk3F4 == 0xffffffff) {
 @@ -1955,8 +2019,19 @@
  
- 	TWaterGun* waterGun = gpMarioOriginal->mWaterGun;
- 	JUTRect bounds(((J2DPicture*)unk26C->getPane())->mBounds);
+ 	TWaterGun* waterGun = gpMarioOriginal->getFludd();
+ 	JUTRect bounds(((J2DPicture*)unk26C->getPane())->getBounds());
 +#ifdef TARGET_PC
 +	// Eclipse recolours the tank's water: it rewrites the `lis r30, 0x1` at
 +	// 0x801494C0 and the `subi r0, r30, ...` making each colour at 0x801494C4

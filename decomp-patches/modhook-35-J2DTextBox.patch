@@ -1,17 +1,17 @@
 Reason: port: code-mod hooks (sms_modhook.h): BSE print position and matrix capture in J2DTextBox::draw
 --- a/libs/JSystem/src/J2D/J2DTextBox.cpp
 +++ b/libs/JSystem/src/J2D/J2DTextBox.cpp
-@@ -4,6 +4,9 @@
- #include <JSystem/JUtility/JUTResource.hpp>
+@@ -5,6 +5,9 @@
  #include <JSystem/JSupport/JSURandomInputStream.hpp>
  #include <dolphin/gx.h>
+ #include <JSystem/JKernel/JKRFileLoader.hpp>
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
  
  J2DTextBox::J2DTextBox(const ResFONT* font, const char* str)
      : J2DPane()
-@@ -190,10 +193,32 @@
+@@ -219,10 +222,32 @@
  	print.setFontSize(mFontSizeX, mFontSizeY);
  	print.setSomeColors(mBlack, mWhite);
  	print.initiate();

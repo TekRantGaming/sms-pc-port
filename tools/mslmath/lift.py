@@ -8,7 +8,9 @@ MAnmSound.o, JGeometry::TUtil<f32>::mod in koopajr.o) sit in objects that
 cannot be linked on their own. Each function is its instruction words,
 unchanged; its relocations are re-emitted against the same symbols (calls to
 the runtime, which check.sh links from runtime.o) or against copies of the
-small-data constants it loads (the same bytes, in .sdata2)."""
+small-data constants it loads (the same bytes, in .sdata2), and its absolute
+references to the object's .bss (tools/gxmath: GXDrawSphere's saved vertex
+state) against a zeroed copy of that section."""
 import re, subprocess, sys, tempfile
 
 B = sys.argv[1]
@@ -33,9 +35,10 @@ def section_bytes(obj, sec):
 def symbols(obj):
     syms, secnames = {}, {}
     for line in tool('readelf', '-SW', obj).splitlines():
-        m = re.match(r'\s*\[\s*(\d+)\]\s+(\S+)', line)
+        m = re.match(r'\s*\[\s*(\d+)\]\s+(\S+)\s+\S+\s+\S+\s+\S+\s+([0-9a-f]+)', line)
         if m:
             secnames[m.group(1)] = m.group(2)
+            secsizes[(obj, m.group(2))] = int(m.group(3), 16)
     for line in tool('readelf', '-sW', obj).splitlines():
         f = line.split()
         if len(f) >= 8 and f[0].endswith(':') and f[6].isdigit():
@@ -45,6 +48,8 @@ def symbols(obj):
 
 print('\t.section .text')
 data = []
+bss = []
+secsizes = {}
 for i in range(0, len(jobs), 3):
     obj, sym, name = jobs[i:i + 3]
     syms = symbols(obj)
@@ -68,6 +73,11 @@ for i in range(0, len(jobs), 3):
     for off, typ, target, add in relocs:
         if typ == 'R_PPC_REL24':
             ref = target
+        elif typ in ('R_PPC_ADDR16_HA', 'R_PPC_ADDR16_LO') and syms[target][2] == '.bss':
+            ref = '%s_bss' % name
+            if (ref, secsizes[(obj, '.bss')]) not in bss:
+                bss.append((ref, secsizes[(obj, '.bss')]))
+            add += syms[target][0]
         elif typ == 'R_PPC_EMB_SDA21':
             t_addr, t_size, t_sec, _ = syms[target]
             assert t_sec == '.sdata2', (target, t_sec)
@@ -81,3 +91,7 @@ for i in range(0, len(jobs), 3):
 print('\t.section .sdata2')
 for ref, b in data:
     print('\t.balign 8\n%s:\n\t.byte %s' % (ref, ', '.join('0x%02x' % x for x in b)))
+if bss:
+    print('\t.section .bss')
+    for ref, size in bss:
+        print('\t.balign 8\n%s:\n\t.space %d' % (ref, size))

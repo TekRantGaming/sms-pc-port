@@ -113,7 +113,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(SMS_GX_BUILD_TESTS)
-    add_executable(gx_selftest tests/gx_selftest.cpp)
+    # GXDrawSphere calls MSL's sinf and cosf, which the port links from
+    # platform/misc/msl_math.c; the standalone tests link it themselves.
+    set(SMS_GX_MSL_MATH ${CMAKE_CURRENT_SOURCE_DIR}/../misc/msl_math.c)
+    set_source_files_properties(${SMS_GX_MSL_MATH} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off"
+        INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+    add_executable(gx_selftest tests/gx_selftest.cpp ${SMS_GX_MSL_MATH})
     target_include_directories(gx_selftest PRIVATE ${SMS_GX_DECOMP_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(gx_selftest PRIVATE sms_gx)
     target_compile_features(gx_selftest PRIVATE cxx_std_17)
@@ -125,7 +130,7 @@ if(SMS_GX_BUILD_TESTS)
     target_compile_features(gx_windowtest PRIVATE cxx_std_17)
     add_test(NAME gx_windowtest COMMAND gx_windowtest)
     if(TARGET SDL2::SDL2)
-        add_executable(gx_windowsmoke tests/gx_windowtest.cpp)
+        add_executable(gx_windowsmoke tests/gx_windowtest.cpp ${SMS_GX_MSL_MATH})
         target_include_directories(gx_windowsmoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
         target_compile_features(gx_windowsmoke PRIVATE cxx_std_17)
         target_compile_definitions(gx_windowsmoke PRIVATE SMS_GX_HAVE_SDL2=1)

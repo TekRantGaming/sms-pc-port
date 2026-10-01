@@ -334,7 +334,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMarDirector direct, changeState, 
 +					}
 +					if (sms_mod_act_) {
 +#else
- 			if (mMap != 15) {
+ 			if (getCurrentMap() != 15) {
  				if (getGamePad()->testTrigger(0x10)) {
  					r29 = STATE_GUIDE;
 @@ -895,6 +1139,7 @@

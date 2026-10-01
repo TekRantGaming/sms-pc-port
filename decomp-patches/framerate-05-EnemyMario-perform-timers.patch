@@ -1,7 +1,7 @@
 Reason: port: with frame_rate = 60 Shadow Mario's fruit-kick stun and HP-meter timers count down at the 30 fps rate; perform counts them on every call, and the per-frame calls double at 60, so both ran out 30% sooner
 --- a/src/Enemy/enemyMario.cpp
 +++ b/src/Enemy/enemyMario.cpp
-@@ -1851,6 +1851,22 @@ void TEnemyMario::drawHPMeter(MtxPtr viewMtx)
+@@ -1844,6 +1844,22 @@ void TEnemyMario::drawHPMeter(MtxPtr viewMtx)
  	GXEnd();
  }
  
@@ -21,10 +21,10 @@ Reason: port: with frame_rate = 60 Shadow Mario's fruit-kick stun and HP-meter t
 +}
 +#endif
 +
- void TEnemyMario::perform(u32 cue, JDrama::TGraphics* graphics)
- {
- 	MActor* emarioActor   = nullptr;
-@@ -1861,11 +1877,17 @@ void TEnemyMario::perform(u32 cue, JDrama::TGraphics* graphics)
+ // TODO: frame 0x1a8 against retail's 0x1b8, register and slot residue.
+ // hsearch lands the frame only by stacking a machine extract of the
+ // calcAnm/animSound/joint-copy block with a named checkFlag(MARIO_FLAG_UNK4);
+@@ -1858,11 +1874,17 @@ void TEnemyMario::perform(u32 cue, JDrama::TGraphics* graphics)
  		emarioModel = emarioActor->getModel();
  	}
  

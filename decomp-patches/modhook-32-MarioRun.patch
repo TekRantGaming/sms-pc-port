@@ -11,7 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, 
  
  // rogue includes needed for matching sinit & bss
  #include <MSound/MSSetSound.hpp>
-@@ -433,10 +436,27 @@
+@@ -447,10 +450,27 @@
  	mVel.z      = mSlideVelZ;
  	mForwardVel = MsSqrtf(mSlideVelX * mSlideVelX + mSlideVelZ * mSlideVelZ);
  
@@ -39,7 +39,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, 
  
  	if (turn < -0x4000 || turn > 0x4000)
  		mForwardVel *= -1.0f;
-@@ -559,8 +579,21 @@
+@@ -577,8 +597,21 @@
  	f32 maxSp = mRunParams.mMaxSpeed.get();
  	f32 sp    = mIntendedMag < maxSp ? mIntendedMag : maxSp;
  
@@ -61,7 +61,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, 
  
  	if (mForwardVel <= 0.0f) {
  		mForwardVel += MarioRunParam(mRunParams.mVelMinusBrake);
-@@ -674,7 +707,17 @@
+@@ -692,7 +725,17 @@
  		mForwardVel += 1.1f;
  	} else if (mForwardVel <= want) {
  		f32 accel;
@@ -79,7 +79,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, 
  			accel = getSurfingParamsWater()->mAccel.get();
  		else
  			accel = getSurfingParamsGround()->mAccel.get();
-@@ -852,8 +895,29 @@
+@@ -873,8 +916,29 @@
  				return changePlayerStatus(MARIO_STATUS_WALL_JUMP, 0, false);
  			}
  
@@ -95,15 +95,15 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioRun inline patches (running, 
 +			if (void* sms_mod_t_ = SMS_MOD_SITE(0x8025B200)) {
 +				SMS_MOD_GPR(31, this);
 +				((bool (*)(TBGCheckData*, u16))sms_mod_t_)(
-+				    const_cast<TBGCheckData*>(mWallPlane), mWallPlane ? mWallPlane->mBGType : 0);
-+				sms_cling_ = mWallPlane != nullptr;
++				    const_cast<TBGCheckData*>(getWallPlane()), getWallPlane() ? getWallPlane()->mBGType : 0);
++				sms_cling_ = getWallPlane() != nullptr;
 +			} else {
-+				sms_cling_ = mWallPlane != nullptr && mWallPlane->isFence();
++				sms_cling_ = getWallPlane() != nullptr && getWallPlane()->isFence();
 +			}
 +			if (sms_cling_)
 +				return changePlayerCatching();
 +#else
- 			if (mWallPlane != nullptr && mWallPlane->isFence())
+ 			if (getWallPlane() != nullptr && getWallPlane()->isFence())
  				return changePlayerCatching();
 +#endif
  

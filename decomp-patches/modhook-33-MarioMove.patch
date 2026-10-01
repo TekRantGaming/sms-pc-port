@@ -12,7 +12,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  f32 TMario::getJumpAccelControl() const
  {
  	if (mStatus == MARIO_STATUS_WIRE_JUMP)
-@@ -471,6 +475,15 @@
+@@ -467,6 +471,15 @@
  	switch (status) {
  	case MARIO_STATUS_JUMP:
  	case 0x89C:
@@ -28,7 +28,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		setPlayerJumpSpeed(0.25f, 42.0f);
  		mForwardVel *= 0.8f;
  
-@@ -591,6 +604,15 @@
+@@ -583,6 +596,15 @@
  		if (jumpSpeed > 48.0f)
  			jumpSpeed = 48.0f;
  
@@ -44,7 +44,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		mForwardVel = jumpSpeed;
  		mSlideVelX  = mForwardVel * JMASSin(mFaceAngle.y);
  		mSlideVelZ  = mForwardVel * JMASCos(mFaceAngle.y);
-@@ -601,12 +623,30 @@
+@@ -593,12 +615,30 @@
  
  	case MARIO_STATUS_BROAD_JUMP:
  		startVoice(MSD_SE_MV22_JUMP_MID_01);
@@ -75,9 +75,9 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		mForwardVel = mJumpParams.mRotBroadJumpForce.get();
  		mVel.y      = mJumpParams.mRotBroadJumpForceY.get();
  		break;
-@@ -621,6 +661,16 @@
+@@ -613,6 +653,16 @@
  				startVoice(MSD_SE_MV15_EXERT_INST_01);
- 			if ((int)mWaterGun->mCurrentNozzle == TWaterGun::Hover)
+ 			if ((int)mWaterGun->getCurrentNozzleIndex() == TWaterGun::Hover)
  				startVoice(MSD_SE_MV21_JUMP_SMALL_01);
 +#ifdef TARGET_PC
 +			// BetterSunshineEngine (scaleFluddInitYSpd, retail 0x80254A2C):
@@ -92,7 +92,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  			setPlayerJumpSpeed(0.0f, 10.0f);
  		}
  		break;
-@@ -819,7 +869,30 @@
+@@ -811,7 +861,30 @@
  
  int TMario::changePlayerJumping(u32 param_1, u32 param_2)
  {
@@ -123,7 +123,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		setMissJumping();
  	else {
  		if (considerRotateJumpStart())
-@@ -1753,7 +1826,20 @@
+@@ -1740,7 +1813,20 @@
  
  void TMario::checkCurrentPlane()
  {
@@ -145,7 +145,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		return;
  
  	if (onYoshi())
-@@ -1812,6 +1898,21 @@
+@@ -1799,6 +1885,21 @@
  				damageExec(&mFloorHitActor, record.mResultWalls[i]->getData());
  	}
  
@@ -167,7 +167,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  	checkGroundPlane(mPosition.x, mPosition.y + 25.0f, mPosition.z,
  	                 &mFloorPosition.y, &mGroundPlane);
  
-@@ -1892,6 +1993,15 @@
+@@ -1879,6 +1980,15 @@
  		} else {
  			Mtx ridingMtx;
  			getRidingMtx(ridingMtx);
@@ -183,7 +183,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  			MTXMultVec(ridingMtx, &unk2F4, &mPosition);
  
  			// TODO: 100.0%, every instruction present; `ridingMtx` sits 4
-@@ -1933,7 +2043,16 @@
+@@ -1920,7 +2030,16 @@
  
  void TMario::stateMachine()
  {
@@ -200,7 +200,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  	int passes = 0;
  	while (result != 0) {
  		switch (mStatus & MARIO_STATUS_TYPE_MASK) {
-@@ -2054,7 +2173,18 @@
+@@ -2041,7 +2160,18 @@
  	f32 dVar7 = gpMap->checkGround(mPosition.x, mPosition.y - mVel.y,
  	                               mPosition.z, &ground);
  
@@ -220,7 +220,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		onFlag(MARIO_FLAG_GAME_OVER);
  		mHealth = 0;
  		mAnmSound->stop();
-@@ -2074,8 +2204,18 @@
+@@ -2061,8 +2191,18 @@
  	mLightID = 0;
  	if (MarioEnforceJumpGround(this)->isShadow() && mFloorPosition.y + 200.0f > mPosition.y) {
  		mLightID = MarioEnforceJumpGround(this)->getData();
@@ -240,7 +240,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  	}
  
  	if (gpCubeShadow != nullptr && gpCubeShadow->getInCubeNo(mPosition) != -1)
-@@ -2370,6 +2510,13 @@
+@@ -2357,6 +2497,13 @@
  
  	mWaterGun->changeNozzle(TWaterGun::Hover, true);
  	normalizeNozzle();
@@ -254,7 +254,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  	mWaterGun->resetWaterToFull();
  }
  
-@@ -2455,7 +2602,17 @@
+@@ -2430,7 +2577,17 @@
  	if (isMario() == 0)
  		return;
  
@@ -273,7 +273,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario movement, jumping, state ma
  		return;
  
  	if (mWetWaterParticleTimer <= 0)
-@@ -2579,6 +2736,20 @@
+@@ -2556,6 +2713,20 @@
  		}
  	}
  

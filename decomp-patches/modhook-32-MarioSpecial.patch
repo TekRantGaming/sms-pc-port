@@ -120,7 +120,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioSpecial inline patches (fence
  	fenceFootCheck();
  
  	if (isLast1AnimeFrame())
-@@ -1396,7 +1478,20 @@
+@@ -1399,7 +1481,20 @@
  			JGeometry::TVec3<f32> newPos = mPosition;
  			f32 fenceSp = mJumpParams.mFenceSpeed.get();
  			TMarioControllerWork* work = unk108;
@@ -141,8 +141,8 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioSpecial inline patches (fence
  
  			s16 camDelta = mFaceAngle.y - SMSGetCamera()->unk258;
  			f32 normX, normZ;
-@@ -1408,7 +1503,18 @@
- 				normX = wall->mNormal.z;
+@@ -1411,7 +1506,18 @@
+ 				normX = wall->getNormal().z;
  			}
  
 +#ifdef TARGET_PC
@@ -160,7 +160,7 @@ Reason: port: code-mod hooks (sms_modhook.h): MarioSpecial inline patches (fence
  			// Named: retail's fmadds reads the product before fenceSp.
  			f32 dx = normX * stickH;
  			f32 dz = normZ * stickH;
-@@ -1424,8 +1530,58 @@
+@@ -1427,8 +1533,58 @@
  			TBGCheckData* sideWall1 = checkWallPlane(&sideFront, 20.0f, 50.0f);
  			TBGCheckData* sideWall2
  			    = checkWallPlane(&sideFront2, 140.0f, 50.0f);

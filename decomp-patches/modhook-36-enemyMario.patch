@@ -11,10 +11,10 @@ Reason: port: code-mod hooks (sms_modhook.h): Shadow Mario update handler and HP
  
  static const TEnemyMario::TReplayLink replayLinkMonteMan[6] = {
  	{ 1, 0 },       { 1, 1 },       { 1, 2 },
-@@ -1875,6 +1878,14 @@
+@@ -1904,6 +1907,14 @@
  		}
  
- 		if (mStatus != MARIO_STATUS_RUN || mFreezeTimer == 0) {
+ 		if (getStatus() != MARIO_STATUS_RUN || mFreezeTimer == 0) {
 +#ifdef TARGET_PC
 +			// BetterSunshineEngine (shadowMarioUpdateHandler, retail 0x8003F8E8,
 +			// the virtual playerControl call): the mod's handler gets this and
@@ -26,7 +26,7 @@ Reason: port: code-mod hooks (sms_modhook.h): Shadow Mario update handler and HP
  			playerControl(graphics);
  			setPositions();
  		}
-@@ -2004,7 +2015,15 @@
+@@ -2033,7 +2044,15 @@
  			unk398->draw();
  		}
  

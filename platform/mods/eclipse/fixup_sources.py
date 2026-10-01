@@ -45,6 +45,22 @@ TEXTURE_FIXES = [
     for glob_ in ("src/**/*.cpp", "src/**/*.hxx", "include/**/*.hxx")
 ]
 
+# The memory card banner and icons are copied to the card from these BTI files
+# at their image offset (0x20) for as many bytes as the card holds (BSE's
+# UpdateSavedSettings: 0xE00 for the CI8 banner, 0x500 per CI8 icon, two
+# icons), but each file ends with its palette's last used colour, up to 0x1A2
+# bytes short. The copy then read past the array into whatever the build put
+# after it, so the 32 and 64-bit builds wrote different card files. Sized to
+# what is copied, the rest is zeros: palette entries no pixel uses. (On the
+# console those entries hold the bytes after the array in the module's image.)
+CARD_IMAGE_FIXES = [
+    (glob_, r"\bconst u8 (SMS_ALIGN\(32\) )?gSave(Bnr|Icon)\[\] = \{",
+     lambda m: "const u8 %sgSave%s[%s] = {" % (m.group(1) or "", m.group(2),
+                                              "0x20 + 0xE00" if m.group(2) == "Bnr" else "0x20 + 0x500 * 2"),
+     "the card banner and icons are as long as the copy to the card")
+    for glob_ in ("src/**/*.cpp", "src/**/*.hxx")
+]
+
 # Its caller passes the particle id in a full register (0x113); declared u8,
 # it only works on the PowerPC, where the value is used unmasked.
 PARTICLE_FIXES = [
@@ -117,7 +133,7 @@ SHI_WORD_FIXES = [
      "BOOL arguments are words"),
 ]
 
-ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + [
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -134,7 +150,7 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
+BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),
@@ -167,7 +183,7 @@ BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
 ]
-MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX])
+MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
 SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must

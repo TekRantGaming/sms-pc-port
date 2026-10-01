@@ -7,8 +7,9 @@ CHECK is a group (title, plaza, fps60, eclipse, vanilla, all) or one run
 (--list shows them). Every run is made in each word size (--arch) with the
 deterministic clock (SMS_VI_DETERMINISTIC), no settings file, no texture packs,
 skipped movies and an empty memory card (the Eclipse runs: the card saved by
-ecl-firstboot), and its captures are hashed; the captures are deleted
-afterwards unless --keep is given, the logs are kept in the --work folder.
+ecl-firstboot, whose files are hashed too), and its captures are hashed; the
+captures are deleted afterwards unless --keep is given, the logs are kept in
+the --work folder.
 With the default two runs at a time, all takes about 20 minutes on four cores
 with llvmpipe (vanilla 10, eclipse 10).
 
@@ -76,7 +77,7 @@ RUNS = {
     'gate60': dict(game='vanilla', kind='gate', fps=60, timeout=1500,
                    desc='the same at SMS_FRAME_RATE=60: captured after 100 frames, same setNextStage'),
     'ecl-firstboot': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': 'B@650+10'},
-                          shots=[600, 1200, 1500], timeout=900,
+                          shots=[600, 1200, 1500], timeout=900, cards=True,
                           desc="Eclipse first boot: BSE's settings screen, saved; its card seeds the other Eclipse runs"),
     'ecl-tutorial': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': ECL_TUTORIAL_AP}, card='ecl-firstboot',
                          shots=[1200, 2620, 2760, 3000, 3750, 3900, 4200, 4600, 5000], timeout=1200,
@@ -264,6 +265,11 @@ def do_run(name, arch, exe, disc, work, keep):
             res.items['field%05d' % n] = file_hash(f)
         elif not res.error:
             res.error = 'field %d was not captured (see %s)' % (n, log_path)
+    if spec.get('cards') and not res.error:
+        # The memory card the run saved, file by file: the same bytes in
+        # both word sizes, as the console would write.
+        for f in sorted(os.listdir(save_dir)):
+            res.items['card:' + f] = file_hash(os.path.join(save_dir, f))
     if spec['kind'] == 'audio':
         if os.path.exists(wav) and os.path.getsize(wav) >= 44 + WAV_BYTES:
             with open(wav, 'rb') as f:

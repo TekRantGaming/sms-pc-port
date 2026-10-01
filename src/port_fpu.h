@@ -156,4 +156,39 @@ static inline unsigned long long port_cvt_dbl_usll(double d)
 	return __builtin_signbit(d) ? 0x8000000000000000ull : 0x7FFFFFFFFFFFFFFFull;
 }
 
+/* The Gekko's quantised store: psq_st (and psq_stx, psq_stu, psq_stux) of a
+ * paired-single register through a GQR whose store type is an integer
+ * (GQRn bits 0-2: 4 u8, 5 u16, 6 s8, 7 s16; bits 8-13: a signed scale).
+ * The value, taken as a single, is multiplied by 2^scale in single precision,
+ * saturated to the type's range and converted towards zero; the store writes
+ * that integer's low bytes. +-inf saturate; a NaN stores 0.
+ *
+ * Source: the GQR layout is the PowerPC 750CL (Gekko-compatible) User's
+ * Manual's; the conversion is Dolphin's interpreter (ScaleAndClamp in
+ * Interpreter_LoadStorePaired.cpp: scale, clamp, C conversion towards zero, a
+ * NaN giving 0 on x86). It is not measured on hardware: there is neither a
+ * console nor Dolphin here. The game's one integer quantised store outside the
+ * THP decoder is OSf32tos8 in JASTrack (GQR4: s8, scale 0; docs/64-BIT.md,
+ * item 18). */
+static inline int port_gekko_quantize(double ps, unsigned int type, unsigned int scale)
+{
+	int e = (int)(scale & 63) - ((scale & 32) ? 64 : 0);
+	float v = (float)ps * (float)__builtin_ldexp(1.0, e);
+	float lo, hi;
+	switch (type & 7) {
+	case 4: lo = 0.0f; hi = 255.0f; break;
+	case 5: lo = 0.0f; hi = 65535.0f; break;
+	case 6: lo = -128.0f; hi = 127.0f; break;
+	case 7: lo = -32768.0f; hi = 32767.0f; break;
+	default: return 0; /* a float store: not a quantisation */
+	}
+	if (v != v)
+		return 0;
+	if (v < lo)
+		v = lo;
+	else if (v > hi)
+		v = hi;
+	return (int)v;
+}
+
 #endif

@@ -71,7 +71,11 @@ For bisecting, `SMS_MOD_LIST=1` prints every registered patch and `SMS_MOD_DISAB
   It also puts `J3DTevBlock`'s by-pointer and by-value setters in retail's vtable order: natively, Dark Zhine's colour change called the by-pointer one with the colour as its address.
 - `SMS_WARP=72,0` reaches the Fire Petey fight (`yoshiBoss`) and `SMS_WARP=79,0` Dark Zhine's (`lighthouseBoss`) from a file-select load, after the Tutorial's Exit Area.
   The 64-bit build had crashed loading the Fire Petey stage: BSE builds the indirect sea in the 0x80 bytes of retail's `TMapStaticObj`, which is 168 bytes there, so the hook in `modhook-36-Map.patch` now allocates it from the same heap instead.
-  With the same input the two builds then play the same run in both stages; the one visible difference left is the Yoshi at the start of the Fire Petey stage, white in the 32-bit build and black in the 64-bit one.
+  With the same input the two builds then play the same run in both stages.
+- The Yoshis of Eclipse's Yoshi village (`yoshi` and `yoshiBoss`) are Pianta NPCs (`NPCMonteMA`) whose body colour indices run from 0 to 11 in a 10-entry table (`sMonteM_BodyColorBuf`).
+  On the console entries 10 and 11 are the bytes after it in the DOL (the string `_hand_mat`, then `sMonteM_BodyColor`): a green Yoshi and a black one.
+  The port read its own neighbours instead, another table's white in the 32-bit build and zero padding in the 64-bit build, so the Fire Petey stage opened on a white or a black Yoshi; `bounds-03` gives such entries retail's bytes, and the Fire Petey frames are now byte-identical between the builds.
+  A scan of every scene on the Eclipse disc found the other indices past their tables (Piantas in `cruiser`, `peachBeach`, `montePit`, `redCity`, `junctionRoom7`, `coro_ex3`, `peachCastle_ex7` and `_ex22`, and two `dolpic` scenes), and `bounds-03` covers them too; the retail disc has none outside Nintendo's `test11`.
 - **Patches.** Every patch of the three modules is either hooked or waived: `tools/mods/port_status.py` lists none left to do (widescreen and frame-rate patches are waived, the port has its own; six more sit in code the mods compile out, which `--registered` shows as inactive).
 - **Retail addresses and offsets in the mods' code.** Game data the mods reach by retail address goes to the port's objects ([rawdata.cpp](../platform/mods/eclipse/rawdata.cpp)); members they reach by retail offset go through `SMS_OFFSET`.
   A retail data address not listed there stops the game with a message naming it.

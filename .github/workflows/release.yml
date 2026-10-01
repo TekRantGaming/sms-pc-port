@@ -31,7 +31,7 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-ninja mingw-w64-x86_64-make mingw-w64-x86_64-python
-            patch git p7zip
+            patch git p7zip mingw-w64-x86_64-libarchive
       - name: Build
         shell: msys2 {0}
         run: ./build.sh
@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git cmake make python3 patch binutils g++ \
-            libsdl2-dev libegl-dev libgl-dev file
+            libsdl2-dev libegl-dev libgl-dev file libarchive-tools
       - name: Build
         run: SMS_ARCH=64 ./build.sh
       - name: Package

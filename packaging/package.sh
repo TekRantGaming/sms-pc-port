@@ -59,6 +59,21 @@ MINGW* | MSYS*)
 			fi
 		done
 	done
+	# bsdtar (libarchive) unpacks the HD texture pack's .7z for the launcher on
+	# Windows builds whose own tar.exe cannot; its DLLs sit beside it in tools/
+	mkdir -p "$out/tools"
+	cp /mingw64/bin/bsdtar.exe "$out/tools/"
+	todo=("$out/tools/bsdtar.exe")
+	while [ ${#todo[@]} -gt 0 ]; do
+		f="${todo[0]}"
+		todo=("${todo[@]:1}")
+		for dll in $(objdump -p "$f" | awk '/DLL Name:/ {print $3}'); do
+			if [ -f "/mingw64/bin/$dll" ] && [ ! -f "$out/tools/$dll" ]; then
+				cp "/mingw64/bin/$dll" "$out/tools/"
+				todo+=("$out/tools/$dll")
+			fi
+		done
+	done
 	# the committed defaults, not this checkout's own settings
 	git show HEAD:settings.txt > "$out/settings.txt"
 	git show HEAD:bindings.txt > "$out/bindings.txt"
@@ -91,8 +106,11 @@ Linux)
 	export LDAI_OUTPUT="dist/SMS-PC-Port-$version-linux-x86_64.AppImage"
 	export OUTPUT="$LDAI_OUTPUT"
 	cp packaging/icon.png build/sms-pc-port.png
+	# bsdtar (libarchive-tools) unpacks the HD texture pack's .7z for the launcher
+	extra=()
+	if command -v bsdtar >/dev/null; then extra=(--executable "$(command -v bsdtar)"); fi
 	"$tool" --appdir "$appdir" \
-		--executable "$appdir/usr/bin/sms" \
+		--executable "$appdir/usr/bin/sms" "${extra[@]}" \
 		--desktop-file packaging/linux/sms-pc-port.desktop \
 		--icon-file build/sms-pc-port.png \
 		--custom-apprun packaging/linux/AppRun \

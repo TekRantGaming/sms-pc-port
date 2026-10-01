@@ -28,6 +28,8 @@
 #include <vector>
 
 #include <atomic>
+#include <filesystem>
+#include <mutex>
 #include <thread>
 
 #ifdef _WIN32
@@ -36,6 +38,12 @@
 #include <direct.h>
 #else
 #include <dirent.h>
+#include <errno.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
 #endif
 
 namespace {
@@ -520,6 +528,339 @@ struct InstallJob {
     }
 };
 
+// ------------------------------------------------------------------ child processes
+// A helper program (curl, tar) run without a console window, its stdout and
+// stderr read line by line; kill() stops it.
+struct Process {
+#ifdef _WIN32
+    HANDLE proc = nullptr, out = nullptr;
+#else
+    pid_t pid = -1;
+    int out = -1;
+#endif
+    std::string pending;
+
+    static std::string quote(const std::string& a) {
+#ifdef _WIN32
+        std::string q = "\"";
+        for (char c : a) q += c == '"' ? std::string("\\\"") : std::string(1, c);
+        return q + "\"";
+#else
+        return a;
+#endif
+    }
+    bool start(const std::vector<std::string>& args) {
+#ifdef _WIN32
+        std::string cmd;
+        for (const std::string& a : args) cmd += (cmd.empty() ? "" : " ") + quote(a);
+        SECURITY_ATTRIBUTES sa = {sizeof sa, nullptr, TRUE};
+        HANDLE rd = nullptr, wr = nullptr;
+        if (!CreatePipe(&rd, &wr, &sa, 0)) return false;
+        SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+        STARTUPINFOW si;
+        memset(&si, 0, sizeof si);
+        si.cb = sizeof si;
+        si.dwFlags = STARTF_USESTDHANDLES;
+        si.hStdOutput = si.hStdError = wr;
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        PROCESS_INFORMATION pi;
+        std::vector<wchar_t> wcmd(cmd.size() * 2 + 16);
+        MultiByteToWideChar(CP_UTF8, 0, cmd.c_str(), -1, wcmd.data(), int(wcmd.size()));
+        const BOOL ok = CreateProcessW(nullptr, wcmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
+                                       &si, &pi);
+        CloseHandle(wr);
+        if (!ok) {
+            CloseHandle(rd);
+            return false;
+        }
+        CloseHandle(pi.hThread);
+        proc = pi.hProcess;
+        out = rd;
+        return true;
+#else
+        int fds[2];
+        if (pipe(fds) != 0) return false;
+        posix_spawn_file_actions_t fa;
+        posix_spawn_file_actions_init(&fa);
+        posix_spawn_file_actions_adddup2(&fa, fds[1], 1);
+        posix_spawn_file_actions_adddup2(&fa, fds[1], 2);
+        posix_spawn_file_actions_addclose(&fa, fds[0]);
+        std::vector<char*> argv;
+        for (const std::string& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, argv.data(), environ);
+        posix_spawn_file_actions_destroy(&fa);
+        close(fds[1]);
+        if (rc != 0) {
+            close(fds[0]);
+            pid = -1;
+            return false;
+        }
+        out = fds[0];
+        return true;
+#endif
+    }
+    // the next line of output; false at the end
+    bool line(std::string& l) {
+        for (;;) {
+            const size_t nl = pending.find_first_of("\r\n");
+            if (nl != std::string::npos) {
+                l = pending.substr(0, nl);
+                pending.erase(0, nl + 1);
+                return true;
+            }
+            char buf[4096];
+#ifdef _WIN32
+            DWORD n = 0;
+            if (!ReadFile(out, buf, sizeof buf, &n, nullptr) || n == 0) break;
+#else
+            const ssize_t n = read(out, buf, sizeof buf);
+            if (n <= 0) break;
+#endif
+            pending.append(buf, size_t(n));
+        }
+        if (pending.empty()) return false;
+        l.swap(pending);
+        pending.clear();
+        return true;
+    }
+    int wait() {  // exit code
+#ifdef _WIN32
+        if (!proc) return -1;
+        WaitForSingleObject(proc, INFINITE);
+        DWORD code = 1;
+        GetExitCodeProcess(proc, &code);
+        CloseHandle(proc);
+        CloseHandle(out);
+        proc = out = nullptr;
+        return int(code);
+#else
+        if (pid < 0) return -1;
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+        close(out);
+        pid = -1;
+        out = -1;
+        return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+#endif
+    }
+    void kill() {
+#ifdef _WIN32
+        if (proc) TerminateProcess(proc, 1);
+#else
+        if (pid > 0) ::kill(pid, SIGTERM);
+#endif
+    }
+};
+
+bool runs(const std::vector<std::string>& args) {  // the program starts and exits 0
+    Process p;
+    if (!p.start(args)) return false;
+    std::string l;
+    while (p.line(l)) {
+    }
+    return p.wait() == 0;
+}
+
+// ------------------------------------------------------------------ HD texture pack
+// The Super Mario Sunshine UHD Texture Pack (qashto, razius), pinned to the
+// release tools/mods/get.py installs, downloaded from its own GitHub release
+// and unpacked into mods/textures/GMS: download with curl (resuming a partial
+// file), unpack with a tar that reads 7z (bundled in the release packages,
+// else the system's), or 7-Zip.
+const char* const kPackUrl =
+    "https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack/releases/download/2.1.1/GMS.7z";
+const long long kPackSize = 986431331LL;      // bytes, GMS.7z
+const long long kPackUnpacked = 3218563135LL;  // bytes, installed
+const int kPackEntries = 2237;                 // archive entries under GMS/Textures/GMS
+
+struct TexturePackJob {
+    enum Phase { IDLE, DOWNLOADING, EXTRACTING, REMOVING, DONE, FAILED, CANCELLED };
+    std::thread worker;
+    std::atomic<int> phase{IDLE};
+    std::atomic<bool> cancel{false};
+    std::atomic<int> entries{0};
+    std::mutex mu;
+    Process* child = nullptr;  // under mu
+    std::string error;
+    std::string modsDir, exeDir;
+
+    bool busy() const { return phase == DOWNLOADING || phase == EXTRACTING || phase == REMOVING; }
+    std::string archive() const { return modsDir + ".downloads/GMS.7z"; }
+    std::string installDir() const { return modsDir + "textures/GMS"; }
+    float progress() const {
+        if (phase == DOWNLOADING) {
+            const long long n = std::max(fileSize(archive() + ".part"), fileSize(archive()));
+            return float(double(std::max(0LL, n)) / double(kPackSize));
+        }
+        if (phase == EXTRACTING) return std::min(1.0f, float(entries) / float(kPackEntries));
+        return 0.0f;
+    }
+
+    void begin(void (TexturePackJob::*fn)()) {
+        if (worker.joinable()) worker.join();
+        cancel = false;
+        error.clear();
+        entries = 0;
+        worker = std::thread(fn, this);
+    }
+    void stop() {
+        cancel = true;
+        std::lock_guard<std::mutex> lk(mu);
+        if (child) child->kill();
+    }
+    ~TexturePackJob() {
+        stop();
+        if (worker.joinable()) worker.join();
+    }
+
+    int run(Process& p, const std::vector<std::string>& args, std::atomic<int>* lines) {
+        {
+            std::lock_guard<std::mutex> lk(mu);
+            if (cancel || !p.start(args)) return -1;
+            child = &p;
+        }
+        std::string l, last;
+        while (p.line(l))
+            if (!l.empty()) {
+                last = l;
+                if (lines) ++*lines;
+            }
+        const int rc = p.wait();
+        std::lock_guard<std::mutex> lk(mu);
+        child = nullptr;
+        if (rc != 0 && error.empty()) error = last;
+        return rc;
+    }
+    void fail(const std::string& why) {
+        if (cancel) {
+            phase = CANCELLED;
+            return;
+        }
+        if (error.empty() || why.find(':') == std::string::npos) error = why + (error.empty() ? "" : ": " + error);
+        phase = FAILED;
+    }
+
+    // the first extractor found: {program, true for bsdtar syntax / false for 7-Zip}
+    std::pair<std::string, bool> extractor() {
+        std::vector<std::pair<std::string, bool>> c;
+#ifdef _WIN32
+        c.push_back({exeDir + "tools\\bsdtar.exe", true});
+        char sys[MAX_PATH];
+        if (GetSystemDirectoryA(sys, MAX_PATH)) c.push_back({std::string(sys) + "\\tar.exe", true});
+        c.push_back({"C:\\Program Files\\7-Zip\\7z.exe", false});
+        c.push_back({"7z", false});
+        for (auto& e : c)
+            if (e.first.find('\\') == std::string::npos ? runs({e.first}) : fileSize(e.first) > 0) {
+                if (e.second && !runs({e.first, "--version"})) continue;
+                return e;
+            }
+#else
+        c.push_back({exeDir + "bsdtar", true});
+        c.push_back({"bsdtar", true});
+        c.push_back({"7zz", false});
+        c.push_back({"7z", false});
+        c.push_back({"7za", false});
+        for (auto& e : c)
+            if (runs({e.first, e.second ? "--version" : "i"})) return e;
+#endif
+        return {std::string(), false};
+    }
+
+    void install() {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::create_directories(modsDir + ".downloads", ec);
+        fs::create_directories(modsDir + "textures", ec);
+        const long long have = std::max(0LL, fileSize(archive() + ".part")) + std::max(0LL, fileSize(archive()));
+        const auto space = fs::space(modsDir + "textures", ec);
+        if (!ec && (long long)space.available < kPackUnpacked + kPackSize - have + (256LL << 20)) {
+            char buf[160];
+            snprintf(buf, sizeof buf, "Not enough free space: about %.1f GB is needed",
+                     double(kPackUnpacked + kPackSize - have) / 1e9);
+            fail(buf);
+            return;
+        }
+        // download (resuming a partial one)
+        if (fileSize(archive()) != kPackSize) {
+            phase = DOWNLOADING;
+            Process p;
+#ifdef _WIN32
+            char sys[MAX_PATH] = "";
+            GetSystemDirectoryA(sys, MAX_PATH);
+            const std::string curl = fileSize(std::string(sys) + "\\curl.exe") > 0 ? std::string(sys) + "\\curl.exe"
+                                                                                   : std::string("curl");
+#else
+            const std::string curl = "curl";
+#endif
+            int rc = run(p, {curl, "-L", "-f", "-sS", "--retry", "3", "-C", "-", "-o", archive() + ".part", kPackUrl},
+                         nullptr);
+#ifndef _WIN32
+            if (rc < 0 && !cancel) {  // no curl: wget
+                Process w;
+                error.clear();
+                rc = run(w, {"wget", "-q", "-c", "-O", archive() + ".part", kPackUrl}, nullptr);
+            }
+#endif
+            if (cancel) return fail("");
+            if (rc != 0 || fileSize(archive() + ".part") != kPackSize) {
+                if (fileSize(archive() + ".part") > kPackSize) fs::remove(archive() + ".part", ec);
+                return fail(rc < 0 ? "Cannot run curl to download the pack" : "The download failed");
+            }
+            fs::rename(archive() + ".part", archive(), ec);
+            if (ec) return fail("Cannot rename the download: " + ec.message());
+        }
+        // unpack into a staging folder, then move it into place
+        phase = EXTRACTING;
+        const auto tool = extractor();
+        if (tool.first.empty())
+            return fail("No program to unpack .7z archives was found. Install 7-Zip (Windows) or "
+                        "libarchive-tools / p7zip (Linux), or extract GMS/Textures/GMS from GMS.7z into "
+                        "mods/textures/ yourself");
+        const std::string stage = modsDir + ".downloads/stage";
+        fs::remove_all(stage, ec);
+        fs::create_directories(stage, ec);
+        Process p;
+        int rc;
+        std::string unpacked;
+        if (tool.second) {
+            rc = run(p, {tool.first, "-xvf", archive(), "-C", stage, "--strip-components", "2", "GMS/Textures/GMS"},
+                     &entries);
+            unpacked = stage + "/GMS";
+        } else {
+            rc = run(p, {tool.first, "x", "-y", "-bb1", "-o" + stage, archive(), "GMS/Textures/GMS/*"}, &entries);
+            unpacked = stage + "/GMS/Textures/GMS";
+        }
+        if (cancel || rc != 0 || !isDir(unpacked)) {
+            fs::remove_all(stage, ec);
+            return fail(rc < 0 ? "Cannot run " + tool.first : "Unpacking failed");
+        }
+        fs::remove_all(installDir(), ec);
+        fs::rename(unpacked, installDir(), ec);
+        if (ec) return fail("Cannot move the pack into place: " + ec.message());
+        fs::remove_all(stage, ec);
+        fs::remove(archive(), ec);
+        phase = DONE;
+    }
+    void uninstall() {
+        phase = REMOVING;
+        std::error_code ec;
+        std::filesystem::remove_all(installDir(), ec);
+        if (ec) return fail("Cannot remove " + installDir() + ": " + ec.message());
+        phase = DONE;
+    }
+};
+
+int countTextures(const std::string& dir) {  // tex1_* files below dir
+    std::error_code ec;
+    int n = 0;
+    for (auto it = std::filesystem::recursive_directory_iterator(dir, ec);
+         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec))
+        if (it->is_regular_file(ec) && it->path().filename().string().compare(0, 5, "tex1_") == 0) n++;
+    return n;
+}
+
 struct Launcher {
     SettingsFile settings;
     BindingsFile bindings;
@@ -541,7 +882,9 @@ struct Launcher {
     std::vector<std::string> fullscreenModes;  // "WxH@Hz" for the chosen display
     int modesFor = -1;
     std::vector<std::string> mods;
-    int texturePacks = 0;
+    int texturePacks = 0;   // folders in mods/textures
+    int packTextures = 0;   // textures in the UHD pack's folder, mods/textures/GMS
+    TexturePackJob tex;
     std::string status;
     double statusUntil = 0;
 
@@ -706,6 +1049,7 @@ struct Launcher {
         for (const std::string& d : listDirs(dir))
             if (d != "textures" && isDir(dir + "/" + d + "/files")) mods.push_back(d);
         texturePacks = int(listDirs(dir + "/textures").size());
+        packTextures = isDir(dir + "/textures/GMS") ? countTextures(dir + "/textures/GMS") : 0;
     }
 
     // --- pages
@@ -814,17 +1158,87 @@ struct Launcher {
                {{"0", "Off"}, {"2", "2x"}, {"4", "4x"}, {"8", "8x"}, {"16", "16x"}});
         sliderInt("Sharpening", "Contrast-adaptive sharpening of the final picture.", "sharpen", 0, 0, 100, "%d%%");
         sliderFloat("Brightness", "1.00 is the original image.", "brightness", 1.0f, 0.5f, 2.0f, "%.2f");
-        char tp[200];
-        snprintf(tp, sizeof tp,
-                 texturePacks ? "Replaces the game's textures with high-resolution ones from mods/textures (%d pack%s "
-                                "installed)."
-                              : "Replaces the game's textures with high-resolution ones. No pack is installed yet: "
-                                "run tools/mods/get.py textures.",
-                 texturePacks, texturePacks == 1 ? "" : "s");
-        toggle("HD texture packs", tp, "texture_packs", true);
-        sliderInt("Texture pack memory", "Video memory kept for texture pack images, in MiB, before the least used "
-                  "are freed.",
-                  "texture_pack_mb", 1536, 512, 8192, "%d MiB", 256);
+        textureRows();
+    }
+
+    // --- HD texture pack: install, then on/off
+    void textureRows() {
+        // a finished job: rescan, and switch packs on after an install
+        const int ph = tex.phase;
+        if (ph == TexturePackJob::DONE || ph == TexturePackJob::FAILED || ph == TexturePackJob::CANCELLED) {
+            const bool installedNow = ph == TexturePackJob::DONE && isDir(tex.installDir());
+            if (ph == TexturePackJob::FAILED) status = "Texture pack: " + tex.error;
+            else if (ph == TexturePackJob::CANCELLED) status = "Texture pack install cancelled.";
+            else status = installedNow ? "HD texture pack installed and switched on." : "HD texture pack removed.";
+            statusUntil = ImGui::GetTime() + 8.0;
+            if (installedNow) settings.set("texture_packs", "on");
+            tex.phase = TexturePackJob::IDLE;
+            scanMods();
+        }
+        rowBegin("HD texture pack",
+                 "The Super Mario Sunshine UHD Texture Pack by qashto and razius: over 2,000 remade textures. "
+                 "Downloaded from its GitHub release (940 MB) and installed into mods/textures (3.2 GB).");
+        const float w = ImGui::GetContentRegionAvail().x;
+        if (tex.busy()) {
+            const char* what = tex.phase == TexturePackJob::DOWNLOADING ? "Downloading"
+                               : tex.phase == TexturePackJob::EXTRACTING ? "Unpacking"
+                                                                         : "Removing";
+            char label[64];
+            if (tex.phase == TexturePackJob::REMOVING) snprintf(label, sizeof label, "%s...", what);
+            else snprintf(label, sizeof label, "%s... %.0f%%", what, double(tex.progress()) * 100.0);
+            ImGui::ProgressBar(tex.phase == TexturePackJob::REMOVING ? -1.0f * float(ImGui::GetTime()) : tex.progress(),
+                               ImVec2(w * 0.68f, 0), label);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(tex.phase == TexturePackJob::REMOVING);
+            if (ImGui::Button("Cancel", ImVec2(-FLT_MIN, 0))) tex.stop();
+            ImGui::EndDisabled();
+        } else if (packTextures > 0) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.92f, 0.65f, 1));
+            ImGui::Text("Installed: %d textures", packTextures);
+            ImGui::PopStyleColor();
+            if (ImGui::Button("Remove", ImVec2(w * 0.5f - ImGui::GetStyle().ItemSpacing.x / 2, 0)))
+                ImGui::OpenPopup("Remove the HD texture pack?");
+            ImGui::SameLine();
+            if (ImGui::Button("Reinstall", ImVec2(-FLT_MIN, 0))) startTextureInstall();
+            if (ImGui::BeginPopupModal("Remove the HD texture pack?", nullptr,
+                                       ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+                ImGui::Dummy(ImVec2(0, 4 * scale));
+                ImGui::TextUnformatted("This deletes mods/textures/GMS (3.2 GB). It can be downloaded again.");
+                ImGui::Dummy(ImVec2(0, 8 * scale));
+                if (ImGui::Button("Remove", ImVec2(160 * scale, 0))) {
+                    tex.begin(&TexturePackJob::uninstall);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Keep it", ImVec2(160 * scale, 0))) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, kAccentHot);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+            if (ImGui::Button("Download and install", ImVec2(w, 0))) startTextureInstall();
+            ImGui::PopStyleColor(4);
+        }
+        rowEnd();
+        if (packTextures > 0 || texturePacks > 0) {
+            char help[160];
+            snprintf(help, sizeof help, "Use the texture packs in mods/textures (%d installed).", texturePacks);
+            toggle("Use HD textures", help, "texture_packs", true);
+            sliderInt("Texture pack memory",
+                      "Video memory kept for texture pack images, in MiB, before the least used are freed.",
+                      "texture_pack_mb", 1536, 512, 8192, "%d MiB", 256);
+        }
+    }
+
+    void startTextureInstall() {
+        tex.modsDir = baseDir + "mods/";
+        if (char* base = SDL_GetBasePath()) {
+            tex.exeDir = base;
+            SDL_free(base);
+        }
+        tex.begin(&TexturePackJob::install);
     }
 
     void pageGameplay() {
@@ -1271,6 +1685,12 @@ struct Launcher {
             play = false;
             page = P_INSTALL;
             status = job.running ? "Wait for the install to finish." : "Install the game first: select your disc image.";
+            statusUntil = ImGui::GetTime() + 5.0;
+        }
+        if (play && tex.busy()) {
+            play = false;
+            page = P_GRAPHICS;
+            status = "Wait for the texture pack to finish, or cancel it.";
             statusUntil = ImGui::GetTime() + 5.0;
         }
         ImGui::End();

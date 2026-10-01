@@ -162,7 +162,7 @@ s32 used_blocks()
 
 extern "C" void CARDInit(void) {}
 extern "C" s32 CARDGetResultCode(s32 chan) { return chan == 0 ? CARD_RESULT_READY : CARD_RESULT_NOCARD; }
-extern "C" int CARDProbe(long chan) { return chan == 0; }
+extern "C" int CARDProbe(s32 chan) { return chan == 0; }
 extern "C" s32 CARDProbeEx(s32 chan, s32* memSize, s32* sectorSize)
 {
 	if (chan != 0)
@@ -193,8 +193,8 @@ extern "C" s32 CARDUnmount(s32 chan)
 	g_mounted = false;
 	return chan == 0 ? CARD_RESULT_READY : CARD_RESULT_NOCARD;
 }
-extern "C" long CARDCheck(long chan) { return chan == 0 ? CARD_RESULT_READY : CARD_RESULT_NOCARD; }
-extern "C" long CARDFormat(long chan)
+extern "C" s32 CARDCheck(s32 chan) { return chan == 0 ? CARD_RESULT_READY : CARD_RESULT_NOCARD; }
+extern "C" s32 CARDFormat(s32 chan)
 {
 	if (chan != 0)
 		return CARD_RESULT_NOCARD;
@@ -261,7 +261,7 @@ extern "C" s32 CARDClose(CARDFileInfo* fi)
 	fi->chan = -1;
 	return CARD_RESULT_READY;
 }
-extern "C" long CARDCreate(long chan, char* fileName, unsigned long size, CARDFileInfo* fi)
+extern "C" s32 CARDCreate(s32 chan, char* fileName, u32 size, CARDFileInfo* fi)
 {
 	if (chan != 0)
 		return CARD_RESULT_NOCARD;
@@ -298,7 +298,7 @@ extern "C" long CARDCreate(long chan, char* fileName, unsigned long size, CARDFi
 	}
 	return CARD_RESULT_NOENT;
 }
-extern "C" long CARDRead(CARDFileInfo* fi, void* buf, s32 length, s32 offset)
+extern "C" s32 CARDRead(CARDFileInfo* fi, void* buf, s32 length, s32 offset)
 {
 	if (fi->fileNo < 0 || fi->fileNo >= kMaxFiles || !g_files[fi->fileNo].used)
 		return CARD_RESULT_NOFILE;
@@ -308,7 +308,7 @@ extern "C" long CARDRead(CARDFileInfo* fi, void* buf, s32 length, s32 offset)
 	memcpy(buf, d.data() + offset, length);
 	return CARD_RESULT_READY;
 }
-extern "C" long CARDWrite(CARDFileInfo* fi, void* buf, long length, long offset)
+extern "C" s32 CARDWrite(CARDFileInfo* fi, void* buf, s32 length, s32 offset)
 {
 	if (fi->fileNo < 0 || fi->fileNo >= kMaxFiles || !g_files[fi->fileNo].used)
 		return CARD_RESULT_NOFILE;
@@ -329,7 +329,7 @@ extern "C" s32 CARDGetStatus(s32 chan, s32 fileNo, CARDStat* stat)
 	*stat = g_files[fileNo].stat;
 	return CARD_RESULT_READY;
 }
-extern "C" long CARDSetStatus(long chan, long fileNo, CARDStat* stat)
+extern "C" s32 CARDSetStatus(s32 chan, s32 fileNo, CARDStat* stat)
 {
 	if (chan != 0)
 		return CARD_RESULT_NOCARD;
@@ -345,7 +345,7 @@ extern "C" long CARDSetStatus(long chan, long fileNo, CARDStat* stat)
 	save((int)fileNo);
 	return CARD_RESULT_READY;
 }
-extern "C" long CARDFastDelete(long chan, long fileNo)
+extern "C" s32 CARDFastDelete(s32 chan, s32 fileNo)
 {
 	if (chan != 0)
 		return CARD_RESULT_NOCARD;

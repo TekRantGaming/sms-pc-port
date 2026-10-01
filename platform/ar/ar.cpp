@@ -67,6 +67,6 @@ extern "C" void ARQPostRequest(ARQRequest* req, u32 owner, u32 type, u32 prio, u
 	// The copy is instant, so the completion interrupt fires before returning:
 	// JASystem::Dvd busy-waits on the callback's counter without any OS call.
 	if (callback)
-		port_irq_run_now([req, callback]() { callback((u32)(uintptr_t)req); });
+		port_irq_run_now([req, callback]() { callback((uintptr_t)req); });
 }
 extern "C" u8* port_aram_ptr(u32 addr) { return g_aram ? g_aram + addr : NULL; }

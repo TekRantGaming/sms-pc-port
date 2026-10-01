@@ -340,12 +340,12 @@ extern "C" BOOL PADInit()
 	init();
 	return TRUE;
 }
-extern "C" int PADReset(unsigned long) { return TRUE; }
+extern "C" int PADReset(u32) { return TRUE; }
 extern "C" BOOL PADRecalibrate(u32) { return TRUE; }
 extern "C" BOOL PADSync(void) { return TRUE; }
 extern "C" void PADSetSpec(u32) {}
 extern "C" void PADSetAnalogMode(u32) {}
-extern "C" void PADSetSamplingRate(unsigned long) {}
+extern "C" void PADSetSamplingRate(u32) {}
 extern "C" void PADControlMotor(s32, u32) {}
 extern "C" void PADControlAllMotors(const u32*) {}
 

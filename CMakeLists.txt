@@ -332,9 +332,12 @@ if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
   # that lacks the framework fails here as it would on another Mac.
   set_target_properties(sms PROPERTIES BUILD_RPATH "@executable_path;@executable_path/../Frameworks")
 endif()
+# The platform layer sees the game's declarations as the game does, patched
+# headers first (ARQCallback's uintptr_t, the SDK's longs spelled s32), so a
+# definition that differs from them does not compile.
 target_include_directories(sms PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/platform ${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/include ${SMS_PORT_SRC}
-  ${SMS_PORT_SRC}/port_include ${SMS_DECOMP_INCLUDE_DIRS})
+  ${SMS_PORT_SRC}/port_include ${SMS_PATCHED_INCLUDE_DIRS} ${SMS_DECOMP_INCLUDE_DIRS})
 target_compile_definitions(sms PRIVATE ${SMS_COMMON_DEFS} SMS_AUDIO_DSP_HLE=1)
 target_compile_options(sms PRIVATE -fno-strict-aliasing -Wno-unused-parameter -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++11>)

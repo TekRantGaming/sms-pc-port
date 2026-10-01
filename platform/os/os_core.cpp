@@ -72,7 +72,7 @@ extern "C" void* OSAllocFromArenaHi(u32 size, u32 align)
 }
 extern "C" u32 OSGetPhysicalMemSize(void) { return port_mem1_size; }
 extern "C" u32 OSGetConsoleSimulatedMemSize(void) { return port_mem1_size; }
-extern "C" unsigned long OSGetConsoleType(void) { return 0x10000006; } // retail HW2
+extern "C" u32 OSGetConsoleType(void) { return 0x10000006; } // retail HW2
 extern "C" void OSInit(void) {}
 
 // --- Time --------------------------------------------------------------------
@@ -245,7 +245,7 @@ extern "C" int OSSetCurrentHeap(int heap)
 	return old;
 }
 
-extern "C" void* OSAllocFromHeap(int heap, unsigned long size)
+extern "C" void* OSAllocFromHeap(int heap, u32 size)
 {
 	if (heap < 0 || heap >= s_max_heaps || !s_heaps[heap].live)
 		return NULL;
@@ -280,19 +280,19 @@ extern "C" void OSFreeToHeap(int heap, void* ptr)
 		}
 }
 
-extern "C" long OSCheckHeap(int heap)
+extern "C" s32 OSCheckHeap(int heap)
 {
 	if (heap < 0 || heap >= s_max_heaps || !s_heaps[heap].live)
 		return -1;
-	long free = 0;
+	s32 free = 0;
 	for (Cell* c = s_heaps[heap].cells; c; c = c->next)
 		if (!c->used)
 			free += c->size - kHdr;
 	return free;
 }
 
-extern "C" unsigned long OSReferentSize(void* ptr) { return ((Cell*)((u8*)ptr - kHdr))->size - kHdr; }
-extern "C" void OSDumpHeap(int heap) { port_log("[os] OSDumpHeap(%d): %ld free\n", heap, OSCheckHeap(heap)); }
+extern "C" u32 OSReferentSize(void* ptr) { return ((Cell*)((u8*)ptr - kHdr))->size - kHdr; }
+extern "C" void OSDumpHeap(int heap) { port_log("[os] OSDumpHeap(%d): %d free\n", heap, (int)OSCheckHeap(heap)); }
 
 // --- Stopwatches -----------------------------------------------------------------
 
@@ -346,7 +346,7 @@ extern "C" u32 OSGetSoundMode(void) { return s_sound_mode; }
 extern "C" void OSSetSoundMode(u32 mode) { s_sound_mode = mode; }
 extern "C" u32 OSGetProgressiveMode(void) { return s_progressive; }
 extern "C" void OSSetProgressiveMode(u32 mode) { s_progressive = mode; }
-extern "C" unsigned long OSGetResetCode(void) { return 0; }
+extern "C" u32 OSGetResetCode(void) { return 0; }
 extern "C" BOOL OSGetResetSwitchState(void) { return FALSE; }
 extern "C" BOOL OSGetResetButtonState(void) { return FALSE; }
 extern "C" void OSResetSystem(int reset, u32 resetCode, BOOL forceMenu)

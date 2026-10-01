@@ -552,9 +552,9 @@ extern "C" int OSJoinThread(OSThread* t, void** val)
 
 extern "C" void OSDetachThread(OSThread* t) { t->attr |= OS_THREAD_ATTR_DETACH; }
 
-extern "C" long OSResumeThread(OSThread* t)
+extern "C" s32 OSResumeThread(OSThread* t)
 {
-	long old = t->suspend;
+	s32 old = t->suspend;
 	if (--t->suspend < 0)
 		t->suspend = 0;
 	if (t->suspend == 0)
@@ -595,7 +595,7 @@ extern "C" void OSWakeupThread(OSThreadQueue* queue)
 		preempt_check();
 }
 
-extern "C" long OSGetThreadPriority(OSThread* t) { return t->priority; }
+extern "C" s32 OSGetThreadPriority(OSThread* t) { return t->priority; }
 
 extern "C" int OSSetThreadPriority(OSThread* t, OSPriority prio)
 {
@@ -611,7 +611,7 @@ extern "C" int OSSetThreadPriority(OSThread* t, OSPriority prio)
 
 #define OS_MESSAGE_BLOCK 1
 
-extern "C" void OSInitMessageQueue(OSMessageQueue* mq, void* msgArray, long msgCount)
+extern "C" void OSInitMessageQueue(OSMessageQueue* mq, void* msgArray, s32 msgCount)
 {
 	OSInitThreadQueue(&mq->queueSend);
 	OSInitThreadQueue(&mq->queueReceive);
@@ -621,7 +621,7 @@ extern "C" void OSInitMessageQueue(OSMessageQueue* mq, void* msgArray, long msgC
 	mq->usedCount  = 0;
 }
 
-extern "C" int OSSendMessage(OSMessageQueue* mq, void* msg, long flags)
+extern "C" int OSSendMessage(OSMessageQueue* mq, void* msg, s32 flags)
 {
 	BOOL lvl = OSDisableInterrupts();
 	while (mq->msgCount <= mq->usedCount) {
@@ -631,7 +631,7 @@ extern "C" int OSSendMessage(OSMessageQueue* mq, void* msg, long flags)
 		}
 		OSSleepThread(&mq->queueSend);
 	}
-	long idx                     = (mq->firstIndex + mq->usedCount) % mq->msgCount;
+	s32 idx                      = (mq->firstIndex + mq->usedCount) % mq->msgCount;
 	((void**)mq->msgArray)[idx] = msg;
 	mq->usedCount++;
 	OSWakeupThread(&mq->queueReceive);
@@ -639,7 +639,7 @@ extern "C" int OSSendMessage(OSMessageQueue* mq, void* msg, long flags)
 	return TRUE;
 }
 
-extern "C" int OSReceiveMessage(OSMessageQueue* mq, void* msg, long flags)
+extern "C" int OSReceiveMessage(OSMessageQueue* mq, void* msg, s32 flags)
 {
 	BOOL lvl = OSDisableInterrupts();
 	while (mq->usedCount == 0) {
@@ -658,7 +658,7 @@ extern "C" int OSReceiveMessage(OSMessageQueue* mq, void* msg, long flags)
 	return TRUE;
 }
 
-extern "C" int OSJamMessage(OSMessageQueue* mq, void* msg, long flags)
+extern "C" int OSJamMessage(OSMessageQueue* mq, void* msg, s32 flags)
 {
 	BOOL lvl = OSDisableInterrupts();
 	while (mq->msgCount <= mq->usedCount) {

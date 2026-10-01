@@ -1,0 +1,293 @@
+Reason: 64-bit hosts: MWCC's long is 4 bytes, an LP64 host's 8, so the SDK functions the port implements (CARD, the OS message queue, threads and heap, PAD, SI) and JKRFileLoader::getResSize, which the mods call, spelled long in the decomp had a 64-bit interface on the host where the console's is 32-bit; spell them s32 and u32, which the port's types.h keeps 32 bits wide (the same types under MWCC, so this is a neutral spelling the decomp could take).
+--- a/libs/dolphin/include/dolphin/card/CARDBios.h
++++ b/libs/dolphin/include/dolphin/card/CARDBios.h
+@@ -4,8 +4,8 @@
+ void CARDInit(void);
+ s32 CARDGetResultCode(s32 chan);
+ s32 CARDFreeBlocks(s32 chan, s32* byteNotUsed, s32* filesNotUsed);
+-long CARDGetEncoding(long chan, unsigned short* encode);
+-long CARDGetMemSize(long chan, unsigned short* size);
++s32 CARDGetEncoding(s32 chan, unsigned short* encode);
++s32 CARDGetMemSize(s32 chan, unsigned short* size);
+ s32 CARDGetSectorSize(s32 chan, u32* size);
+ 
+ #endif // _DOLPHIN_CARDBIOS_H_
+--- a/libs/dolphin/include/dolphin/card/CARDCheck.h
++++ b/libs/dolphin/include/dolphin/card/CARDCheck.h
+@@ -4,6 +4,6 @@
+ #include <dolphin/types.h>
+ 
+ s32 CARDCheckAsync(s32 chan, CARDCallback callback);
+-long CARDCheck(long chan);
++s32 CARDCheck(s32 chan);
+ 
+ #endif // _DOLPHIN_CARDCHECK_H_
+--- a/libs/dolphin/include/dolphin/card/CARDCreate.h
++++ b/libs/dolphin/include/dolphin/card/CARDCreate.h
+@@ -3,7 +3,7 @@
+ 
+ s32 CARDCreateAsync(s32 chan, const char* fileName, u32 size,
+                     CARDFileInfo* fileInfo, CARDCallback callback);
+-long CARDCreate(long chan, char* fileName, unsigned long size,
++s32 CARDCreate(s32 chan, char* fileName, u32 size,
+                 struct CARDFileInfo* fileInfo);
+ 
+ #endif // _DOLPHIN_CARDCREATE_H_
+--- a/libs/dolphin/include/dolphin/card/CARDDelete.h
++++ b/libs/dolphin/include/dolphin/card/CARDDelete.h
+@@ -2,7 +2,7 @@
+ #define _DOLPHIN_CARDDELETE_H_
+ 
+ s32 CARDFastDeleteAsync(s32 chan, s32 fileNo, CARDCallback callback);
+-long CARDFastDelete(long chan, long fileNo);
++s32 CARDFastDelete(s32 chan, s32 fileNo);
+ s32 CARDDeleteAsync(s32 chan, char* fileName, CARDCallback callback);
+ s32 CARDDelete(s32 chan, char* fileName);
+ 
+--- a/libs/dolphin/include/dolphin/card/CARDFormat.h
++++ b/libs/dolphin/include/dolphin/card/CARDFormat.h
+@@ -1,6 +1,6 @@
+ #ifndef _DOLPHIN_CARDFORMAT_H_
+ #define _DOLPHIN_CARDFORMAT_H_
+ 
+-long CARDFormat(long chan);
++s32 CARDFormat(s32 chan);
+ 
+ #endif // _DOLPHIN_CARDFORMAT_H_
+--- a/libs/dolphin/include/dolphin/card/CARDMount.h
++++ b/libs/dolphin/include/dolphin/card/CARDMount.h
+@@ -1,7 +1,7 @@
+ #ifndef _DOLPHIN_CARDMOUNT_H_
+ #define _DOLPHIN_CARDMOUNT_H_
+ 
+-int CARDProbe(long chan);
++int CARDProbe(s32 chan);
+ s32 CARDProbeEx(s32 chan, s32* memSize, s32* sectorSize);
+ s32 CARDMountAsync(s32 chan, void* workArea, CARDCallback detachCallback,
+                    CARDCallback attachCallback);
+--- a/libs/dolphin/include/dolphin/card/CARDRdwr.h
++++ b/libs/dolphin/include/dolphin/card/CARDRdwr.h
+@@ -1,6 +1,6 @@
+ #ifndef _DOLPHIN_CARDRDWR_H_
+ #define _DOLPHIN_CARDRDWR_H_
+ 
+-long CARDGetXferredBytes(long chan);
++s32 CARDGetXferredBytes(s32 chan);
+ 
+ #endif // _DOLPHIN_CARDRDWR_H_
+--- a/libs/dolphin/include/dolphin/card/CARDRead.h
++++ b/libs/dolphin/include/dolphin/card/CARDRead.h
+@@ -3,7 +3,7 @@
+ 
+ s32 CARDReadAsync(CARDFileInfo* fileInfo, void* buf, s32 length, s32 offset,
+                   CARDCallback callback);
+-long CARDRead(CARDFileInfo* fileInfo, void* buf, s32 length, s32 offset);
++s32 CARDRead(CARDFileInfo* fileInfo, void* buf, s32 length, s32 offset);
+ s32 CARDCancel(CARDFileInfo* fileInfo);
+ 
+ #endif // _DOLPHIN_CARDREAD_H_
+--- a/libs/dolphin/include/dolphin/card/CARDStat.h
++++ b/libs/dolphin/include/dolphin/card/CARDStat.h
+@@ -22,6 +22,6 @@
+ s32 CARDGetStatus(s32 chan, s32 fileNo, CARDStat* stat);
+ s32 CARDSetStatusAsync(s32 chan, s32 fileNo, CARDStat* stat,
+                        CARDCallback callback);
+-long CARDSetStatus(long chan, long fileNo, struct CARDStat* stat);
++s32 CARDSetStatus(s32 chan, s32 fileNo, struct CARDStat* stat);
+ 
+ #endif // _DOLPHIN_CARDSTAT_H_
+--- a/libs/dolphin/include/dolphin/card/CARDWrite.h
++++ b/libs/dolphin/include/dolphin/card/CARDWrite.h
+@@ -1,9 +1,9 @@
+ #ifndef _DOLPHIN_CARDWRITE_H_
+ #define _DOLPHIN_CARDWRITE_H_
+ 
+-long CARDWriteAsync(struct CARDFileInfo* fileInfo, void* buf, long length,
+-                    long offset, void (*callback)(long, long));
+-long CARDWrite(struct CARDFileInfo* fileInfo, void* buf, long length,
+-               long offset);
++s32 CARDWriteAsync(struct CARDFileInfo* fileInfo, void* buf, s32 length,
++                    s32 offset, void (*callback)(s32, s32));
++s32 CARDWrite(struct CARDFileInfo* fileInfo, void* buf, s32 length,
++               s32 offset);
+ 
+ #endif // _DOLPHIN_CARDWRITE_H_
+--- a/libs/dolphin/include/dolphin/os.h
++++ b/libs/dolphin/include/dolphin/os.h
+@@ -79,7 +79,7 @@
+ #define OSNanosecondsToTicks(nsec)   (((nsec) * (OS_TIMER_CLOCK / 125000)) / 8000)
+ #define OSMicrosecondsToTicks(usec)  (((usec) * (OS_TIMER_CLOCK / 125000)) / 8)
+ 
+-unsigned long OSGetConsoleType(void);
++u32 OSGetConsoleType(void);
+ void OSInit(void);
+ 
+ void* OSGetArenaHi(void);
+@@ -111,14 +111,14 @@
+ typedef struct OSBootInfo_s {
+ 	// total size: 0x40
+ 	DVDDiskID DVDDiskID;        // offset 0x0, size 0x20
+-	unsigned long magic;        // offset 0x20, size 0x4
+-	unsigned long version;      // offset 0x24, size 0x4
+-	unsigned long memorySize;   // offset 0x28, size 0x4
+-	unsigned long consoleType;  // offset 0x2C, size 0x4
++	u32 magic;                  // offset 0x20, size 0x4
++	u32 version;                // offset 0x24, size 0x4
++	u32 memorySize;             // offset 0x28, size 0x4
++	u32 consoleType;            // offset 0x2C, size 0x4
+ 	void* arenaLo;              // offset 0x30, size 0x4
+ 	void* arenaHi;              // offset 0x34, size 0x4
+ 	void* FSTLocation;          // offset 0x38, size 0x4
+-	unsigned long FSTMaxLength; // offset 0x3C, size 0x4
++	u32 FSTMaxLength;           // offset 0x3C, size 0x4
+ } OSBootInfo;
+ 
+ OSTick OSGetTick(void);
+--- a/libs/dolphin/include/dolphin/os/OSAlloc.h
++++ b/libs/dolphin/include/dolphin/os/OSAlloc.h
+@@ -7,7 +7,7 @@
+ 
+ extern volatile OSHeapHandle __OSCurrHeap;
+ 
+-void* OSAllocFromHeap(int heap, unsigned long size);
++void* OSAllocFromHeap(int heap, u32 size);
+ void* OSAllocFixed(void* rstart, void* rend);
+ void OSFreeToHeap(int heap, void* ptr);
+ int OSSetCurrentHeap(int heap);
+@@ -15,10 +15,10 @@
+ int OSCreateHeap(void* start, void* end);
+ void OSDestroyHeap(int heap);
+ void OSAddToHeap(int heap, void* start, void* end);
+-long OSCheckHeap(int heap);
+-unsigned long OSReferentSize(void* ptr);
++s32 OSCheckHeap(int heap);
++u32 OSReferentSize(void* ptr);
+ void OSDumpHeap(int heap);
+-void OSVisitAllocated(void (*visitor)(void*, unsigned long));
++void OSVisitAllocated(void (*visitor)(void*, u32));
+ 
+ #define OSAlloc(size) OSAllocFromHeap(__OSCurrHeap, (size))
+ #define OSFree(ptr)   OSFreeToHeap(__OSCurrHeap, (ptr))
+--- a/libs/dolphin/include/dolphin/os/OSMessage.h
++++ b/libs/dolphin/include/dolphin/os/OSMessage.h
+@@ -14,19 +14,19 @@
+ 	struct OSThreadQueue queueSend;
+ 	struct OSThreadQueue queueReceive;
+ 	void* msgArray;
+-	long msgCount;
+-	long firstIndex;
+-	long usedCount;
++	s32 msgCount;
++	s32 firstIndex;
++	s32 usedCount;
+ };
+ 
+ #define OS_MESSAGE_NOBLOCK 0
+ #define OS_MESSAGE_BLOCK   1
+ 
+ void OSInitMessageQueue(struct OSMessageQueue* mq, void* msgArray,
+-                        long msgCount);
+-int OSSendMessage(struct OSMessageQueue* mq, void* msg, long flags);
+-int OSReceiveMessage(struct OSMessageQueue* mq, void* msg, long flags);
+-int OSJamMessage(struct OSMessageQueue* mq, void* msg, long flags);
++                        s32 msgCount);
++int OSSendMessage(struct OSMessageQueue* mq, void* msg, s32 flags);
++int OSReceiveMessage(struct OSMessageQueue* mq, void* msg, s32 flags);
++int OSJamMessage(struct OSMessageQueue* mq, void* msg, s32 flags);
+ 
+ #ifdef __cplusplus
+ }
+--- a/libs/dolphin/include/dolphin/os/OSReset.h
++++ b/libs/dolphin/include/dolphin/os/OSReset.h
+@@ -29,7 +29,7 @@
+ void OSRegisterResetFunction(OSResetFunctionInfo* info);
+ void OSUnregisterResetFunction(OSResetFunctionInfo* info);
+ void OSResetSystem(int reset, u32 resetCode, BOOL forceMenu);
+-unsigned long OSGetResetCode();
++u32 OSGetResetCode();
+ 
+ #ifdef __cplusplus
+ }
+--- a/libs/dolphin/include/dolphin/os/OSThread.h
++++ b/libs/dolphin/include/dolphin/os/OSThread.h
+@@ -80,11 +80,11 @@
+ void OSCancelThread(OSThread*);
+ int OSJoinThread(OSThread* thread, void** val);
+ void OSDetachThread(OSThread* thread);
+-long OSResumeThread(OSThread* thread);
++s32 OSResumeThread(OSThread* thread);
+ s32 OSSuspendThread(OSThread* thread);
+ void OSSleepThread(OSThreadQueue* queue);
+ void OSWakeupThread(OSThreadQueue* queue);
+-long OSGetThreadPriority(OSThread* thread);
++s32 OSGetThreadPriority(OSThread* thread);
+ 
+ #define IsSuspended(suspend) (suspend > 0)
+ 
+--- a/libs/dolphin/include/dolphin/pad.h
++++ b/libs/dolphin/include/dolphin/pad.h
+@@ -64,17 +64,17 @@
+ #endif
+ 
+ // PAD.c
+-int PADReset(unsigned long mask);
++int PADReset(u32 mask);
+ BOOL PADRecalibrate(u32 mask);
+ BOOL PADInit();
+ u32 PADRead(struct PADStatus* status);
+-void PADSetSamplingRate(unsigned long msec);
+-void __PADTestSamplingRate(unsigned long tvmode);
++void PADSetSamplingRate(u32 msec);
++void __PADTestSamplingRate(u32 tvmode);
+ void PADControlAllMotors(const u32* commandArray);
+ void PADControlMotor(s32 chan, u32 command);
+ void PADSetSpec(u32 spec);
+-unsigned long PADGetSpec();
+-int PADGetType(long chan, unsigned long* type);
++u32 PADGetSpec();
++int PADGetType(s32 chan, u32* type);
+ BOOL PADSync(void);
+ void PADSetAnalogMode(u32 mode);
+ 
+--- a/libs/dolphin/include/dolphin/si.h
++++ b/libs/dolphin/include/dolphin/si.h
+@@ -54,12 +54,12 @@
+ 
+ BOOL SITransfer(s32 chan, void* output, u32 outputBytes, void* input,
+                 u32 inputBytes, SICallback callback, OSTime delay);
+-u32 SIGetCommand(long chan);
++u32 SIGetCommand(s32 chan);
+ u32 SIEnablePolling(u32 poll);
+ u32 SIDisablePolling(u32 poll);
+ u32 SISetXY(u32 x, u32 y);
+ u32 SIGetType(s32 chan);
+-u32 SIGetTypeAsync(s32 chan, void (*callback)(long, u32));
++u32 SIGetTypeAsync(s32 chan, void (*callback)(s32, u32));
+ BOOL SIIsChanBusy(s32 chan);
+ u32 SIGetStatus(s32 chan);
+ BOOL SIGetResponse(s32 chan, void* data);
+--- a/libs/JSystem/include/JSystem/JKernel/JKRFileLoader.hpp
++++ b/libs/JSystem/include/JSystem/JKernel/JKRFileLoader.hpp
+@@ -38,7 +38,7 @@
+ 
+ 	static void* getGlbResource(const char*);
+ 	static void* getGlbResource(const char*, JKRFileLoader* fileLoader);
+-	static long getResSize(void* resourceBuffer, JKRFileLoader* fileLoader);
++	static s32 getResSize(void* resourceBuffer, JKRFileLoader* fileLoader);
+ 	static size_t readGlbResource(void* resourceBuffer, u32 bufferSize,
+ 	                              const char* path);
+ 	static size_t readGlbResource(void* resourceBuffer, u32 bufferSize,
+--- a/libs/JSystem/src/JKernel/JKRFileLoader.cpp
++++ b/libs/JSystem/src/JKernel/JKRFileLoader.cpp
+@@ -124,9 +124,9 @@
+ 	return false;
+ }
+ 
+-long JKRFileLoader::getResSize(void* resourceBuffer, JKRFileLoader* fileLoader)
++s32 JKRFileLoader::getResSize(void* resourceBuffer, JKRFileLoader* fileLoader)
+ {
+-	long ret = -1; // TODO: this feels wrong, but it matches, so whatever?
++	s32 ret = -1; // TODO: this feels wrong, but it matches, so whatever?
+ 
+ 	if (fileLoader != nullptr)
+ 		return fileLoader->getResSize(resourceBuffer);

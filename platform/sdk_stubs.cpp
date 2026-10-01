@@ -92,12 +92,12 @@ SDK_WEAK void DCStoreRange(void* addr, u32 nBytes) { SDK_STUB(DCStoreRange); }
 SDK_WEAK void GXLoadTexObj(GXTexObj* obj, GXTexMapID id) { SDK_STUB(GXLoadTexObj); }
 SDK_WEAK void OSPanic(char* file, int line, char* msg, ...) { SDK_STUB(OSPanic); }
 SDK_WEAK BOOL OSRestoreInterrupts(BOOL level) { SDK_STUB(OSRestoreInterrupts); return (BOOL)(level); }
-SDK_WEAK int OSSendMessage(struct OSMessageQueue* mq, void* msg, long flags) { SDK_STUB(OSSendMessage); return stub_default<int >(); }
-SDK_WEAK int OSReceiveMessage(struct OSMessageQueue* mq, void* msg, long flags) { SDK_STUB(OSReceiveMessage); return stub_default<int >(); }
+SDK_WEAK int OSSendMessage(struct OSMessageQueue* mq, void* msg, s32 flags) { SDK_STUB(OSSendMessage); return stub_default<int >(); }
+SDK_WEAK int OSReceiveMessage(struct OSMessageQueue* mq, void* msg, s32 flags) { SDK_STUB(OSReceiveMessage); return stub_default<int >(); }
 SDK_WEAK void DCFlushRange(void* addr, u32 nBytes) { SDK_STUB(DCFlushRange); }
 SDK_WEAK void GXSetProjection(f32 mtx[4][4], GXProjectionType type) { SDK_STUB(GXSetProjection); }
 SDK_WEAK void GXSetZCompLoc(GXBool before_tex) { SDK_STUB(GXSetZCompLoc); }
-SDK_WEAK void OSInitMessageQueue(struct OSMessageQueue* mq, void* msgArray, long msgCount) { SDK_STUB(OSInitMessageQueue); }
+SDK_WEAK void OSInitMessageQueue(struct OSMessageQueue* mq, void* msgArray, s32 msgCount) { SDK_STUB(OSInitMessageQueue); }
 SDK_WEAK void GXInitTexObj(GXTexObj* obj, void* image_ptr, u16 width, u16 height, GXTexFmt format, GXTexWrapMode wrap_s, GXTexWrapMode wrap_t, u8 mipmap) { SDK_STUB(GXInitTexObj); }
 SDK_WEAK void OSUnlockMutex(struct OSMutex* mutex) { SDK_STUB(OSUnlockMutex); }
 SDK_WEAK void GXInitTexObjLOD(GXTexObj* obj, GXTexFilter min_filt, GXTexFilter mag_filt, f32 min_lod, f32 max_lod, f32 lod_bias, GXBool bias_clamp, GXBool do_edge_lod, GXAnisotropy max_aniso) { SDK_STUB(GXInitTexObjLOD); }
@@ -112,7 +112,7 @@ SDK_WEAK BOOL DVDClose(DVDFileInfo* fileInfo) { SDK_STUB(DVDClose); return stub_
 SDK_WEAK void GXCallDisplayList(void* list, u32 nbytes) { SDK_STUB(GXCallDisplayList); }
 SDK_WEAK void GXSetChanAmbColor(GXChannelID chan, GXColor amb_color) { SDK_STUB(GXSetChanAmbColor); }
 SDK_WEAK void VIWaitForRetrace(void) { SDK_STUB(VIWaitForRetrace); }
-SDK_WEAK long OSResumeThread(OSThread* thread) { SDK_STUB(OSResumeThread); return stub_default<long >(); }
+SDK_WEAK s32 OSResumeThread(OSThread* thread) { SDK_STUB(OSResumeThread); return stub_default<s32 >(); }
 SDK_WEAK void GXLoadNrmMtxImm(f32 mtx[3][4], u32 id) { SDK_STUB(GXLoadNrmMtxImm); }
 SDK_WEAK void GXSetArray(GXAttr attr, const void* base_ptr, u8 stride) { SDK_STUB(GXSetArray); }
 SDK_WEAK void GXSetClipMode(GXClipMode mode) { SDK_STUB(GXSetClipMode); }
@@ -237,13 +237,13 @@ SDK_WEAK void GXSetCopyClamp(GXFBClamp clamp) { SDK_STUB(GXSetCopyClamp); }
 SDK_WEAK void GXSetCopyClear(GXColor clear_clr, u32 clear_z) { SDK_STUB(GXSetCopyClear); }
 SDK_WEAK void GXSetDispCopyGamma(GXGamma gamma) { SDK_STUB(GXSetDispCopyGamma); }
 SDK_WEAK void GXSetFog(GXFogType type, f32 startz, f32 endz, f32 nearz, f32 farz, GXColor color) { SDK_STUB(GXSetFog); }
-SDK_WEAK long OSCheckHeap(int heap) { SDK_STUB(OSCheckHeap); return stub_default<long >(); }
+SDK_WEAK s32 OSCheckHeap(int heap) { SDK_STUB(OSCheckHeap); return stub_default<s32 >(); }
 SDK_WEAK int OSCreateHeap(void* start, void* end) { SDK_STUB(OSCreateHeap); return stub_default<int >(); }
 SDK_WEAK void OSDestroyHeap(int heap) { SDK_STUB(OSDestroyHeap); }
 SDK_WEAK void* OSGetArenaHi(void) { SDK_STUB(OSGetArenaHi); return stub_default<void* >(); }
 SDK_WEAK u16 OSGetFontEncode(void) { SDK_STUB(OSGetFontEncode); return stub_default<u16 >(); }
 SDK_WEAK u32 OSGetSoundMode(void) { SDK_STUB(OSGetSoundMode); return (u32)(1); }
-SDK_WEAK int OSJamMessage(struct OSMessageQueue* mq, void* msg, long flags) { SDK_STUB(OSJamMessage); return stub_default<int >(); }
+SDK_WEAK int OSJamMessage(struct OSMessageQueue* mq, void* msg, s32 flags) { SDK_STUB(OSJamMessage); return stub_default<int >(); }
 SDK_WEAK BOOL OSTryLockMutex(struct OSMutex* mutex) { SDK_STUB(OSTryLockMutex); return stub_default<BOOL >(); }
 SDK_WEAK void PSMTXMultVec(Mtx44 m, Vec* src, Vec* dst) { SDK_STUB(PSMTXMultVec); }
 SDK_WEAK void PSMTXTrans(Mtx m, f32 xT, f32 yT, f32 zT) { SDK_STUB(PSMTXTrans); }
@@ -261,18 +261,18 @@ SDK_WEAK u32 ARGetBaseAddress(void) { SDK_STUB(ARGetBaseAddress); return stub_de
 SDK_WEAK u32 ARGetSize(void) { SDK_STUB(ARGetSize); return (u32)(0x1000000); }
 SDK_WEAK u32 ARInit(u32* stack_index_addr, u32 num_entries) { SDK_STUB(ARInit); return stub_default<u32 >(); }
 SDK_WEAK void ARQInit(void) { SDK_STUB(ARQInit); }
-SDK_WEAK long CARDCheck(long chan) { SDK_STUB(CARDCheck); return (long)(-3); }
-SDK_WEAK long CARDCreate(long chan, char* fileName, unsigned long size, struct CARDFileInfo* fileInfo) { SDK_STUB(CARDCreate); return stub_default<long >(); }
-SDK_WEAK long CARDFormat(long chan) { SDK_STUB(CARDFormat); return stub_default<long >(); }
+SDK_WEAK s32 CARDCheck(s32 chan) { SDK_STUB(CARDCheck); return (s32)(-3); }
+SDK_WEAK s32 CARDCreate(s32 chan, char* fileName, u32 size, struct CARDFileInfo* fileInfo) { SDK_STUB(CARDCreate); return stub_default<s32 >(); }
+SDK_WEAK s32 CARDFormat(s32 chan) { SDK_STUB(CARDFormat); return stub_default<s32 >(); }
 SDK_WEAK s32 CARDFreeBlocks(s32 chan, s32* byteNotUsed, s32* filesNotUsed) { SDK_STUB(CARDFreeBlocks); return stub_default<s32 >(); }
 SDK_WEAK void CARDInit(void) { SDK_STUB(CARDInit); }
 SDK_WEAK s32 CARDMount(s32 chan, void* workArea, CARDCallback detachCallback) { SDK_STUB(CARDMount); return (s32)(-3); }
 SDK_WEAK s32 CARDOpen(s32 chan, char* fileName, CARDFileInfo* fileInfo) { SDK_STUB(CARDOpen); return stub_default<s32 >(); }
 SDK_WEAK s32 CARDProbeEx(s32 chan, s32* memSize, s32* sectorSize) { SDK_STUB(CARDProbeEx); return (s32)(-3); }
-SDK_WEAK long CARDRead(CARDFileInfo* fileInfo, void* buf, s32 length, s32 offset) { SDK_STUB(CARDRead); return stub_default<long >(); }
-SDK_WEAK long CARDSetStatus(long chan, long fileNo, struct CARDStat* stat) { SDK_STUB(CARDSetStatus); return stub_default<long >(); }
+SDK_WEAK s32 CARDRead(CARDFileInfo* fileInfo, void* buf, s32 length, s32 offset) { SDK_STUB(CARDRead); return stub_default<s32 >(); }
+SDK_WEAK s32 CARDSetStatus(s32 chan, s32 fileNo, struct CARDStat* stat) { SDK_STUB(CARDSetStatus); return stub_default<s32 >(); }
 SDK_WEAK s32 CARDUnmount(s32 chan) { SDK_STUB(CARDUnmount); return stub_default<s32 >(); }
-SDK_WEAK long CARDWrite(struct CARDFileInfo* fileInfo, void* buf, long length, long offset) { SDK_STUB(CARDWrite); return stub_default<long >(); }
+SDK_WEAK s32 CARDWrite(struct CARDFileInfo* fileInfo, void* buf, s32 length, s32 offset) { SDK_STUB(CARDWrite); return stub_default<s32 >(); }
 SDK_WEAK void C_MTXLightFrustum(Mtx m, f32 t, f32 b, f32 l, f32 r, f32 n, f32 scaleS, f32 scaleT, f32 transS, f32 transT) { SDK_STUB(C_MTXLightFrustum); }
 SDK_WEAK void C_MTXLightOrtho(Mtx m, f32 t, f32 b, f32 l, f32 r, f32 scaleS, f32 scaleT, f32 transS, f32 transT) { SDK_STUB(C_MTXLightOrtho); }
 SDK_WEAK void DBInitComm(int* inputFlagPtr, int* mtrCallback) { SDK_STUB(DBInitComm); }
@@ -337,7 +337,7 @@ SDK_WEAK void GXSetZTexture(GXZTexOp op, GXTexFmt fmt, u32 bias) { SDK_STUB(GXSe
 SDK_WEAK void GXWaitDrawDone(void) { SDK_STUB(GXWaitDrawDone); }
 SDK_WEAK void LCDisable(void) { SDK_STUB(LCDisable); }
 SDK_WEAK void LCEnable(void) { SDK_STUB(LCEnable); }
-SDK_WEAK void* OSAllocFromHeap(int heap, unsigned long size) { SDK_STUB(OSAllocFromHeap); return stub_default<void* >(); }
+SDK_WEAK void* OSAllocFromHeap(int heap, u32 size) { SDK_STUB(OSAllocFromHeap); return stub_default<void* >(); }
 SDK_WEAK void OSDetachThread(OSThread* thread) { SDK_STUB(OSDetachThread); }
 SDK_WEAK void OSDumpHeap(int heap) { SDK_STUB(OSDumpHeap); }
 SDK_WEAK s32 OSEnableScheduler(void) { SDK_STUB(OSEnableScheduler); return stub_default<s32 >(); }
@@ -348,13 +348,13 @@ SDK_WEAK void* OSGetArenaLo(void) { SDK_STUB(OSGetArenaLo); return stub_default<
 SDK_WEAK char* OSGetFontTexture(char* string, void** image, s32* x, s32* y, s32* width) { SDK_STUB(OSGetFontTexture); return stub_default<char* >(); }
 SDK_WEAK char* OSGetFontWidth(char* string, s32* width) { SDK_STUB(OSGetFontWidth); return stub_default<char* >(); }
 SDK_WEAK BOOL OSGetResetSwitchState(void) { SDK_STUB(OSGetResetSwitchState); return stub_default<BOOL >(); }
-SDK_WEAK long OSGetThreadPriority(OSThread* thread) { SDK_STUB(OSGetThreadPriority); return stub_default<long >(); }
+SDK_WEAK s32 OSGetThreadPriority(OSThread* thread) { SDK_STUB(OSGetThreadPriority); return stub_default<s32 >(); }
 SDK_WEAK void* OSInitAlloc(void* arenaStart, void* arenaEnd, int maxHeaps) { SDK_STUB(OSInitAlloc); return stub_default<void* >(); }
 SDK_WEAK void OSInitCond(struct OSCond* cond) { SDK_STUB(OSInitCond); }
 SDK_WEAK BOOL OSInitFont(OSFontHeader* fontData) { SDK_STUB(OSInitFont); return stub_default<BOOL >(); }
 SDK_WEAK void OSInitStopwatch(OSStopwatch* sw, char* name) { SDK_STUB(OSInitStopwatch); }
 SDK_WEAK void OSInitThreadQueue(OSThreadQueue* queue) { SDK_STUB(OSInitThreadQueue); }
-SDK_WEAK unsigned long OSReferentSize(void* ptr) { SDK_STUB(OSReferentSize); return stub_default<unsigned long >(); }
+SDK_WEAK u32 OSReferentSize(void* ptr) { SDK_STUB(OSReferentSize); return stub_default<u32 >(); }
 SDK_WEAK void OSResetStopwatch(OSStopwatch* sw) { SDK_STUB(OSResetStopwatch); }
 SDK_WEAK void OSResetSystem(int reset, u32 resetCode, BOOL forceMenu) { SDK_STUB(OSResetSystem); }
 SDK_WEAK void OSSetArenaHi(void*) { SDK_STUB(OSSetArenaHi); }
@@ -367,7 +367,7 @@ SDK_WEAK void PADClamp(PADStatus* status) { SDK_STUB(PADClamp); }
 SDK_WEAK BOOL PADInit() { SDK_STUB(PADInit); return (BOOL)(1); }
 SDK_WEAK u32 PADRead(struct PADStatus* status) { SDK_STUB(PADRead); return stub_default<u32 >(); }
 SDK_WEAK BOOL PADRecalibrate(u32 mask) { SDK_STUB(PADRecalibrate); return (BOOL)(1); }
-SDK_WEAK int PADReset(unsigned long mask) { SDK_STUB(PADReset); return (int)(1); }
+SDK_WEAK int PADReset(u32 mask) { SDK_STUB(PADReset); return (int)(1); }
 SDK_WEAK void PADSetAnalogMode(u32 mode) { SDK_STUB(PADSetAnalogMode); }
 SDK_WEAK void PADSetSpec(u32 spec) { SDK_STUB(PADSetSpec); }
 SDK_WEAK u32 PPCMfmsr() { SDK_STUB(PPCMfmsr); return stub_default<u32 >(); }

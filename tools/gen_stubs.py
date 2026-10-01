@@ -42,6 +42,11 @@ for d, _, fs in os.walk(os.path.join(inc, 'dolphin')):
         s = re.sub(r'/\*.*?\*/', ' ', s, flags=re.S)
         s = re.sub(r'//[^\n]*', '', s)
         s = re.sub(r'^\s*#(?:[^\n]*\\\n)*[^\n]*', ';', s, flags=re.M)
+        # MWCC's long is 4 bytes: the game sees these declarations with s32
+        # and u32 (decomp-patches/ptr64-05-long-as-s32.patch), so the stubs
+        # take the same 32-bit types on LP64 hosts.
+        s = re.sub(r'\bunsigned\s+long\b(?!\s+long)', 'u32', s)
+        s = re.sub(r'(?<!long )\blong\b(?!\s+(?:long|double))', 's32', s)
         text[os.path.relpath(p, inc)] = re.sub(r'\s+', ' ', s)
 
 # Sensible defaults (C++ expressions) where zero is wrong.

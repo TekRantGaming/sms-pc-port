@@ -208,7 +208,7 @@ extern "C" void sms_mod_activate(void)
 
 extern "C" uint32_t __OSBusClock;
 extern "C" uint32_t __OSCoreClock;
-extern "C" unsigned long OSGetConsoleType(void);
+extern "C" uint32_t OSGetConsoleType(void);
 extern "C" void* DVDGetCurrentDiskID(void);
 
 namespace {

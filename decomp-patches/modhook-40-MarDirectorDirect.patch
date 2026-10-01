@@ -85,7 +85,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
 +		// Eclipse (extendedNextStateInitialize, retail 0x802995C8): its own
 +		// start-of-stage camera and music for its extra areas.
 +		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802995C8))
-+			((void (*)(TMarDirector*, s8))sms_mod_t_)(this, (s8)nextState);
++			((void (*)(TMarDirector*, u8))sms_mod_t_)(this, nextState);
 +		else
 +#endif
  		nextStateInitialize(nextState);

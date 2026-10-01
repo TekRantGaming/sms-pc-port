@@ -48,7 +48,10 @@ endif()
 # -fno-aligned-new keeps every allocation on that operator (the game's heaps).
 # -fstandalone-debug: every game class the mods use is described in their
 # debug info, which tools/mods/abi_check.py compares with the game's.
-set(_opts ${_arch} -fnew-alignment=4 -fno-aligned-new -O2 -g -fstandalone-debug -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
+# -funsigned-char: built for the PowerPC (powerpc-gecko-ibm-kuribo-eabi), the
+# mods' char is unsigned, and so is SunshineHeaderInterface's s8, a char
+# (the game's is signed: CodeWarrior's -char signed).
+set(_opts ${_arch} -funsigned-char -fnew-alignment=4 -fno-aligned-new -O2 -g -fstandalone-debug -w -fms-extensions -fno-exceptions -fno-threadsafe-statics -fno-strict-aliasing
   -fno-use-init-array
   -include ${PORT_MODS}/eclipse/shim/sms_mod_prelude.h
   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++20> $<$<COMPILE_LANGUAGE:C>:-std=gnu11>)

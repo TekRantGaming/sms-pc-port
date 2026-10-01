@@ -1,0 +1,1 @@
+# No settings: the regression runs use the game defaults (tools/regress/regress.py).

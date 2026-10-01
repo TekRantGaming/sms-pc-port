@@ -47,6 +47,7 @@ How the port is put together and where changes go. To build and play, see the [R
 | `tools/common.sh` | shared by `build.sh`, `run.sh` and `clean.sh`: host detection, `SMS_ARCH`, build folder, `rom/` lookup, moving files out of older layouts |
 | `tools/bundle_disc.py` | packs the disc's files into `sms-standalone` (or `SMS.app`'s `disc.gcm`) |
 | `tools/make_mac_app.sh`, `tools/extract_icon.py` | assemble and sign `SMS.app`; the app / `.exe` icon from the disc's memory-card icon |
+| `tools/regress/regress.py [--record] CHECK...` | the regression checks (below): scripted headless runs hashed against `tools/regress/baseline.txt` and between the 32 and 64-bit builds |
 | `tools/run_capture.sh SECS FIELDS` | headless run + captures + retail comparison |
 | `tools/shots.py`, `tools/contact.py OUT.png FIELDS...` | convert captures to PNG in `build/shots/` and compare with retail; contact sheet of captures |
 | `tools/gdbrun.sh` | backtrace at the first fatal signal |
@@ -66,6 +67,14 @@ Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
   It keeps the new pin, staged for a commit, only when all of that passes; otherwise it restores the old pin and says what failed.
   Patches name files by their path in the decomp, so a decomp change that moves files (as the upstream merge that moved the libraries to `libs/` did) needs their `--- a/`/`+++ b/` lines rewritten, and the include roots in `CMakeLists.txt` and the source roots in `tools/gen_sources.py` updated with it.
   The submodule is always pinned to an exact decomp commit.
+- **Regression checks:** `tools/regress/regress.py CHECK...` makes the scripted runs every port change is verified with, in both word sizes, and prints PASS or FAIL for each run against the baseline and for each pair of 32 and 64-bit runs, which must be identical.
+  These are the runs this page, [64-BIT.md](64-BIT.md) and [ECLIPSE.md](ECLIPSE.md) mean by the scripted title and plaza frames, the plaza audio, the 60 fps plaza gate run and the Eclipse runs.
+  The checks are `title` (captures at fields 300 to 1500), `plaza` (a new game into Delfino Plaza with `SMS_WARP=1,0,1` and scripted input, captures at fields 3700 to 5400, and the same run with audio, whose first 88 s of `SMS_AUDIO_WAV` are hashed), `fps60` (the plaza gate at `SMS_WARP=1,5,0` under gdb, `tools/regress/gate.py`: at `SMS_FRAME_RATE=60` Mario must be captured after 100 frames, with the `setNextStage` of the 30 fps run) and `eclipse` (BSE's first boot, whose saved card the others start from, the Tutorial, and the Fire Petey and Dark Zhine warps `SMS_WARP=72,0` and `79,0`); `vanilla` is the first three and `all` everything, and `--list` names the single runs, which can be given on their own.
+  Every run uses the deterministic clock, no settings file, no texture packs and skipped movies, so two runs give the same bytes; only hashes are kept (`baseline.txt` records the commit each run was recorded from), and the captures are deleted unless `--keep` is given.
+  Nothing is built: the tool runs `build/linux-32` and `build/linux-64`, and `build-ecl` and `build-ecl64` for Eclipse ([ECLIPSE.md](ECLIPSE.md#building-it)), so build them first, or name other folders with `--build32`, `--build64`, `--ecl32` and `--ecl64`.
+  It takes the disc from `rom/` as `run.sh` does, else from `decomp/orig/GMSE01/` or a neighbouring `sms-english` clone's, or `--disc`, and the Eclipse disc from where `tools/mods/get.py` puts it.
+  `all` takes about 20 minutes on four cores with llvmpipe, two runs at a time (`--jobs`).
+  A change that is meant to change what the runs show is recorded with `--record` (which refuses when 32 and 64-bit differ) and the new `baseline.txt` committed with it, saying why the frames changed.
 
 ## Platform layer
 

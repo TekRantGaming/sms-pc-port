@@ -12,9 +12,14 @@
 // link) at 32 kHz; the SDL callback drains the FIFO and kicks the CPU when it
 // runs low. Without a device (headless, SMS_AUDIO_OUT=null, or SDL failure) a
 // host timer paces blocks at the DAC rate. SMS_AUDIO_WAV=path also records
-// every block. SMS_AUDIO=0 (or SMS_NO_AUDIO) leaves the DMA engine idle, like
-// the old stub. Pairs are (bus 2, bus 1) = (right, left) in DMA order; they
-// are swapped for SDL (SMS_AUDIO_SWAP=0 keeps DMA order).
+// every block. SMS_AUDIO=0 drops the output only: the DMA engine keeps its
+// clock (as with no device), so JAudio's audio thread, its sequencer and the
+// DSP run as on the console; stopping them would leave every sequence the game
+// stops allocated (only the sequencer frees it), and the eight root sequence
+// slots run out after eight music changes (README.md, Environment).
+// SMS_NO_AUDIO (an empty sound configuration) leaves the DMA engine idle.
+// Pairs are (bus 2, bus 1) = (right, left) in DMA order; they are swapped for
+// SDL (SMS_AUDIO_SWAP=0 keeps DMA order).
 #include "port_compat.h"
 #include "port_os.h"
 #include "port_platform.h"
@@ -57,7 +62,8 @@ typedef const char* (*PFN_SDL_GetError)(void);
 const u32 kRate = 32000;
 
 struct Ai {
-	bool enabled; // SMS_AUDIO != 0
+	bool enabled; // the DMA engine runs (not SMS_NO_AUDIO)
+	bool output;  // SMS_AUDIO != 0: a device or SMS_AUDIO_WAV
 	bool inited;
 	bool running;
 	bool swap;
@@ -229,16 +235,19 @@ bool open_sdl()
 void init_output()
 {
 	const char* e = getenv("SMS_AUDIO");
-	g.enabled     = !(e && strcmp(e, "0") == 0) && !port_no_audio;
+	g.output      = !(e && strcmp(e, "0") == 0);
+	g.enabled     = !port_no_audio;
 	e             = getenv("SMS_AUDIO_SWAP");
 	g.swap        = !(e && strcmp(e, "0") == 0);
 	g.fifo.assign(32768 * 2, 0);
 	g.head = g.count = 0;
 	if (!g.enabled) {
-		port_log("[audio] SMS_AUDIO=0: AI DMA idle (no mixing, no output)\n");
+		port_log("[audio] SMS_NO_AUDIO: AI DMA idle (no mixing, no output)\n");
 		return;
 	}
-	if ((e = getenv("SMS_AUDIO_WAV")) && *e) {
+	if (!g.output)
+		port_log("[audio] SMS_AUDIO=0: no output; the game's audio still runs\n");
+	if (g.output && (e = getenv("SMS_AUDIO_WAV")) && *e) {
 		g.wav = fopen(e, "wb");
 		if (g.wav) {
 			wav_header(g.wav, 0);
@@ -254,9 +263,10 @@ void init_output()
 		port_log("[audio] deterministic VI clock: AI DMA paced by retraces, no output device\n");
 		return;
 	}
-	g.sdl          = wantSdl && open_sdl();
+	g.sdl          = g.output && wantSdl && open_sdl();
 	if (!g.sdl) {
-		port_log("[audio] no audio device: pacing AI DMA from the host clock\n");
+		if (g.output)
+			port_log("[audio] no audio device: pacing AI DMA from the host clock\n");
 		pthread_t th;
 		pthread_create(&th, NULL, null_clock, NULL);
 		pthread_detach(th);

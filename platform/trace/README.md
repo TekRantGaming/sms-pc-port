@@ -171,6 +171,7 @@ Findings against `runs/play-r9`, with `play-symbolic.txt` and the re-syncs `app+
    Native sat in the movie from field 1244 to the end of the run.
    `SMS_SKIP_MOVIES=1` avoids it.
    Deterministic runs need AI DMA paced by the retrace clock (lead: platform/audio).
+   Since then the AI DMA is paced by the retraces in deterministic runs, and `SMS_AUDIO=0` keeps it running ([64-BIT.md](../../docs/64-BIT.md), item 19), so the movie no longer stalls.
 2. **From the airstrip re-sync (retail field 5419) Mario's path matches retail.**
    Position agrees within 0.01 through the walk and the first jump (y = 540.5 at retail 5736 on both), with native one field ahead: native field f = retail field f+1.
    **First real divergence: native field 5773 / retail 5774**, Mario x/z 0.01 apart (755.455/1173.571 vs 755.445/1173.575).

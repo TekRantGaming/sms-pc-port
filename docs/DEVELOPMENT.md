@@ -208,7 +208,8 @@ The everyday options are in the [README](../README.md#options); this is the full
 | `SMS_SAVE_DIR` | memory card directory |
 | `SMS_HEADLESS=1` / `--headless` | no window (offscreen EGL; Linux only) |
 | `SMS_BINDINGS` | key bindings file (default `./bindings.txt`, then `../../bindings.txt` when started from `build/<os>-<arch>/`) |
-| `SMS_AUDIO=0`, `SMS_NO_AUDIO=1` | idle the AI DMA / run with an empty JAudio configuration; either way THP movies stall (their video waits for audio), so combine with `SMS_SKIP_MOVIES=1` |
+| `SMS_AUDIO=0` | no sound output; the game's audio (JAudio's thread and sequencer, the software DSP) still runs, paced as with no output device ([64-BIT.md](64-BIT.md), item 19) |
+| `SMS_NO_AUDIO=1` | run with an empty JAudio configuration and an idle AI DMA; THP movies stall (their video waits for audio), so combine with `SMS_SKIP_MOVIES=1` |
 | `SMS_SKIP_MOVIES=1` | report every THP movie as finished at once |
 | `SMS_WARP=stage,scenario[,shines]` | debugging: loading a file goes to that area instead (`1,0,1` is Delfino Plaza right after the airstrip), optionally with that Shine count |
 | `SMS_WARP_MOVIE=n` | debugging: loading a file plays streaming movie `n` (0–19, `TMovieDirector::getStreamMovieName`) |

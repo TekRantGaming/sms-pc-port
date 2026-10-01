@@ -18,7 +18,7 @@ This module replaces the hardware it talks to: the DSP microcode that mixes voic
 
 The AI layer is already live: `ai.cpp`'s strong `AI*` definitions replace the weak stubs, so JAudio's DAC loop now runs on its real clock.
 With the current handshake-only fake DSP, that loop outputs silence.
-`SMS_AUDIO=0` restores the old idle DMA.
+`SMS_AUDIO=0` drops the output but keeps that loop running (see Environment).
 
 To switch to the software DSP (two edits, both in your files):
 
@@ -51,7 +51,8 @@ It boots, and the logo, UI sounds, sequences and voice clips play; see Status.
 
 | Variable | Effect |
 | --- | --- |
-| `SMS_AUDIO=0` | AI DMA stays idle (no audio thread clock, no output); also implied by `SMS_NO_AUDIO` |
+| `SMS_AUDIO=0` | no output device and no `SMS_AUDIO_WAV`; the AI DMA keeps its clock (as with no device), so the audio thread, the sequencer and the mixer run as with sound. An idle DMA (the old behaviour) stopped JAudio's sequencer, which is what frees a stopped sequence: after eight music changes no root sequence slot was left, and the game faulted on the next stage exit (docs/64-BIT.md, item 19) |
+| `SMS_NO_AUDIO=1` | an empty sound configuration (`noaudio.cpp`); the AI DMA stays idle |
 | `SMS_AUDIO_OUT=sdl\|null` | output device; the default is SDL, or `null` when headless. `null` paces DMA from the host clock |
 | `SMS_AUDIO_WAV=file.wav` | record everything played (32 kHz stereo) |
 | `SMS_AUDIO_TRACE=1` | log each voice start and the voice counts every 5 s |

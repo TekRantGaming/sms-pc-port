@@ -4783,7 +4783,7 @@
 \ No newline at end of file
 --- a/include/SMS/Enemy/BossPakkun.hxx
 +++ b/include/SMS/Enemy/BossPakkun.hxx
-@@ -76,28 +76,119 @@
+@@ -76,29 +76,130 @@
      void showMessage(u32);
      void rumblePad(int, const JGeometry::TVec3<float> &);
      void checkMarioRiding();
@@ -4916,11 +4916,22 @@
 +                  // 0x01C8 - Padding?
 +    u32 _13;
 +#endif
++
++#if __SIZEOF_POINTER__ == 8
++#else
 +                         // 0x01CC
+     s8 _14;
++#endif
++
++
++#if __SIZEOF_POINTER__ == 8
++    u8 _pc64_tail[1];
++#else
++#endif
  };
  
  class TNerveBPWait : public TNerveBase<TLiveActor> {
-@@ -166,8 +257,16 @@
+@@ -167,8 +268,16 @@
      TBossPakkun *mParent;             // 0x0068
      JGeometry::TVec3<f32> mVelocity;  // 0x006c
      MActor *mActorData;               // 0x0078
@@ -4939,7 +4950,7 @@
  };
  
  class TBPTornado : public THitActor {
-@@ -178,9 +277,20 @@
+@@ -179,9 +288,20 @@
  
      TBossPakkun *mParent;  // 0x68
      MActor *mActorData;    // 0x6C
@@ -8710,7 +8721,7 @@
 \ No newline at end of file
 --- a/include/SMS/MapObj/MapObjBall.hxx
 +++ b/include/SMS/MapObj/MapObjBall.hxx
-@@ -30,26 +30,116 @@
+@@ -30,25 +30,111 @@
      virtual void calcCurrentMtx();
  
      void boundByActor(THitActor *);
@@ -8815,11 +8826,6 @@
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u32 _194;
-+#endif
-+
-+#if __SIZEOF_POINTER__ == 8
-+#else
-     f32 _198;
 +#endif
 +
 +
@@ -9688,16 +9694,21 @@
 \ No newline at end of file
 --- a/include/SMS/MoveBG/ResetFruit.hxx
 +++ b/include/SMS/MoveBG/ResetFruit.hxx
-@@ -37,15 +37,40 @@
+@@ -37,16 +37,45 @@
      void killByTimer(int);
      void makeObjLiving();
      void makeObjWaitingToAppear();
 +#if __SIZEOF_POINTER__ == 8
 +#else
-+    u16 _19C;
++    f32 _198;
 +#endif
  
--    u16 _19C;
+-    f32 _198;
++#if __SIZEOF_POINTER__ == 8
++#else
+     u16 _19C;
++#endif
++
 +#if __SIZEOF_POINTER__ == 8
 +#else
      u16 _19E;

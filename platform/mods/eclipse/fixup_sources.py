@@ -165,6 +165,20 @@ SHI_FIXES = [
      lambda m: 'extern "C" void sms_rawfn_%s(void);\n#define %s%s((%s (*)(...))sms_rawfn_%s) /* %s */' % (
          m.group(1), m.group(1), m.group(2), "__INTPTR_TYPE__" if m.group(3) == "int" else m.group(3), m.group(1), m.group(4)),
      "retail functions by name go to the port's functions"),
+    # Class sizes SunshineHeaderInterface has wrong, against the retail code.
+    # TBossPakkun is 0x1D0 bytes (MarNameRefGen's `new` of it asks __nw for
+    # 0x1D0; its constructor and TNerveBPFly use the byte at 0x1CC, the boss
+    # music flag): without that byte, TFireyPetey's first member lands on it.
+    ("include/SMS/Enemy/BossPakkun.hxx", r"(\n([ \t]*)u32 _13;[^\n]*\n)(\};)",
+     r"\1\2s8 _14;\n\3", "TBossPakkun ends at 0x1D0 as in the game"),
+    # TMapObjBall is 0x198 bytes (MarNameRefGen's `new` of it): SHI's last
+    # member, _198, is TResetFruit's first (its constructor's stfs to 0x198;
+    # TMapObjBall's own code never touches 0x198), which the mods' own balls
+    # need not reserve.
+    ("include/SMS/MapObj/MapObjBall.hxx", r"\n[ \t]*f32 _198;\n", "\n",
+     "TMapObjBall ends at 0x198 as in the game"),
+    ("include/SMS/MoveBG/ResetFruit.hxx", r"(\n([ \t]*))(u16 _19C;\n)", r"\1f32 _198;\1\3",
+     "TMapObjBall ends at 0x198 as in the game"),
 ]
 
 

@@ -10,8 +10,8 @@ skipped movies and an empty memory card (the Eclipse runs: the card saved by
 ecl-firstboot, whose files are hashed too), and its captures are hashed; the
 captures are deleted afterwards unless --keep is given, the logs are kept in
 the --work folder.
-With the default two runs at a time, all takes about 20 minutes on four cores
-with llvmpipe (vanilla 10, eclipse 10).
+With the default two runs at a time, all takes about 23 minutes on four cores
+with llvmpipe (vanilla 10, eclipse 13).
 
 --check (the default) compares each run's hashes with tools/regress/baseline.txt
 and the 32-bit run's with the 64-bit run's, which must be identical (the gate
@@ -85,6 +85,18 @@ RUNS = {
     'ecl-petey': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': ECL_WARP_AP, 'SMS_WARP': '72,0'},
                       card='ecl-firstboot', shots=[5700, 6000, 6600, 7200, 7800], timeout=1500,
                       desc='Eclipse Fire Petey (SMS_WARP=72,0)'),
+    # Luigi and Piantissimo, whom only a save that has unlocked them can
+    # pick: tools/regress/character.py (gdb) sets the character as the
+    # Tutorial loads and reports the moveset's better_movement.prm values and
+    # the character's jumps (items prm:*, mario:*, jumpN).
+    'ecl-luigi': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': ECL_TUTORIAL_AP},
+                      gdb=('character.py', {'REGRESS_CHARACTER': '1'}), card='ecl-firstboot',
+                      shots=[2620, 2760, 3000], timeout=900,
+                      desc='Eclipse Tutorial as Luigi (gdb): his better_movement.prm and jumps'),
+    'ecl-piantissimo': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': ECL_TUTORIAL_AP},
+                            gdb=('character.py', {'REGRESS_CHARACTER': '2'}), card='ecl-firstboot',
+                            shots=[2620, 2760, 3000], timeout=900,
+                            desc='Eclipse Tutorial as Piantissimo (gdb): his better_movement.prm and jumps'),
     'ecl-zhine': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': ECL_WARP_AP, 'SMS_WARP': '79,0'},
                       card='ecl-firstboot', shots=[5700, 6000, 6600, 7200, 7800, 8400], timeout=1500,
                       desc='Eclipse Dark Zhine (SMS_WARP=79,0)'),
@@ -93,7 +105,7 @@ GROUPS = {
     'title': ['title'],
     'plaza': ['plaza', 'plaza-audio'],
     'fps60': ['gate30', 'gate60'],
-    'eclipse': ['ecl-firstboot', 'ecl-tutorial', 'ecl-petey', 'ecl-zhine'],
+    'eclipse': ['ecl-firstboot', 'ecl-tutorial', 'ecl-luigi', 'ecl-piantissimo', 'ecl-petey', 'ecl-zhine'],
 }
 GROUPS['vanilla'] = GROUPS['title'] + GROUPS['plaza'] + GROUPS['fps60']
 GROUPS['all'] = GROUPS['vanilla'] + GROUPS['eclipse']
@@ -177,6 +189,12 @@ class Result:
         self.seconds = 0
 
 
+GDB = ['gdb', '-q', '-batch', '-nx',
+       '-ex', 'set debuginfod enabled off', '-ex', 'set pagination off', '-ex', 'set confirm off',
+       '-ex', 'handle SIGSEGV stop', '-ex', 'handle SIG34 nostop noprint',
+       '-ex', 'handle SIGPIPE nostop noprint']
+
+
 def do_run(name, arch, exe, disc, work, keep):
     spec = RUNS[name]
     res = Result(name, arch)
@@ -203,11 +221,7 @@ def do_run(name, arch, exe, disc, work, keep):
     if spec['kind'] == 'gate':
         env.update({'SMS_WARP': '1,5,0', 'SMS_FRAME_RATE': str(spec['fps']), 'SMS_AUTOPRESS': GATE_AP})
         del env['SMS_SHOT_DIR']
-        cmd = ['gdb', '-q', '-batch', '-nx',
-               '-ex', 'set debuginfod enabled off', '-ex', 'set pagination off', '-ex', 'set confirm off',
-               '-ex', 'handle SIGSEGV stop', '-ex', 'handle SIG34 nostop noprint',
-               '-ex', 'handle SIGPIPE nostop noprint',
-               '-x', os.path.join(HERE, 'gate.py'), '-ex', 'run', '--args', exe, disc]
+        cmd = GDB + ['-x', os.path.join(HERE, 'gate.py'), '-ex', 'run', '--args', exe, disc]
         with open(log_path, 'wb') as log:
             p = subprocess.Popen(cmd, cwd=os.path.dirname(exe), env=env, stdout=log, stderr=subprocess.STDOUT,
                                  stdin=subprocess.DEVNULL, start_new_session=True)
@@ -235,8 +249,13 @@ def do_run(name, arch, exe, disc, work, keep):
     last = max(spec['shots'])
     last_path = os.path.join(shots_dir, 'field%05d.ppm' % last)
     marker = ('[vi] captured field %d ' % last).encode()
+    cmd = [exe, disc]
+    if spec.get('gdb'):
+        script, script_env = spec['gdb']
+        env.update(script_env)
+        cmd = GDB + ['-x', os.path.join(HERE, script), '-ex', 'run', '--args', exe, disc]
     with open(log_path, 'wb') as log:
-        p = subprocess.Popen([exe, disc], cwd=os.path.dirname(exe), env=env, stdout=log,
+        p = subprocess.Popen(cmd, cwd=os.path.dirname(exe), env=env, stdout=log,
                              stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
         deadline = t0 + spec['timeout']
         while True:
@@ -265,6 +284,12 @@ def do_run(name, arch, exe, disc, work, keep):
             res.items['field%05d' % n] = file_hash(f)
         elif not res.error:
             res.error = 'field %d was not captured (see %s)' % (n, log_path)
+    if spec.get('gdb'):
+        # What the gdb script reports: "regress: ITEM VALUE".
+        for m in re.finditer(r'^regress: (\S+) (\S+)$', text, re.M):
+            res.items[m.group(1)] = m.group(2)
+        if re.search(r'^Python Exception', text, re.M) and not res.error:
+            res.error = 'the gdb script failed (see %s)' % log_path
     if spec.get('cards') and not res.error:
         # The memory card the run saved, file by file: the same bytes in
         # both word sizes, as the console would write.
@@ -399,8 +424,8 @@ def main():
         discs['eclipse'] = args.eclipse_disc
         if not os.path.isfile(discs['eclipse']):
             sys.exit('regress: %s not found (python3 tools/mods/get.py eclipse)' % discs['eclipse'])
-    if any(RUNS[n]['kind'] == 'gate' for n in runs) and not shutil.which('gdb'):
-        sys.exit('regress: the fps60 check needs gdb')
+    if any(RUNS[n]['kind'] == 'gate' or RUNS[n].get('gdb') for n in runs) and not shutil.which('gdb'):
+        sys.exit('regress: the fps60 check and the Eclipse character runs need gdb')
 
     commit = subprocess.run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'], capture_output=True,
                             text=True).stdout.strip() or '?'

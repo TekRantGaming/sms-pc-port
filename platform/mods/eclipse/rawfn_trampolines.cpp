@@ -98,6 +98,16 @@ void rawfn_missing(const char* sym)
 }
 } // namespace
 
+extern "C" float sms_rawfn_CLBEaseOutInbetween_f(double p0, double p1, double p2)
+{
+	return (float)(CLBEaseOutInbetween<float>((float)p0, (float)p1, (float)p2));
+}
+
+extern "C" float sms_rawfn_CLBLinearInbetween_f(double p0, double p1, double p2)
+{
+	return (float)(CLBLinearInbetween<float>((float)p0, (float)p1, (float)p2));
+}
+
 extern "C" intptr_t sms_rawfn_CLBPalFrame_l(s32 p0)
 {
 	return rawfn_int([&]() -> decltype(CLBPalFrame<s32>(p0)) { return CLBPalFrame<s32>(p0); });

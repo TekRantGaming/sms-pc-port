@@ -41,8 +41,10 @@ def raw_fn_types(shi_root):
     out = {}
     for d in re.finditer(r"#define\s+(\w+)\s+\(\((\w+) \(\*\)\(\.\.\.\)\)(?:sms_rawfn_\w+\) /\* )?(0x[0-9A-Fa-f]+)", m.group(1)):
         ret = d.group(2)
-        # int-returning macros return a pointer-sized integer (fixup_sources.py)
-        out[d.group(1)] = ("intptr_t" if ret in ("int", "__INTPTR_TYPE__") else ret, int(d.group(3), 16))
+        # int-returning macros return a pointer-sized integer (fixup_sources.py),
+        # and f32 and f64 ones the float in f1, as float and double do
+        ret = {"int": "intptr_t", "__INTPTR_TYPE__": "intptr_t", "f32": "float", "f64": "double"}.get(ret, ret)
+        out[d.group(1)] = (ret, int(d.group(3), 16))
     return out
 
 

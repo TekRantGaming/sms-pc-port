@@ -133,7 +133,62 @@ SHI_WORD_FIXES = [
      "BOOL arguments are words"),
 ]
 
-ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + [
+# Big-endian data the mods read and write themselves. The scene files (.bin)
+# stay big-endian in the port: the game's typed stream reads convert
+# (decomp-patches 0013), and its raw multi-byte reads were made big-endian
+# reads one by one (endian-08). The mods' objects read their scene
+# parameters raw, so natively every float and word came out byte-swapped
+# (BetterSunshineEngine's GenericRailObj, ParticleBox, SoundBox and SimpleFog,
+# which most Eclipse stages place, and Eclipse's own objects). Their
+# multi-byte values are read big-endian here (readBE and readDataBE, which
+# SHI_FIXES adds to JSUInputStream); bytes, colours and strings are read as
+# they are. Likewise the settings each module saves to the memory card: the
+# console writes their words big-endian, and the port keeps card files in the
+# console's byte order (the game's own save, endian-11).
+def be_reads(path, rx, repl):
+    return (path, rx, repl, "big-endian data read and written by the mods: " + path)
+
+
+ECLIPSE_BE_FIXES = [
+    be_reads("src/object/tornado_obj.cpp", r"stream\.read\(&mBlowStrength, 4\)", r"stream.readBE(&mBlowStrength, 4)"),
+    be_reads("src/object/blow_wind_obj.cpp",
+             r"stream\.read\(&(mStrength|mMode), (sizeof\((?:f32|TBlowWindMapObj::GradientMode)\))\)",
+             r"stream.readBE(&\1, \2)"),
+    be_reads("src/object/darkness_effect.cpp", r"in\.readData\(&position, sizeof\(TVec3f\)\)",
+             r"in.readDataBE(&position, sizeof(TVec3f), sizeof(f32))"),
+    be_reads("src/object/darkness_effect.cpp", r"in\.readData\(&(scale|layer_scale), sizeof\(f32\)\)",
+             r"in.readDataBE(&\1, sizeof(f32))"),
+    be_reads("src/object/button.cpp", r"in\.read\(&(flagID|soundID), 4\)", r"in.readBE(&\1, 4)"),
+    be_reads("src/object/launch_star.cpp", r"stream\.read\(&mTravelSpeed, 4\)", r"stream.readBE(&mTravelSpeed, 4)"),
+    be_reads("include/settings.hxx", r"in\.read\(&x, 4\);", r"in.readBE(&x, 4);"),
+    be_reads("include/settings.hxx", r"out\.write\(&mDarknessValue, 4\);", r"out.writeBE(&mDarknessValue, 4);"),
+]
+BSE_BE_FIXES = [
+    be_reads("src/objects/particle.cpp", r"in\.readData\(&(mID|mSpawnRate|mSpawnScale), 4\)", r"in.readDataBE(&\1, 4)"),
+    be_reads("src/objects/fog.cpp", r"in\.readData\(&(mType|mStartZ|mEndZ|mNearZ|mFarZ), 4\)", r"in.readDataBE(&\1, 4)"),
+    be_reads("src/objects/generic.cpp",
+             r"in\.readData\(&(mBaseRotation\.[xyz]|mFrameRate|mSoundID|mSoundSpeed|mSoundStrength), 4\)",
+             r"in.readDataBE(&\1, 4)"),
+    be_reads("src/objects/sound.cpp", r"in\.readData\(&(mID|mVolume|mPitch|mSpawnRate), 4\)", r"in.readDataBE(&\1, 4)"),
+    # customScenes.bin (not on the Eclipse disc), read field by field.
+    be_reads("src/area.cpp", r"(#define READ_ATTR\(in, var\) \(\(in\)\.)readData(\(&\(var\), )",
+             r"\1readDataBE\2"),
+    be_reads("include/BetterSMS/settings.hxx", r"in\.read\(&(x|f), 4\);", r"in.readBE(&\1, 4);"),
+    be_reads("include/BetterSMS/settings.hxx", r"out\.write\(mValuePtr, 4\);", r"out.writeBE(mValuePtr, 4);"),
+    # The level select's arrow is a texture built into the code, which the
+    # game converts when it first stores it (modhook-14); its size is read
+    # before that, so convert it first, and in writable memory.
+    be_reads("src/level_select/level_select.cpp", r"static const u8 SMS_ALIGN\(32\) sTinyArrowResTIMG\[\]",
+             r"static u8 SMS_ALIGN(32) sTinyArrowResTIMG[]"),
+    be_reads("src/level_select/level_select.cpp",
+             r"static const ResTIMG \*GetArrowResTIMG\(\) \{ return GetResourceTextureHeader\(sTinyArrowResTIMG\); \}",
+             'extern "C" int port_endian_bti_embedded(void *);\n'
+             r"static const ResTIMG *GetArrowResTIMG() {\n"
+             r"    port_endian_bti_embedded(sTinyArrowResTIMG);\n"
+             r"    return GetResourceTextureHeader(sTinyArrowResTIMG);\n}"),
+]
+
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + ECLIPSE_BE_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -150,7 +205,7 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DE
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
+BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + BSE_BE_FIXES + [
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),
@@ -261,6 +316,56 @@ SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + [
     # value. A const reference is passed as the port's function expects.
     ("include/JSystem/J3D/J3DMaterial.hxx", r"(setTevKColor\(s32 idx, )J3DGXColor color\)",
      r"\1const J3DGXColor &color)", "J3DTevBlock's vtable as in the game"),
+    # The big-endian reads and writes ECLIPSE_BE_FIXES and BSE_BE_FIXES use:
+    # the decomp's readBE (0013, endian-18), with each `width`-byte value
+    # (all `size` bytes by default) put in big-endian order around the read,
+    # so a failed read keeps it, and its raw readData counterpart.
+    ("include/JSystem/JSupport/JSUInputStream.hxx", r"(\n([ \t]*)void read\(void \*, s32\);\n)",
+     lambda m: m.group(1) + "".join(m.group(2) + l + "\n" for l in (
+         "static void swapBE(void *buf, s32 size, s32 width) {",
+         "    u8 *b = (u8 *)buf;",
+         "    if (width <= 0)",
+         "        width = size;",
+         "    for (s32 o = 0; o + width <= size; o += width)",
+         "        for (s32 i = 0; i < width / 2; i++) {",
+         "            u8 t                 = b[o + i];",
+         "            b[o + i]             = b[o + width - 1 - i];",
+         "            b[o + width - 1 - i] = t;",
+         "        }",
+         "}",
+         "void readBE(void *buf, s32 size, s32 width = 0) {",
+         "    swapBE(buf, size, width);",
+         "    read(buf, size);",
+         "    swapBE(buf, size, width);",
+         "}",
+         "void readDataBE(void *buf, s32 size, s32 width = 0) {",
+         "    swapBE(buf, size, width);",
+         "    readData(buf, size);",
+         "    swapBE(buf, size, width);",
+         "}")),
+     "big-endian stream reads and writes"),
+    ("include/JSystem/JSupport/JSUOutputStream.hxx", r"(\n([ \t]*)void write\(const void \*, s32\);\n)",
+     lambda m: m.group(1) + "".join(m.group(2) + l + "\n" for l in (
+         "void writeBE(const void *buf, s32 size) {",
+         "    u8 tmp[8];",
+         "    for (s32 i = 0; i < size; i++)",
+         "        tmp[i] = ((const u8 *)buf)[size - 1 - i];",
+         "    write(tmp, size);",
+         "}")),
+     "big-endian stream reads and writes"),
+    # TParamT<T>::load reads a .prm value, which stays big-endian on disc: the
+    # game's definitions (ParamInst.cpp, endian-05) convert it, SHI's inline
+    # one reads it raw. Every module defined its own copy of the template;
+    # BetterSunshineEngine's were weak and lost to the game's, but the moveset
+    # and Eclipse keep theirs private, so the moveset read Luigi's and
+    # Piantissimo's better_movement.prm byte-swapped. Declared, the types the
+    # game instantiates come from the game; bool and TColor are bytes, read
+    # as they are, and stay SHI's.
+    ("include/SMS/System/Params.hxx", r"(?s)(\ntemplate <typename T> class TParamRT : public TParamT<T> \{.*?\n\};\n)",
+     r"\1\n#include <JSystem/JGeometry/JGMVec.hxx>\n"
+     + "".join("extern template void TParamT<%s>::load(JSUMemoryInputStream &);\n" % t
+               for t in ("u8", "s16", "u16", "s32", "f32", "JGeometry::TVec3<f32>")),
+     "the game's TParamT loads convert .prm values"),
 ]
 
 

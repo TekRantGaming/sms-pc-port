@@ -88,7 +88,8 @@ Linux)
 	fi
 	# CI runners have no FUSE: let the tool unpack itself
 	export APPIMAGE_EXTRACT_AND_RUN=1
-	export LDAI_OUTPUT="dist/SMS-PC-Port-$version-linux-x86_64.AppImage" OUTPUT="$LDAI_OUTPUT"
+	export LDAI_OUTPUT="dist/SMS-PC-Port-$version-linux-x86_64.AppImage"
+	export OUTPUT="$LDAI_OUTPUT"
 	cp packaging/icon.png build/sms-pc-port.png
 	"$tool" --appdir "$appdir" \
 		--executable "$appdir/usr/bin/sms" \

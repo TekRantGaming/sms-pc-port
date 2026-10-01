@@ -89,6 +89,11 @@ BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
     # Declared bool, but the game reads the float the function leaves in f1.
     ("src/patches/sun.cpp", r"static bool scaleGlowToLightness\(", r"static f32 scaleGlowToLightness(",
      "the lens glow scale is a float"),
+    # As ECLIPSE_FIXES' generate calls: the sun's new position, a Vec
+    # reference, goes through a (...) cast, so by address as on the GameCube.
+    ("src/patches/sun.cpp", r"JSGSetTranslation__Q26JDrama6TActorFRC3Vec\(sun, reinterpret_cast<Vec &>\(spos\)\)",
+     r"JSGSetTranslation__Q26JDrama6TActorFRC3Vec(sun, reinterpret_cast<Vec *>(&spos))",
+     "aggregates go by address through (...)"),
     # The memory card banner and icon are built into the code as big-endian
     # BTI files and copied to the card as they are; only their image offset
     # is read, and it has to be read in their byte order.

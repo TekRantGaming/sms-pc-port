@@ -11,7 +11,7 @@ Reason: port: code-mod hooks (sms_modhook.h): exotic wall checks in TMap::isTouc
  
  TMap* gpMap;
  
-@@ -185,6 +188,44 @@
+@@ -185,6 +188,49 @@
  	JDrama::TNameRefGen::search<JDrama::TViewObjPtrListT<JDrama::TViewObj> >(
  	    "マップグループ");
  
@@ -27,17 +27,22 @@ Reason: port: code-mod hooks (sms_modhook.h): exotic wall checks in TMap::isTouc
 +	void* sms_mod_sea_ = SMS_MOD_SITE(0x8018A064);
 +	void* sms_mod_ind_ = SMS_MOD_SITE(0x8018A0D0);
 +	if (sms_mod_sea_ && sms_mod_ind_) {
-+#if __SIZEOF_POINTER__ == 4
-+		// (code mods run on the 32-bit build, where the object is retail's size)
-+		(void)sizeof(char[sizeof(TMapStaticObj) <= 0x80 ? 1 : -1]);
-+#endif
 +		TMapStaticObj* obj = nullptr;
 +		if (((bool (*)(TMarDirector*))sms_mod_sea_)(gpMarDirector))
 +			obj = new TMapStaticObj("波（遠景）");
 +		void* mem = ((void* (*)(THitActor*, const char*))sms_mod_ind_)(
 +		    obj, obj ? "sea" : nullptr);
 +		if (mem) {
++#if __SIZEOF_POINTER__ == 4
++			// (the mod allocates retail's 0x80 bytes: the object's size here)
++			(void)sizeof(char[sizeof(TMapStaticObj) <= 0x80 ? 1 : -1]);
 +			obj = new (mem) TMapStaticObj("インダイレクト波");
++#else
++			// With 8-byte pointers the object outgrows the mod's 0x80
++			// bytes: it is allocated, from the same heap, in their place.
++			JKRHeap::free(mem, nullptr);
++			obj = new TMapStaticObj("インダイレクト波");
++#endif
 +			obj->init("SeaIndirect");
 +			group->getChildren().push_back(obj);
 +
@@ -56,7 +61,7 @@ Reason: port: code-mod hooks (sms_modhook.h): exotic wall checks in TMap::isTouc
  	if (SMSGetMarDirector()->getCurrentMap() == 4
  	    || SMSGetMarDirector()->getCurrentMap() == 3
  	    || SMSGetMarDirector()->getCurrentMap() == 0xD
-@@ -356,6 +397,17 @@
+@@ -356,6 +402,17 @@
  
  bool TMap::isTouchedOneWall(f32 x, f32 y, f32 z, f32 radius) const
  {
@@ -74,7 +79,7 @@ Reason: port: code-mod hooks (sms_modhook.h): exotic wall checks in TMap::isTouc
  	return isTouchedOneWallAndMoveXZ(&x, y, &z, radius);
  }
  
-@@ -366,7 +418,18 @@
+@@ -366,7 +423,18 @@
  {
  	TBGWallCheckRecord record(*x, y, *z, radius, 1, 0);
  

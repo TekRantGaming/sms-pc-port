@@ -159,5 +159,5 @@ The standalone build contains the whole game, so keep it to yourself: sharing it
 
 ## HD cutscenes
 
-Optional locally generated HD movies are supported through loose-file overrides.
-See [HD cutscenes](docs/HD-CUTSCENES.md) for the opening-movie pilot, conversion tools, and `./run-hd-cutscenes.sh`.
+The optional HD pack enhances all 21 original movies at 3× resolution and preserves their timing and original audio. The updated launcher installs the movie patches from your own disc when **HD textures** are enabled.
+See [HD cutscenes](docs/HD-CUTSCENES.md) for installation, conversion tools and playback checks.

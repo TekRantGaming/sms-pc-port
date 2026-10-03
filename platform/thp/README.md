@@ -3,7 +3,7 @@
 The game's THP player (`decomp/libs/THPPlayer/src/*`) calls the Dolphin SDK decoders `THPInit`, `THPVideoDecode` and `THPAudioDecode`.
 The port used to stub them in `platform/sdk_stubs.cpp`.
 They now come from the decomp's own SDK decoder source, `decomp/libs/dolphin/src/thp/THPDec.c` and `THPAudio.c`.
-Two patches make that source run on the host.
+Host patches make that source run on the host and support optional HD replacements.
 
 | Patch | Change (all under `#ifdef TARGET_PC`) |
 |---|---|
@@ -14,7 +14,7 @@ The player-side byte order (THP header, component info, frame size words) is con
 
 ## Linking it (for the bring-up lead)
 
-`platform/thp/thp.cmake` adds the two patched files (`${SMS_PATCH_ROOT}/src/dolphin/thp/THPDec.c`, `THPAudio.c`) to `sms_game`.
+`platform/thp/thp.cmake` adds the two patched files (`${SMS_PATCH_ROOT}/libs/dolphin/src/thp/THPDec.c`, `THPAudio.c`) to `sms_game`.
 They build with the game's C flags: `TARGET_PC`, and the force-included `port_compat.h` for `port_be16`/`port_be32`.
 Their strong `THPInit`/`THPVideoDecode`/`THPAudioDecode` override the weak stubs.
 Use one of:
@@ -59,3 +59,10 @@ Results on GMSE01:
 The frames checked by eye (the plane on the airstrip, Peach, the Isle Delfino welcome screen) are clean.
 There are no block artefacts and the colours are right.
 The audio is a real signal: RMS about 2100, 2 clipped samples out of 4.4 million.
+
+## HD replacements
+
+`thp-03` expands the MCU row cache for dimensions up to 2048×2048; `thp-05` preserves full host pointer width in decoder alignment.
+`thp-04` sends oversized textures to `hd_movies.cpp`, which copies complete I8 tile rows into distinct regions of an aligned low-address pool and draws them through the original YUV renderer.
+`zz-hd-movies-01` preserves the original display footprint and subtitle placement.
+See [HD cutscenes](../../docs/HD-CUTSCENES.md) for conversion and playback.

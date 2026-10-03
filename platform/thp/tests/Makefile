@@ -6,20 +6,22 @@ ARCH   ?= -m32
 CC     ?= gcc
 CXX    ?= g++
 CFLAGS := $(ARCH) -O2 -g -std=gnu99 -w -fno-strict-aliasing -DTARGET_PC -DGEKKO \
-          -I$(PORT)/src/port_include -I$(DECOMP)/include -include $(PORT)/src/port_compat.h
+          -I$(PORT)/src/port_include -I$(DECOMP)/include -I$(DECOMP)/libs/dolphin/include -include $(PORT)/src/port_compat.h
 # Patched copies and objects live outside platform/ (the port globs platform/**/*.c).
 WORK   ?= $(PORT)/build-thp-test
 OUT    ?= $(WORK)/out
 
-$(WORK)/patched/.stamp: $(wildcard $(PORT)/decomp-patches/thp-*.patch) $(DECOMP)/src/dolphin/thp/THPDec.c $(DECOMP)/src/dolphin/thp/THPAudio.c
-	rm -rf $(WORK)/patched && mkdir -p $(WORK)/patched/src/dolphin/thp
-	cp $(DECOMP)/src/dolphin/thp/THPDec.c $(DECOMP)/src/dolphin/thp/THPAudio.c $(WORK)/patched/src/dolphin/thp/
-	for p in $(PORT)/decomp-patches/thp-*.patch; do patch -p1 --quiet -d $(WORK)/patched -i $$p || exit 1; done
+.DEFAULT_GOAL := run
+
+$(WORK)/patched/.stamp: $(wildcard $(PORT)/decomp-patches/thp-0[1235]-*.patch) $(DECOMP)/libs/dolphin/src/thp/THPDec.c $(DECOMP)/libs/dolphin/src/thp/THPAudio.c
+	rm -rf $(WORK)/patched && mkdir -p $(WORK)/patched/libs/dolphin/src/thp
+	cp $(DECOMP)/libs/dolphin/src/thp/THPDec.c $(DECOMP)/libs/dolphin/src/thp/THPAudio.c $(WORK)/patched/libs/dolphin/src/thp/
+	for p in $(PORT)/decomp-patches/thp-0[1235]-*.patch; do patch -p1 --quiet -d $(WORK)/patched -i $$p || exit 1; done
 	touch $@
 
 $(WORK)/thp_test: thp_test.cc $(WORK)/patched/.stamp
-	$(CC) $(CFLAGS) -c -o $(WORK)/THPDec.o $(WORK)/patched/src/dolphin/thp/THPDec.c
-	$(CC) $(CFLAGS) -c -o $(WORK)/THPAudio.o $(WORK)/patched/src/dolphin/thp/THPAudio.c
+	$(CC) $(CFLAGS) -c -o $(WORK)/THPDec.o $(WORK)/patched/libs/dolphin/src/thp/THPDec.c
+	$(CC) $(CFLAGS) -c -o $(WORK)/THPAudio.o $(WORK)/patched/libs/dolphin/src/thp/THPAudio.c
 	$(CXX) $(ARCH) -O2 -g -std=gnu++11 -o $@ thp_test.cc $(WORK)/THPDec.o $(WORK)/THPAudio.o -lm
 
 run: $(WORK)/thp_test
@@ -28,3 +30,14 @@ run: $(WORK)/thp_test
 clean:
 	rm -rf $(WORK)
 .PHONY: run clean
+
+# The draw test uses patterned source planes and verifies every submitted
+# texel and display edge, including tall movies and the 2048x2048 limit.
+tiles:
+	mkdir -p $(WORK)
+	$(CXX) $(ARCH) -O2 -std=gnu++11 -DTARGET_PC -DGEKKO \
+	  -I$(PORT)/src -I$(PORT)/src/port_include -I$(DECOMP)/libs/dolphin/include \
+	  -I$(DECOMP)/libs/THPPlayer/include -o $(WORK)/tile_test \
+	  tile_test.cc $(PORT)/platform/thp/hd_movies.cpp
+	$(WORK)/tile_test
+.PHONY: tiles

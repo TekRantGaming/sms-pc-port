@@ -156,3 +156,8 @@ docs/                 developer documentation and reference screenshots
 - `platform/*/README.md`: each platform module in detail.
 
 The standalone build contains the whole game, so keep it to yourself: sharing it is sharing the game.
+
+## HD cutscenes
+
+Optional locally generated HD movies are supported through loose-file overrides.
+See [HD cutscenes](docs/HD-CUTSCENES.md) for the opening-movie pilot, conversion tools, and `./run-hd-cutscenes.sh`.

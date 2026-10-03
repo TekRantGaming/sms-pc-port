@@ -1,0 +1,41 @@
+Reason: port: allow host THP decoding up to 2048 pixels with separate MCU row planes
+--- a/libs/dolphin/src/thp/THPDec.c
++++ b/libs/dolphin/src/thp/THPDec.c
+@@ -13,7 +13,7 @@
+ // The locked-cache DMA wrote main memory behind the CPU; flushing tells the
+ // GX layer the texture changed (DCFlushRange -> GXPC_InvalidateRange).
+ #define LCStoreData(dst, src, n) (memcpy((dst), (src), (n)), DCFlushRange((dst), (n)))
+-static u8 port_thp_lc[0x4000] __attribute__((aligned(32)));
++static u8 port_thp_lc[0xC000] __attribute__((aligned(32)));
+ #endif
+ 
+ static THPHuffmanTab* Ydchuff __attribute__((aligned(32)));
+@@ -149,6 +149,14 @@
+ 		}
+ 	}
+ 
++#ifdef TARGET_PC
++	// The host row cache supports up to 2048 pixels. Whole MCU rows must
++	// fit the caller's planes; the original decoder writes 16 rows at once.
++	if (!__THPInfo->xPixelSize || !__THPInfo->yPixelSize
++	    || __THPInfo->xPixelSize > 2048 || __THPInfo->yPixelSize > 2048
++	    || (__THPInfo->xPixelSize & 15) || (__THPInfo->yPixelSize & 15))
++		goto _err_bad_syntax;
++#endif
+ 	__THPSetupBuffers();
+ 	__THPDecompressYUV(tileY, tileU, tileV);
+ 	return 0;
+@@ -2478,6 +2486,13 @@
+ 	base += 0xA00;
+ 	__THPLCWork640[2] = base;
+ 	base += 0xA80;
++#ifdef TARGET_PC
++	// Separate planes for a full 2048-wide MCU row: Y=2048*16,
++	// U=V=1024*8. The 512-wide fast path keeps its existing layout.
++	__THPLCWork640[0] = port_thp_lc;
++	__THPLCWork640[1] = port_thp_lc + 0x8000;
++	__THPLCWork640[2] = port_thp_lc + 0xA000;
++#endif
+ 
+ #ifndef TARGET_PC
+ 	OSInitFastCast();

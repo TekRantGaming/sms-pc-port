@@ -1,6 +1,6 @@
 # sms_gx — GX/GD for the PC port
 
-`sms_gx` is a static library that implements the Dolphin SDK graphics API the game uses (GX and GD, as declared by `decomp/include/dolphin/gx*.h` and `gd*.h`) on top of OpenGL 3.3 core.
+`sms_gx` is a static library that implements the Dolphin SDK graphics API the game uses (GX and GD, as declared by `decomp/libs/dolphin/include/dolphin/gx*.h` and `gd*.h`) on top of OpenGL 3.3 core.
 It opens its own SDL2 window, or an offscreen EGL context when there is no display.
 
 ## Why not aurora
@@ -16,7 +16,7 @@ Its MIT license is compatible, but it was a poor fit here:
 
 So Step 2 was implemented instead: a compact GX-over-OpenGL backend, about 4,700 lines of code.
 No Dolphin-emulator code and no SDK source was used.
-Register layouts were cross-checked against the decompiled SDK in `decomp/src/dolphin/gx`, and the public headers in `decomp/include/dolphin` define the API.
+Register layouts were cross-checked against the decompiled SDK in `decomp/libs/dolphin/src/gx`, and the public headers in `decomp/libs/dolphin/include/dolphin` define the API.
 
 ## Design
 
@@ -41,7 +41,7 @@ The renderer reads its state only from that register file, so API calls, GD disp
 | `src/gx_platform.cpp` | Creates the SDL2 window or headless EGL context, presents on `GXCopyDisp`, pumps events and handles the command-line and environment switches |
 | `src/gx_vert.cpp` | `GXPosition3f32` and the other vertex writers as real functions |
 | `src/gl_loader.cpp` | Loads the GL 3.3 entry points through the host's get-proc function, so nothing links against libGL |
-| decomp `src/dolphin/gd/*.c` | GD, compiled unchanged from the decompiled SDK with `src/gd_host_prefix.h` force-included |
+| decomp `libs/dolphin/src/gd/*.c` | GD, compiled unchanged from the decompiled SDK with `src/gd_host_prefix.h` force-included |
 
 ## Integration (for the bring-up lead)
 

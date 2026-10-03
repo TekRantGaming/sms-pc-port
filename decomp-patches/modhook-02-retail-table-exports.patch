@@ -53,5 +53,5 @@ Reason: port: code mods (Super Mario Eclipse) reach these file-local tables by t
 +extern GXColor portExport_bodyColor[] __asm__("bodyColor") __attribute__((alias("_ZL9bodyColor")));
 +#endif
  
- void TYoshi::startVoice(u32 param_1) { }
- 
+ // UNUSED (0x2c): movement's dismount plays MSD_SE_YV_YOSHI1 through
+ // startMarioVoice(id, 1, 1), which is this body at the map size.

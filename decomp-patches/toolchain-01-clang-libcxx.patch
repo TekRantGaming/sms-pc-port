@@ -1,6 +1,7 @@
 Apple Clang / libc++ (macOS): fake_tgmath.h float overloads that libc++
 already declares at global scope. Pointer-to-int truncations are handled by
--fms-extensions in CMakeLists.txt rather than per site.
+-fms-extensions in CMakeLists.txt rather than per site. (The template called
+before its declaration in cameralib.hpp is declared first in the decomp now.)
 
 --- a/include/fake_tgmath.h
 +++ b/include/fake_tgmath.h

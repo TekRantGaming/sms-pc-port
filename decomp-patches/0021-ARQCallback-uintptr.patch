@@ -1,0 +1,18 @@
+Reason: clang: JKRAramPiece::doneDMA and JASystem's aramDmaFinish callbacks take uintptr_t, but ARQCallback takes u32 (the same type under MWCC, not on the host; g++ -fpermissive only warns); declare ARQCallback with uintptr_t
+--- a/libs/dolphin/include/dolphin/arq.h
++++ b/libs/dolphin/include/dolphin/arq.h
+@@ -11,7 +11,14 @@
+ #define ARQ_PRIORITY_LOW  0
+ #define ARQ_PRIORITY_HIGH 1
+ 
++#ifdef TARGET_PC
++#include <stdint.h>
++// The callbacks (JKRAramPiece::doneDMA, JASystem's aramDmaFinish) take
++// uintptr_t, which is u32 under MWCC but not on the host.
++typedef void (*ARQCallback)(uintptr_t pointerToARQRequest);
++#else
+ typedef void (*ARQCallback)(u32 pointerToARQRequest);
++#endif
+ 
+ struct ARQRequest {
+ 	/* 0x00 */ struct ARQRequest* next;

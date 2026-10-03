@@ -1,0 +1,15 @@
+Reason: JGeometry::TUtil<f32>::mod (weak in koopajr.cpp, called 4 times each from Koopa.cpp and koopajr.cpp) is the same machine code as MSL's std::fmodf in the DOL: the quotient through the runtime's __cvt_dbl_usll and __cvt_sll_flt, and the subtraction as one fnmsubs, x - y * n rounded once (-0 when y * n == x). The C body compiled for the host rounds the product and the difference separately and gives a NaN quotient the host's sign. Call sms_msl_fmodf (platform/misc/msl_math.c), which follows that machine code and is checked against the DOL's TUtil<f32>::mod under qemu-ppc (tools/mslmath).
+--- a/libs/JSystem/include/JSystem/JGeometry/JGUtil.hpp
++++ b/libs/JSystem/include/JSystem/JGeometry/JGUtil.hpp
+@@ -34,10 +34,7 @@
+ 	// body as std::fmodf.
+ 	static f32 mod(f32 value, f32 modulus)
+ 	{
+-		if (fabsf(modulus) > fabsf(value))
+-			return value;
+-		u64 quotient = port_cvt_dbl_usll(value / modulus);
+-		return value - modulus * (f32)(s64)quotient;
++		return sms_msl_fmodf(value, modulus);
+ 	}
+ 
+ 	// from SMG

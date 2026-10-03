@@ -1,7 +1,8 @@
 #!/bin/bash
 # regen.sh WORK_DIR: regenerate platform/mods/eclipse/shi-layout.patch (see README.md).
 # Needs the Eclipse sources fetched by an SMS_ECLIPSE configure (SMS_ECLIPSE_SRC_DIR, default
-# build-ecl/eclipse-src), and the plain 32- and 64-bit port builds in build/ and build-64/.
+# build-ecl/eclipse-src), and the plain 32- and 64-bit port builds (./build.sh's build/linux-32
+# and build/linux-64; SMS_LAYOUT_BUILD32 and SMS_LAYOUT_BUILD64 to use others).
 set -e
 W=$(realpath "$1"); mkdir -p "$W"; export SHI_LAYOUT_WORK=$W
 HERE=$(cd "$(dirname "$0")" && pwd); PORT=$(cd "$HERE/../../.." && pwd)
@@ -9,6 +10,8 @@ SRC=${SMS_ECLIPSE_SRC_DIR:-$PORT/build-ecl/eclipse-src}
 E=$SRC; P=$PORT/platform/mods; X=$E/shi/include
 # 1. SunshineHeaderInterface with the mechanical fixups only (not the layout patch)
 git -C "$E/shi" checkout -q -- . && rm -f "$E/shi/.sms_port_shi-layout.patch"
+# (and fixup_sources.py must redo every fixup at the end, even if the patch comes out the same)
+rm -f "$E/.sms_port_fixups"
 python3 -c "
 import importlib.util
 s=importlib.util.spec_from_file_location('fx','$P/eclipse/fixup_sources.py'); fx=importlib.util.module_from_spec(s); s.loader.exec_module(fx)
@@ -33,13 +36,13 @@ W=sys.argv[1]; d=json.load(open(W+'/shi32.json'))
 alias=['TMapObjData','TMapObjCollisionInfo','TMapObjCollisionData','TMapObjSinkData','TMapObjSoundData','TMapObjSoundInfo','TMapObjAnimData','TMapObjHitDataTable','TMapObjHitInfo','TMapObjPhysicalData','TMapObjPhysicalInfo']
 open(W+'/port_names.txt','w').write('\n'.join(sorted(set(d['types'])|set(alias))))
 PY
-for a in 32 64; do b=$PORT/build/sms; [ $a = 64 ] && b=$PORT/build-64/sms
+for a in 32 64; do b=${SMS_LAYOUT_BUILD32:-$PORT/build/linux-32}/sms; [ $a = 64 ] && b=${SMS_LAYOUT_BUILD64:-$PORT/build/linux-64}/sms
   (cd "$W" && gdb -q -batch -ex "py names_file='port_names.txt'; out_file='port$a.json'" -x "$HERE/export.py" "$b" | tail -1)
   (cd "$W" && gdb -q -batch -ex "py out_file='names_port$a.txt'" -x "$HERE/allnames.py" "$b" | tail -1)
   (cd "$W" && gdb -q -batch -ex "py names_file='names_port$a.txt'; out_file='port${a}_all.json'" -x "$HERE/export.py" "$b" | tail -1)
 done
 # 4. classes whose CodeWarrior vtable pointer follows their first members
-python3 "$HERE/vlate.py" "$PORT/decomp/include" "$W/vlate.json" > /dev/null
+python3 "$HERE/vlate.py" "$PORT/decomp" "$W/vlate.json" > /dev/null
 python3 "$HERE/vlate.py" "$X" "$W/vlate_shi.json" > /dev/null
 # 5. the members the mods use, and the SHI classes they derive from
 (cd "$W" && python3 "$HERE/used_members.py" "$X" "$E/bse" "$E/moveset" "$E/eclipse" > used_all.json)

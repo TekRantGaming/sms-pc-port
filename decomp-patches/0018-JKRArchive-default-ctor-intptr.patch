@@ -1,4 +1,5 @@
-Reason: port: archive constructors select the integral entry-number overload. Host intptr_t can differ from s32, making a cast zero ambiguous with the const char* overload; use the declared entry-number type.
+Reason: g++: JKRArchive's (intptr_t, EMountMode) constructor is called with (s32)0, which on the host is also a null pointer constant for the (const char*, EMountMode) one, and s32 is not intptr_t there (i386: long vs int; LP64: int vs long), so the call is ambiguous; cast to the parameter's own type (MWCC: the same long)
+
 --- a/libs/JSystem/src/JKernel/JKRDvdArchive.cpp
 +++ b/libs/JSystem/src/JKernel/JKRDvdArchive.cpp
 @@ -9,7 +9,7 @@

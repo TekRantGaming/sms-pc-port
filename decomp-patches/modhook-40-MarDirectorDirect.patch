@@ -20,7 +20,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  
  extern OSThread gSetupThread;
  
-@@ -215,7 +227,19 @@
+@@ -216,7 +228,19 @@
  			    || gpCamera->unk2C8 != -1) {
  				mPerformListSilhouette->perform(CUE_ALL, &local_140);
  			}
@@ -41,7 +41,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  			GXInvalidateTexAll();
  		}
  		desiredAppState = changeState();
-@@ -578,7 +602,11 @@
+@@ -577,7 +601,11 @@
  			decideNextStage();
  #endif
  			unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
@@ -53,7 +53,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  			unkE4     = 2;
  			nextState = STATE_UNK9;
  			break;
-@@ -612,7 +640,11 @@
+@@ -611,7 +639,11 @@
  				} else
  #endif
  				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
@@ -65,7 +65,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  				SMSGetApplication()->getFader()->setFadeStatus(
  				    TSMSFader::FADE_STATUS_FULLY_FADED_OUT);
  				desiredAppState = TApplication::APP_STATE_GAMEPLAY;
-@@ -642,7 +674,11 @@
+@@ -641,7 +673,11 @@
  				TFlagManager::getInstance()->setBool(true, 0x30002);
  				decideNextStageOfClear();
  				unk4C &= ~DIRECTOR_FLAG_MOVIE_PENDING;
@@ -77,7 +77,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
  				unkE4 = 0xf;
  				SMSGetApplication()->getFader()->setColor(
  				    JUtility::TColor(0, 0, 0, 0xff));
-@@ -693,6 +729,13 @@
+@@ -692,6 +728,13 @@
  	if (nextState != mState) {
  #endif
  		currentStateFinalize(nextState);
@@ -85,13 +85,13 @@ Reason: port: code-mod hooks (sms_modhook.h): BetterSunshineEngine's next-stage 
 +		// Eclipse (extendedNextStateInitialize, retail 0x802995C8): its own
 +		// start-of-stage camera and music for its extra areas.
 +		if (void* sms_mod_t_ = SMS_MOD_SITE(0x802995C8))
-+			((void (*)(TMarDirector*, s8))sms_mod_t_)(this, (s8)nextState);
++			((void (*)(TMarDirector*, u8))sms_mod_t_)(this, nextState);
 +		else
 +#endif
  		nextStateInitialize(nextState);
  		mState = nextState;
  	}
-@@ -1249,7 +1292,11 @@
+@@ -1252,7 +1295,11 @@
  			}
  
  			if (checkFlag(DIRECTOR_FLAG_STAGE_TRANSITION_PENDING)) {

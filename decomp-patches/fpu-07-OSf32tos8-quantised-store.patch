@@ -1,0 +1,24 @@
+Reason: fpu: OSf32tos8 (JASTrack::updateTrack and updateTrackAll, the DOL's only integer quantised stores outside the THP decoder) is an lfs and a psq_st through GQR4, which OSInitFastCast sets to s8 with scale 0: the Gekko saturates the value to -128..127 and converts it towards zero. The inline has no host body, so the host build left its s8 uninitialised (GCC stored 0 whatever the value). Call port_gekko_quantize (src/port_fpu.h), the quantised store as Dolphin's interpreter models it.
+--- a/libs/dolphin/include/dolphin/os.h
++++ b/libs/dolphin/include/dolphin/os.h
+@@ -208,6 +208,10 @@
+ // gotta ifdef out paired singles stuff in SDK headers
+ #ifdef GEKKO
+ 
++#if !defined(__MWERKS__) && !defined(SMS_PORT_FPU_H)
++#include "port_fpu.h" // game units have it through port_compat.h
++#endif
++
+ inline void OSf32tos8(register f32* f, register s8* out)
+ {
+ #ifdef __MWERKS__ // clang-format off
+@@ -215,6 +219,9 @@
+ 		lfs    f1, 0(f)
+ 		psq_st f1, 0(out), 0x1, 4
+ 	}
++#else
++	// GQR4 as OSInitFastCast sets it: s8, scale 0
++	*out = (s8)port_gekko_quantize(*f, 6, 0);
+ #endif // clang-format on
+ }
+ 

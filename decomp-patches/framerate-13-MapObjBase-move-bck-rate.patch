@@ -1,7 +1,39 @@
 Reason: port: with frame_rate = 60 map objects driven by move data (TurnLift, yTurnLift, zTurnDisk) turn at their 30 fps speed; TMapObjBase::control steps the move animation per 1/120 s tick at SMSGetAnmFrameRate(), a per-frame rate that halves at 60 while the tick rate does not, so they turned at half speed
+--- a/src/MoveBG/MapObjBase.cpp
++++ b/src/MoveBG/MapObjBase.cpp
+@@ -361,6 +361,17 @@ static inline MSound* MOBSound()
+ 	return sound;
+ }
+ 
++#ifdef TARGET_PC
++// Port: see initBckMoveData (MapObjInit.cpp): control() steps this frame
++// control once per 1/120 s tick, so it wants the 30 fps per-frame rate.
++extern "C" int port_fps60_active;
++static inline f32 MapObjBasePortTickAnmRate()
++{
++	f32 rate = SMSGetAnmFrameRate();
++	return port_fps60_active ? 2.0f * rate : rate;
++}
++#endif
++
+ void TMapObjBase::makeObjAppeared()
+ {
+ 	offLiveFlag(LIVE_FLAG_DEAD | LIVE_FLAG_UNK8);
+@@ -382,7 +393,11 @@ void TMapObjBase::makeObjAppeared()
+ 
+ 		// The data's accessor: its receiver binding and forced load are the
+ 		// 8 bytes of frame a binder used to stand in for (c-k15).
++#ifdef TARGET_PC
++		mMapObjData->getMoveFrameCtrl()->setRate(MapObjBasePortTickAnmRate());
++#else
+ 		mMapObjData->getMoveFrameCtrl()->setRate(SMSGetAnmFrameRate());
++#endif
+ 	}
+ 
+ 	startAnim(0);
 --- a/src/MoveBG/MapObjInit.cpp
 +++ b/src/MoveBG/MapObjInit.cpp
-@@ -11024,6 +11024,21 @@
+@@ -11024,6 +11024,21 @@ void TMapObjBase::initObjCollisionData()
  		onHitFlag(HIT_FLAG_CANNOT_GET_HIT);
  }
  
@@ -23,7 +55,7 @@ Reason: port: with frame_rate = 60 map objects driven by move data (TurnLift, yT
  void TMapObjBase::initBckMoveData()
  {
  	if (mMapObjData->mMove != nullptr) {
-@@ -11049,7 +11064,11 @@
+@@ -11049,7 +11064,11 @@ void TMapObjBase::initBckMoveData()
  		data->getJointNodePointer(0)->setTransformInfo(info);
  		move->unk8 = new J3DFrameCtrl(move->unk4->getFrameMax());
  		move->unk8->setAttribute(J3DFrameCtrl::ATTR_LOOP);
@@ -35,34 +67,3 @@ Reason: port: with frame_rate = 60 map objects driven by move data (TurnLift, yT
  	}
  }
  
---- a/src/MoveBG/MapObjBase.cpp
-+++ b/src/MoveBG/MapObjBase.cpp
-@@ -361,6 +361,16 @@
- 	return sound;
- }
- 
-+#ifdef TARGET_PC
-+// Port: see initBckMoveData (MapObjInit.cpp): control() steps this frame
-+// control once per 1/120 s tick, so it wants the 30 fps per-frame rate.
-+extern "C" int port_fps60_active;
-+static inline f32 MapObjBasePortTickAnmRate()
-+{
-+	f32 rate = SMSGetAnmFrameRate();
-+	return port_fps60_active ? 2.0f * rate : rate;
-+}
-+#endif
- void TMapObjBase::makeObjAppeared()
- {
- 	offLiveFlag(LIVE_FLAG_DEAD | LIVE_FLAG_UNK8);
-@@ -382,7 +392,11 @@
- 
- 		// The data's accessor: its receiver binding and forced load are the
- 		// 8 bytes of frame a binder used to stand in for (c-k15).
-+#ifdef TARGET_PC
-+		mMapObjData->getMoveFrameCtrl()->setRate(MapObjBasePortTickAnmRate());
-+#else
- 		mMapObjData->getMoveFrameCtrl()->setRate(SMSGetAnmFrameRate());
-+#endif
- 	}
- 
- 	startAnim(0);

@@ -41,8 +41,8 @@ bool g_black = true;
 // game thread is blocked (the CPU would idle until the next retrace), or when
 // the game polls VIGetRetraceCount without making progress; OSGetTime /
 // OSGetTick advance with the retrace count (plus a small step per call inside
-// a field). Movie-driven runs are then repeatable (audio: use SMS_AUDIO=0,
-// its DMA pacing follows the host clock).
+// a field). Movie-driven runs are then repeatable: the AI DMA is paced by the
+// retraces too (port_audio_on_retrace), with or without SMS_AUDIO=0.
 bool g_det;
 u32 g_det_polls;
 u32 g_det_time_calls;

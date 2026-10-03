@@ -1,17 +1,17 @@
 Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour and character select in TSelectDir::direct
 --- a/src/GC2D/SelectDir.cpp
 +++ b/src/GC2D/SelectDir.cpp
-@@ -27,6 +27,9 @@
+@@ -26,6 +26,9 @@
+ // rogue includes needed for matching sinit & bss
  #include <MSound/MSSetSound.hpp>
  #include <MSound/MSoundBGM.hpp>
- #include <System/DummyStrings.hpp>
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
+ #include <System/DummyStrings.hpp>
  
  extern OSThread gSetupThread;
- extern u8* gpSetupThreadStack;
-@@ -352,11 +355,28 @@
+@@ -309,11 +312,28 @@
  			return TApplication::APP_STATE_DONE;
  
  		if (unk20->mCloseMenu) {
@@ -24,8 +24,8 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
 +				((void (*)(TSelectMenu*))sms_mod_t_)(unk20);
 +			if (!sms_mod_word(0x80176044, &sms_mod_w_))
 +#endif
- 			SMSGetApplication()->mNextArea.unk1 = unk20->mSelectedShine;
- 			TFlagManager::smInstance->setFlag(0x40003, unk20->mSelectedShine);
+ 			SMSGetApplication()->mNextArea.unk1 = getSelectMenu()->mSelectedShine;
+ 			TFlagManager::smInstance->setFlag(0x40003, getSelectMenu()->mSelectedShine);
  			SMSGetApplication()->getFader()->startWipe(0xf, 1.0f, 0.0f);
 +#ifdef TARGET_PC
 +			// Eclipse (character_select.cpp): the `li r0, 0xff` word at
@@ -37,10 +37,10 @@ Reason: port: code-mod hooks (sms_modhook.h): Eclipse stage choice, fade colour 
  			SMSGetApplication()->getFader()->setColor(
  			    JUtility::TColor(0xff, 0xff, 0xff, 0xff));
 +#endif
- 			SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec());
+ 			SMSGetMSound()->fadeOutAllSound(port_cvt_fp2unsigned(SMSGetVSyncTimesPerSec()));
  		}
  		break;
-@@ -374,6 +394,13 @@
+@@ -331,6 +351,13 @@
  		gpMSound->stopAllSound();
  		if (unk18->isSomethingPushed())
  			return TApplication::APP_STATE_DONE;

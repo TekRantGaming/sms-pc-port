@@ -1,7 +1,7 @@
 Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, fed by TModelGate::screenBlur) fades in and out at its 30 fps speed; both chase their targets by a fixed part of the gap once per drawn frame, so the blur came and went twice as fast
 --- a/src/MarioUtil/ScreenUtil.cpp
 +++ b/src/MarioUtil/ScreenUtil.cpp
-@@ -89,6 +89,25 @@
+@@ -89,6 +89,24 @@
  	unk15 = 0;
  }
  
@@ -23,11 +23,10 @@ Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, f
 +}
 +#endif
 +
-+
  // checkFlag's if/return body (ScreenUtil.hpp) is what gives retail's r31 for
  // the first site's flag, which also holds the colour's constant 0: an inlined
  // return value is created before the optimiser splits `rect`, so it is
-@@ -121,12 +140,22 @@
+@@ -121,12 +139,22 @@
  
  	const JDrama::TRect& rect = graphics->getViewport();
  

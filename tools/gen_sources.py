@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Emit cmake/decomp_sources.cmake: the decomp translation units the port compiles.
 
-Scope: game sources under decomp/src and middleware under libs/{JSystem,
-THPPlayer}/src, excluding the SDK, MSL, MetroTRK and OdemuExi2 debugger link.
-JSystem and THPPlayer .c files are C++ (their MWCC
+Scope: every .c/.cpp of the game (decomp/src) and of the JSystem and THPPlayer
+libraries (decomp/libs/<name>/src); the SDK (dolphin), MSL and the runtime
+(PowerPC_EABI_Support), MetroTRK (TRK_MINNOW_DOLPHIN) and the OdemuExi2
+debugger link are left out. JSystem and THPPlayer .c files are C++ (their MWCC
 libraries pass -lang=c++); other .c files stay C. Units that MWCC built with
 -prefix SMS.mch get the game PCH force-included.
 """
@@ -11,34 +12,27 @@ import os, re, sys
 
 root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..', 'decomp'))
 out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), '..', 'cmake', 'decomp_sources.cmake')
-EXCLUDE = ('dolphin/', 'PowerPC_EABI_Support/', 'TRK_MINNOW_DOLPHIN/', 'OdemuExi2/')
+# Source roots (relative to the decomp) and whether their .c files are C++.
+ROOTS = (('src', False), ('libs/JSystem/src', True), ('libs/THPPlayer/src', True))
 
 cfg = open(os.path.join(root, 'configure.py')).read()
 pch = set(re.findall(r'PCHObject\(\s*[^,]+,\s*"([^"]+)"', cfg))
 
 cxx, c, pchs = [], [], []
-
-def collect(source_dir, library=None):
-    for d, _, files in os.walk(source_dir):
+for sub, c_is_cxx in ROOTS:
+    src = os.path.join(root, sub)
+    for d, _, files in os.walk(src):
         for f in files:
             if not f.endswith(('.c', '.cpp')):
                 continue
-            path = os.path.join(d, f)
-            rel = os.path.relpath(path, source_dir).replace(os.sep, '/')
-            logical = library + '/' + rel if library else rel
-            if logical.startswith(EXCLUDE):
-                continue
-            source = os.path.relpath(path, root).replace(os.sep, '/')
-            if f.endswith('.c') and not logical.startswith(('JSystem/', 'THPPlayer/')):
-                c.append(source)
+            unit = os.path.relpath(os.path.join(d, f), src).replace(os.sep, '/')
+            rel = sub + '/' + unit
+            if f.endswith('.c') and not c_is_cxx:
+                c.append(rel)
             else:
-                cxx.append(source)
-            if logical in pch:
-                pchs.append(source)
-
-collect(os.path.join(root, 'src'))
-for library in ('JSystem', 'THPPlayer'):
-    collect(os.path.join(root, 'libs', library, 'src'), library)
+                cxx.append(rel)
+            if sub == 'src' and unit in pch:
+                pchs.append(rel)
 
 def block(name, items):
     return 'set(%s\n%s\n)\n' % (name, '\n'.join('  ${SMS_DECOMP}/' + i for i in sorted(items)))

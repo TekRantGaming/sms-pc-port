@@ -28,17 +28,17 @@ Reason: port: code-mod hooks (sms_modhook.h): NPC talk radius and throw scaling 
  	unk158 = nullptr;
  	if (mActorType == 0x4000018) {
 @@ -520,6 +532,14 @@
- 						} else {
- 							fVar2 = mPtrSaveNormal->mTalkAcceptDist.get();
- 						}
-+#ifdef TARGET_PC
-+						// BetterSunshineEngine and Eclipse (scaleNPCTalkRadius,
-+						// both at retail 0x80213314, ahead of the height load):
-+						// the talk distance (f30) scales with Mario's
-+						// mScaling.z (gpMarioAddress + 0x2C).
-+						if (SMS_MOD_SITE(0x80213314))
-+							fVar2 *= ((JDrama::TActor*)gpMarioAddress)->mScaling.z;
-+#endif
- 						fVar1 = mPtrSaveNormal->mTalkAcceptHeight.get();
+ 					} else {
+ 						fVar2 = TBaseNPC::mPtrSaveNormal->mTalkAcceptDist.get();
  					}
++#ifdef TARGET_PC
++					// BetterSunshineEngine and Eclipse (scaleNPCTalkRadius,
++					// both at retail 0x80213314, ahead of the height load):
++					// the talk distance (f30) scales with Mario's
++					// mScaling.z (gpMarioAddress + 0x2C).
++					if (SMS_MOD_SITE(0x80213314))
++						fVar2 *= ((JDrama::TActor*)gpMarioAddress)->mScaling.z;
++#endif
+ 					fVar1 = TBaseNPC::mPtrSaveNormal->mTalkAcceptHeight.get();
+ 				}
  

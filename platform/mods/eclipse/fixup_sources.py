@@ -45,6 +45,22 @@ TEXTURE_FIXES = [
     for glob_ in ("src/**/*.cpp", "src/**/*.hxx", "include/**/*.hxx")
 ]
 
+# The memory card banner and icons are copied to the card from these BTI files
+# at their image offset (0x20) for as many bytes as the card holds (BSE's
+# UpdateSavedSettings: 0xE00 for the CI8 banner, 0x500 per CI8 icon, two
+# icons), but each file ends with its palette's last used colour, up to 0x1A2
+# bytes short. The copy then read past the array into whatever the build put
+# after it, so the 32 and 64-bit builds wrote different card files. Sized to
+# what is copied, the rest is zeros: palette entries no pixel uses. (On the
+# console those entries hold the bytes after the array in the module's image.)
+CARD_IMAGE_FIXES = [
+    (glob_, r"\bconst u8 (SMS_ALIGN\(32\) )?gSave(Bnr|Icon)\[\] = \{",
+     lambda m: "const u8 %sgSave%s[%s] = {" % (m.group(1) or "", m.group(2),
+                                              "0x20 + 0xE00" if m.group(2) == "Bnr" else "0x20 + 0x500 * 2"),
+     "the card banner and icons are as long as the copy to the card")
+    for glob_ in ("src/**/*.cpp", "src/**/*.hxx")
+]
+
 # Its caller passes the particle id in a full register (0x113); declared u8,
 # it only works on the PowerPC, where the value is used unmasked.
 PARTICLE_FIXES = [
@@ -65,7 +81,173 @@ DEBS_FIXES = [
      "news list setters without assembly"),
 ]
 
-ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + [
+# The game's nerves and actors return BOOL from execute and receiveMessage,
+# and its callers test the whole word (TSpineBase<TLiveActor>::update's
+# `cmpwi r3, 0` after the execute call). SunshineHeaderInterface declares
+# them bool. On the PowerPC a bool is a whole register, 0 or 1, so that does
+# not matter there; natively a bool is returned in the low byte alone, and
+# the game's callers read the rest of the register too: TDarkZhine's nerves
+# (`setge %al`) ended at random and left its spine with no nerve. Declared
+# int, the mods' overrides return 0 or 1 in the whole register, as they do
+# on the console.
+BOOL_RET_FIXES = [
+    (glob_, r"\bbool(\s+(?:\w+::)?(?:execute\s*\(\s*TSpineBase\b|receiveMessage\s*\(\s*THitActor\b))",
+     r"int\1", "execute and receiveMessage return a full word")
+    for glob_ in ("src/**/*.cpp", "include/**/*.hxx")
+]
+
+# The other way round: game functions the mods call (or could override) that
+# return BOOL, int or u32 in the game, where SunshineHeaderInterface says
+# bool. The mods would read the low byte of a whole word, which is right only
+# while the game returns 0 or 1 (checkGroundAtWalking returns up to 3); and
+# declared bool, an override of one of the virtual ones would return a byte to
+# a caller that tests the word. Declared as the game declares them, the mods
+# read the whole word, and an override returning bool does not compile.
+# tools/mods/abi_check.py, run after each Eclipse build, finds new ones; the
+# patch targets the game calls are covered by the shim (Kuribo/sdk/kuribo_sdk.h).
+SHI_WORD_RET = [
+    ("int", "moveToNextNode|entryMatColorAnimator|traceSpline|checkCurAnm|checkCurAnmFromIndex|"
+            "checkCurBckFromIndex|curAnmEndsNext|rocketCheck|checkBackTrig|checkGroundPlane|"
+            "checkStickRotate|isAnimeLoopOrStop|isLast1AnimeFrame|changePlayerStatus|"
+            "changePlayerJumping|changePlayerDropping|checkGroundAtWalking|isMario|jumpMain|"
+            "hasMapCollision|onYoshi|isDummy|isPumpOK|DVDOpen|DVDFastOpen|DVDClose|"
+            "DVDPrepareStreamAsync|DVDCancelStreamAsync|DVDStopStreamAtEndAsync|"
+            "DVDGetStreamErrorStatusAsync|DVDGetStreamPlayAddrAsync|DVDCheckDisk|"
+            "OSDisableInterrupts|OSCreateThread|OSJoinThread|OSIsThreadTerminated|calcRecycle|"
+            "belongToGround|isReachedToGoal"),
+    ("u32", "startVoice|startVoiceIfNoVoice"),
+]
+SHI_WORD_FIXES = [
+    (glob_, r"\bbool(\s+(?:%s)\s*\()" % names, ty + r"\1", "game functions returning a word return one")
+    for ty, names in SHI_WORD_RET for glob_ in ("include/**/*.hxx", "include/**/*.h")
+] + [
+    # And the JStage functions the port declares bool (its default
+    # implementations return false), which SunshineHeaderInterface calls u32.
+    ("include/JSystem/JStage/*.hxx", r"\bvirtual (?:u32|unsigned long)(\s+JSG(?:GetName|GetData|GetSystemData|CreateObject)\s*\()",
+     r"virtual bool\1", "JStage's bool results are bools"),
+    # BOOL and s32 arguments: clang passes a bool zero-extended to the word
+    # anyway, but the declarations then say what the game reads.
+    ("include/Dolphin/OS.h", r"(OSRestoreInterrupts\()bool(\s+enable\))", r"\1int\2",
+     "BOOL arguments are words"),
+    ("include/Dolphin/OS.h", r"(OS(?:Send|Receive)Message\([^;]*,\s*)bool(\s+block\))", r"\1s32\2",
+     "BOOL arguments are words"),
+]
+
+# Integer and float widths where the game and the mods call each other
+# (tools/mods/abi_check.py lists them). On the PowerPC a callee extends a
+# u8, s8, u16 or s16 result to the whole of r3 and the mods, built by clang,
+# take r3 to be extended for the type they declare, using it as it is: a mod
+# reading a narrower type than the game returns sees the game's whole word
+# (patchYStorageWalkEnd hands TMario::walkEnd's word back to the game
+# unmasked), and one reading a wider type the extended value. Natively the
+# callee leaves the bits above a narrow result undefined and the reader
+# extends what it reads itself: a wider read sees garbage, a narrower one
+# another value. Declared as the game declares them, the mods read what
+# they read on the console.
+def game_types(path, rx, repl):
+    return (path, rx, repl, "the game's result and argument types: " + path)
+
+
+SHI_GAME_TYPES = [
+    game_types("include/SMS/Player/Mario.hxx", r"\bu8(\s+(?:jumpingBasic|jumpProcess|walkEnd)\s*\()", r"int\1"),
+    game_types("include/SMS/System/Application.hxx", r"\bu8(\s+gameLoop\s*\()", r"int\1"),
+    game_types("include/SMS/Graph/GraphWeb.hxx", r"\bs16(\s+getRandomButDirLimited\s*\()", r"int\1"),
+    game_types("include/SMS/rand.h", r'extern "C" u16 rand\(\);', 'extern "C" int rand();'),
+    game_types("include/SMS/System/Resolution.hxx", r"\bint(\s+SMSGet(?:Title|Game)Render(?:Width|Height)\s*\(\s*\);)",
+               r"u16\1"),
+    game_types("include/SMS/MapObj/MapObjBase.hxx", r"\bvirtual u32(\s+getHitObjNumMax\s*\()", r"virtual u16\1"),
+    game_types("include/SMS/MoveBG/EggYoshi.hxx", r"\bvirtual u32(\s+getHitObjNumMax\s*\()", r"virtual u16\1"),
+    game_types("include/SMS/MSound/MSound.hxx", r"\bbool(\s+getMapInfoGround\s*\(u32\);)", r"u32\1"),
+    game_types("include/JSystem/JAudio/JAIBasic.hxx", r"\bvirtual bool(\s+getMapInfoFxline\s*\()", r"virtual u16\1"),
+    game_types("include/JSystem/JAudio/JAIBasic.hxx", r"\bvirtual bool(\s+getMapInfoGround\s*\()", r"virtual u32\1"),
+    game_types("include/JSystem/JUtility/JUTFont.hxx", r"\bvirtual bool(\s+getLeading\s*\(\s*\)\s*const)", r"virtual int\1"),
+    game_types("include/JSystem/JUtility/JUTResFont.hxx", r"\bvirtual bool(\s+getLeading\s*\(\s*\)\s*const)", r"virtual int\1"),
+    game_types("include/JSystem/JKernel/JKRArchivePri.hxx", r"\bvirtual s32(\s+becomeCurrent\s*\()", r"virtual bool\1"),
+    game_types("include/JSystem/JKernel/JKRHeap.hxx", r"\bvirtual u32(\s+dump_sort\s*\()", r"virtual bool\1"),
+    game_types("include/JSystem/JKernel/JKRHeap.hxx", r"\bvirtual u8(\s+changeGroupID\s*\()", r"virtual s32\1"),
+    game_types("include/JSystem/JStage/JSGCamera.hxx", r"\bvirtual s32(\s+JSGGetViewType\s*\(\s*\)\s*const)", r"virtual bool\1"),
+    # The game's axis is a (signed) char; the mods pass 'x', 'y' or 'z'.
+    game_types("include/Dolphin/MTX.h", r"(PSMTXRotRad\(Mtx \w+, )u8(\s+axis)", r"\1signed char\2"),
+]
+
+# The mods' patch targets as the game calls them.
+PATCH_TYPE_FIXES = [
+    # In place of TMario::walkEnd, which returns BOOL: the console's code
+    # (bl walkEnd, then blr) hands walkEnd's whole word back to the game.
+    ("src/patches/ystorage.cpp", r"static u8 (patchYStorageWalkEnd\()", r"static int \1",
+     "patch targets return what the game reads"),
+    # In place of SMSGetAnmFrameRate, whose float the game reads from f1:
+    # declared s16, the function converts the rate in f0 and leaves the
+    # float the game reads in f1 on the console; natively the result is ax
+    # and xmm0 or st(0) holds no f32.
+    ("src/patches/sun.cpp", r"static s16 (captureSunData\(\))", r"static f32 \1",
+     "patch targets return what the game reads"),
+]
+ECLIPSE_PATCH_TYPE_FIXES = [
+    # In place of TFlagManager::getBool(0x50004); it reads none of its
+    # arguments, declared (TNameRef *, u16, const char *).
+    ("src/stage/behavior.cpp",
+     r"static bool checkForMareGate\(JDrama::TNameRef \*actor, u16 keycode, const char \*name\)",
+     r"static bool checkForMareGate(TFlagManager *flags, u32 flag)",
+     "patch targets take what the game passes"),
+]
+
+# Big-endian data the mods read and write themselves. The scene files (.bin)
+# stay big-endian in the port: the game's typed stream reads convert
+# (decomp-patches 0013), and its raw multi-byte reads were made big-endian
+# reads one by one (endian-08). The mods' objects read their scene
+# parameters raw, so natively every float and word came out byte-swapped
+# (BetterSunshineEngine's GenericRailObj, ParticleBox, SoundBox and SimpleFog,
+# which most Eclipse stages place, and Eclipse's own objects). Their
+# multi-byte values are read big-endian here (readBE and readDataBE, which
+# SHI_FIXES adds to JSUInputStream); bytes, colours and strings are read as
+# they are. Likewise the settings each module saves to the memory card: the
+# console writes their words big-endian, and the port keeps card files in the
+# console's byte order (the game's own save, endian-11).
+def be_reads(path, rx, repl):
+    return (path, rx, repl, "big-endian data read and written by the mods: " + path)
+
+
+ECLIPSE_BE_FIXES = [
+    be_reads("src/object/tornado_obj.cpp", r"stream\.read\(&mBlowStrength, 4\)", r"stream.readBE(&mBlowStrength, 4)"),
+    be_reads("src/object/blow_wind_obj.cpp",
+             r"stream\.read\(&(mStrength|mMode), (sizeof\((?:f32|TBlowWindMapObj::GradientMode)\))\)",
+             r"stream.readBE(&\1, \2)"),
+    be_reads("src/object/darkness_effect.cpp", r"in\.readData\(&position, sizeof\(TVec3f\)\)",
+             r"in.readDataBE(&position, sizeof(TVec3f), sizeof(f32))"),
+    be_reads("src/object/darkness_effect.cpp", r"in\.readData\(&(scale|layer_scale), sizeof\(f32\)\)",
+             r"in.readDataBE(&\1, sizeof(f32))"),
+    be_reads("src/object/button.cpp", r"in\.read\(&(flagID|soundID), 4\)", r"in.readBE(&\1, 4)"),
+    be_reads("src/object/launch_star.cpp", r"stream\.read\(&mTravelSpeed, 4\)", r"stream.readBE(&mTravelSpeed, 4)"),
+    be_reads("include/settings.hxx", r"in\.read\(&x, 4\);", r"in.readBE(&x, 4);"),
+    be_reads("include/settings.hxx", r"out\.write\(&mDarknessValue, 4\);", r"out.writeBE(&mDarknessValue, 4);"),
+]
+BSE_BE_FIXES = [
+    be_reads("src/objects/particle.cpp", r"in\.readData\(&(mID|mSpawnRate|mSpawnScale), 4\)", r"in.readDataBE(&\1, 4)"),
+    be_reads("src/objects/fog.cpp", r"in\.readData\(&(mType|mStartZ|mEndZ|mNearZ|mFarZ), 4\)", r"in.readDataBE(&\1, 4)"),
+    be_reads("src/objects/generic.cpp",
+             r"in\.readData\(&(mBaseRotation\.[xyz]|mFrameRate|mSoundID|mSoundSpeed|mSoundStrength), 4\)",
+             r"in.readDataBE(&\1, 4)"),
+    be_reads("src/objects/sound.cpp", r"in\.readData\(&(mID|mVolume|mPitch|mSpawnRate), 4\)", r"in.readDataBE(&\1, 4)"),
+    # customScenes.bin (not on the Eclipse disc), read field by field.
+    be_reads("src/area.cpp", r"(#define READ_ATTR\(in, var\) \(\(in\)\.)readData(\(&\(var\), )",
+             r"\1readDataBE\2"),
+    be_reads("include/BetterSMS/settings.hxx", r"in\.read\(&(x|f), 4\);", r"in.readBE(&\1, 4);"),
+    be_reads("include/BetterSMS/settings.hxx", r"out\.write\(mValuePtr, 4\);", r"out.writeBE(mValuePtr, 4);"),
+    # The level select's arrow is a texture built into the code, which the
+    # game converts when it first stores it (modhook-14); its size is read
+    # before that, so convert it first, and in writable memory.
+    be_reads("src/level_select/level_select.cpp", r"static const u8 SMS_ALIGN\(32\) sTinyArrowResTIMG\[\]",
+             r"static u8 SMS_ALIGN(32) sTinyArrowResTIMG[]"),
+    be_reads("src/level_select/level_select.cpp",
+             r"static const ResTIMG \*GetArrowResTIMG\(\) \{ return GetResourceTextureHeader\(sTinyArrowResTIMG\); \}",
+             'extern "C" int port_endian_bti_embedded(void *);\n'
+             r"static const ResTIMG *GetArrowResTIMG() {\n"
+             r"    port_endian_bti_embedded(sTinyArrowResTIMG);\n"
+             r"    return GetResourceTextureHeader(sTinyArrowResTIMG);\n}"),
+]
+
+ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + ECLIPSE_BE_FIXES + ECLIPSE_PATCH_TYPE_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
     # address, so the callee's references see the objects. Pass the addresses.
@@ -82,13 +264,18 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
+BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + BSE_BE_FIXES + PATCH_TYPE_FIXES + [
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),
     # Declared bool, but the game reads the float the function leaves in f1.
     ("src/patches/sun.cpp", r"static bool scaleGlowToLightness\(", r"static f32 scaleGlowToLightness(",
      "the lens glow scale is a float"),
+    # As ECLIPSE_FIXES' generate calls: the sun's new position, a Vec
+    # reference, goes through a (...) cast, so by address as on the GameCube.
+    ("src/patches/sun.cpp", r"JSGSetTranslation__Q26JDrama6TActorFRC3Vec\(sun, reinterpret_cast<Vec &>\(spos\)\)",
+     r"JSGSetTranslation__Q26JDrama6TActorFRC3Vec(sun, reinterpret_cast<Vec *>(&spos))",
+     "aggregates go by address through (...)"),
     # The memory card banner and icon are built into the code as big-endian
     # BTI files and copied to the card as they are; only their image offset
     # is read, and it has to be read in their byte order.
@@ -110,8 +297,8 @@ BSE_FIXES = TEXTURE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + [
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
 ]
-MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX])
-SHI_FIXES = [
+MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
+SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.
@@ -154,11 +341,90 @@ SHI_FIXES = [
     # trampoline of that name (platform/mods/eclipse/rawfn_trampolines.cpp,
     # generated by tools/mods/gen_rawfn.py for the names the mods use).
     # Their int is a pointer-sized integer here: the mods cast what these
-    # return to pointers, which must survive on 64-bit hosts.
-    ("include/SMS/raw_fn.hxx", r"#define\s+(\w+)(\s+)\(\((\w+) \(\*\)\(\.\.\.\)\)(0x[0-9A-Fa-f]+)\)",
+    # return to pointers, which must survive on 64-bit hosts. A few casts
+    # have no space before the (*) (CLBLinearInbetween_f's f32(*)(...)).
+    ("include/SMS/raw_fn.hxx", r"#define\s+(\w+)(\s+)\(\((\w+) ?\(\*\)\(\.\.\.\)\)(0x[0-9A-Fa-f]+)\)",
      lambda m: 'extern "C" void sms_rawfn_%s(void);\n#define %s%s((%s (*)(...))sms_rawfn_%s) /* %s */' % (
          m.group(1), m.group(1), m.group(2), "__INTPTR_TYPE__" if m.group(3) == "int" else m.group(3), m.group(1), m.group(4)),
      "retail functions by name go to the port's functions"),
+    # Class sizes SunshineHeaderInterface has wrong, against the retail code.
+    # TBossPakkun is 0x1D0 bytes (MarNameRefGen's `new` of it asks __nw for
+    # 0x1D0; its constructor and TNerveBPFly use the byte at 0x1CC, the boss
+    # music flag): without that byte, TFireyPetey's first member lands on it.
+    ("include/SMS/Enemy/BossPakkun.hxx", r"(\n([ \t]*)u32 _13;[^\n]*\n)(\};)",
+     r"\1\2s8 _14;\n\3", "TBossPakkun ends at 0x1D0 as in the game"),
+    # TMapObjBall is 0x198 bytes (MarNameRefGen's `new` of it): SHI's last
+    # member, _198, is TResetFruit's first (its constructor's stfs to 0x198;
+    # TMapObjBall's own code never touches 0x198), which the mods' own balls
+    # need not reserve.
+    ("include/SMS/MapObj/MapObjBall.hxx", r"\n[ \t]*f32 _198;\n", "\n",
+     "TMapObjBall ends at 0x198 as in the game"),
+    ("include/SMS/MoveBG/ResetFruit.hxx", r"(\n([ \t]*))(u16 _19C;\n)", r"\1f32 _198;\1\3",
+     "TMapObjBall ends at 0x198 as in the game"),
+    # J3DTevBlock's setters come in pairs whose vtable slots hold the
+    # by-pointer one first (__vt__13J3DTevBlock16: setTevKColor
+    # FUlPC10J3DGXColor, then FUl10J3DGXColor); SHI declares the by-value one
+    # first. On the PowerPC both take an address, so either slot works there;
+    # natively the by-value call reached the by-pointer function with the
+    # colour as the pointer (Eclipse's TDarkZhine::perform, its switch blocks).
+    ("include/JSystem/J3D/J3DMaterial.hxx",
+     r"(?m)^([ \t]*virtual void (\w+)\((?![^)]*\*)[^)]*\)[ \t]*= 0;\n)([ \t]*virtual void \2\([^)]*\*[^)]*\)[ \t]*= 0;\n)",
+     r"\3\1", "J3DTevBlock's vtable as in the game"),
+    # The by-value one takes the port's J3DGXColor, which has a user-written
+    # copy constructor and so goes by address: SHI's plain union would go by
+    # value. A const reference is passed as the port's function expects.
+    ("include/JSystem/J3D/J3DMaterial.hxx", r"(setTevKColor\(s32 idx, )J3DGXColor color\)",
+     r"\1const J3DGXColor &color)", "J3DTevBlock's vtable as in the game"),
+    # The big-endian reads and writes ECLIPSE_BE_FIXES and BSE_BE_FIXES use:
+    # the decomp's readBE (0013, endian-18), with each `width`-byte value
+    # (all `size` bytes by default) put in big-endian order around the read,
+    # so a failed read keeps it, and its raw readData counterpart.
+    ("include/JSystem/JSupport/JSUInputStream.hxx", r"(\n([ \t]*)void read\(void \*, s32\);\n)",
+     lambda m: m.group(1) + "".join(m.group(2) + l + "\n" for l in (
+         "static void swapBE(void *buf, s32 size, s32 width) {",
+         "    u8 *b = (u8 *)buf;",
+         "    if (width <= 0)",
+         "        width = size;",
+         "    for (s32 o = 0; o + width <= size; o += width)",
+         "        for (s32 i = 0; i < width / 2; i++) {",
+         "            u8 t                 = b[o + i];",
+         "            b[o + i]             = b[o + width - 1 - i];",
+         "            b[o + width - 1 - i] = t;",
+         "        }",
+         "}",
+         "void readBE(void *buf, s32 size, s32 width = 0) {",
+         "    swapBE(buf, size, width);",
+         "    read(buf, size);",
+         "    swapBE(buf, size, width);",
+         "}",
+         "void readDataBE(void *buf, s32 size, s32 width = 0) {",
+         "    swapBE(buf, size, width);",
+         "    readData(buf, size);",
+         "    swapBE(buf, size, width);",
+         "}")),
+     "big-endian stream reads and writes"),
+    ("include/JSystem/JSupport/JSUOutputStream.hxx", r"(\n([ \t]*)void write\(const void \*, s32\);\n)",
+     lambda m: m.group(1) + "".join(m.group(2) + l + "\n" for l in (
+         "void writeBE(const void *buf, s32 size) {",
+         "    u8 tmp[8];",
+         "    for (s32 i = 0; i < size; i++)",
+         "        tmp[i] = ((const u8 *)buf)[size - 1 - i];",
+         "    write(tmp, size);",
+         "}")),
+     "big-endian stream reads and writes"),
+    # TParamT<T>::load reads a .prm value, which stays big-endian on disc: the
+    # game's definitions (ParamInst.cpp, endian-05) convert it, SHI's inline
+    # one reads it raw. Every module defined its own copy of the template;
+    # BetterSunshineEngine's were weak and lost to the game's, but the moveset
+    # and Eclipse keep theirs private, so the moveset read Luigi's and
+    # Piantissimo's better_movement.prm byte-swapped. Declared, the types the
+    # game instantiates come from the game; bool and TColor are bytes, read
+    # as they are, and stay SHI's.
+    ("include/SMS/System/Params.hxx", r"(?s)(\ntemplate <typename T> class TParamRT : public TParamT<T> \{.*?\n\};\n)",
+     r"\1\n#include <JSystem/JGeometry/JGMVec.hxx>\n"
+     + "".join("extern template void TParamT<%s>::load(JSUMemoryInputStream &);\n" % t
+               for t in ("u8", "s16", "u16", "s32", "f32", "JGeometry::TVec3<f32>")),
+     "the game's TParamT loads convert .prm values"),
 ]
 
 

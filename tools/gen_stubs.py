@@ -9,8 +9,6 @@ import os, re, sys
 here = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(here)
 inc = os.path.join(root, 'decomp', 'libs', 'dolphin', 'include')
-if not os.path.isdir(inc):
-    inc = os.path.join(root, 'decomp', 'include')
 tsv = os.path.join(root, 'decomp', 'docs', 'progress', 'port-scope', 'api-surface.tsv')
 
 names = []

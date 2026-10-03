@@ -1,0 +1,29 @@
+Reason: 0013's typed reads byte-swap the value after JSUInputStream::read even when the read fails at the end of the stream, which leaves the buffer untouched on the console: the value the game preset is swapped instead of kept. Delfino Plaza's TMapWireManager entry ends after its two counts, so TMapWire::mDrawWidth and mDrawHeight (5.0 and 6.0) became 5.7e-41 and 6.9e-41 and the tightropes were drawn zero-sized. Swap the value to big-endian order before the read and back after it, so a failed read keeps it and a short read replaces its leading bytes.
+--- a/libs/JSystem/include/JSystem/JSupport/JSUInputStream.hpp
++++ b/libs/JSystem/include/JSystem/JSupport/JSUInputStream.hpp
+@@ -14,15 +14,23 @@
+ 	u32 read(void* buf, s32 size);
+ #ifdef TARGET_PC
+ 	// Streams carry big-endian data: typed reads convert to host order.
+-	u32 readBE(void* buf, s32 size)
++	// The value is put in big-endian order around the read, so a read that
++	// fails at the end of the stream leaves it unchanged, and a short one
++	// replaces its leading bytes, as on the console.
++	static void swapBE(void* buf, s32 size)
+ 	{
+-		u32 r = read(buf, size);
+ 		u8* b = (u8*)buf;
+ 		for (s32 i = 0; i < size / 2; i++) {
+ 			u8 t = b[i];
+ 			b[i] = b[size - 1 - i];
+ 			b[size - 1 - i] = t;
+ 		}
++	}
++	u32 readBE(void* buf, s32 size)
++	{
++		swapBE(buf, size);
++		u32 r = read(buf, size);
++		swapBE(buf, size);
+ 		return r;
+ 	}
+ #else

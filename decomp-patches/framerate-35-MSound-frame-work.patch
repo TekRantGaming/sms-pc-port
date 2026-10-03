@@ -61,16 +61,16 @@ Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop
  // TODO: 99.7%, frame 0x158 vs retail 0x198 (TGraphics sits 0x40 higher, a
  // dead low region) and r29/r30 swapped. Body from upstream (98.5 -> 99.7).
  int TMarDirector::direct()
-@@ -774,7 +787,12 @@
+@@ -779,7 +792,12 @@
  			SMSGetMSound()->startSoundSystemSE(MSD_SE_MA_INTO_DOKAN, 0, nullptr,
  			                                   0);
  		MSound* sound = gpMSound;
 +#ifdef TARGET_PC
-+		sound->fadeOutAllSound(
-+		    MarDirectorPortSoundFrames(SMSGetVSyncTimesPerSec() * 0.4f));
++		sound->fadeOutAllSound(port_cvt_fp2unsigned(
++		    MarDirectorPortSoundFrames(SMSGetVSyncTimesPerSec() * 0.4f)));
 +#else
  		sound->fadeOutAllSound(SMSGetVSyncTimesPerSec() * 0.4f);
 +#endif
  		SMSRumbleMgr->reset();
  		for (int i = 0; i < 4; ++i)
- 			JUTGamePad::CRumble::stopMotor(unk18[i]->mPortNum);
+ 			JUTGamePad::CRumble::stopMotor(getGamePad(i)->getPortNum());

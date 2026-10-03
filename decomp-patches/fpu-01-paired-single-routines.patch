@@ -1,0 +1,210 @@
+Reason: fpu: the host builds of the DOL's paired-single routines outside MTX/VEC (J3DPSCalcInverseTranspose, J3DMtxProjConcat, J3DMTXConcatArrayIndexedSrc, J3DPSMtxArrayConcat, J3DPSMulMtxVec, J3DModel::calcWeightEnvelopeMtx, J3DHermiteInterpolationS, MsVECMag2, MsVECNormalize) call platform/mtx/jsys_ps.inc, which computes them as the console does (fused multiply-adds rounded once, the lanes' order, the frsqrte and fres estimates), instead of portable C that rounded differently and used exact square roots.
+--- a/libs/JSystem/src/J3D/J3DGraphBase/J3DTransform.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphBase/J3DTransform.cpp
+@@ -25,21 +25,6 @@
+ #define ASM asm
+ #else
+ #define ASM
+-
+-// out = a * b for 3x4 affine matrices; b's implicit fourth row is (0 0 0 1).
+-// Computed into a temporary so out may alias either input.
+-static void J3DPCConcat(const f32 (*a)[4], const f32 (*b)[4], f32 (*out)[4])
+-{
+-	Mtx tmp;
+-	for (int r = 0; r < 3; r++) {
+-		for (int c = 0; c < 4; c++)
+-			tmp[r][c] = a[r][0] * b[0][c] + a[r][1] * b[1][c] + a[r][2] * b[2][c];
+-		tmp[r][3] += a[r][3];
+-	}
+-	for (int r = 0; r < 3; r++)
+-		for (int c = 0; c < 4; c++)
+-			out[r][c] = tmp[r][c];
+-}
+ #endif
+ 
+ #pragma push
+@@ -113,31 +98,9 @@
+ 	li r3, 0x1
+ 	psq_st   f8, 0x20(dst), 1, qr0
+ #else
+-	// Portable fallback: dst = transpose(inverse(src)) of the 3x3 part,
+-	// written as the cofactor matrix divided by the determinant.
+-	f32 c00 = src[1][1] * src[2][2] - src[2][1] * src[1][2];
+-	f32 c01 = src[1][2] * src[2][0] - src[2][2] * src[1][0];
+-	f32 c02 = src[1][0] * src[2][1] - src[1][1] * src[2][0];
+-	f32 c10 = src[2][1] * src[0][2] - src[0][1] * src[2][2];
+-	f32 c11 = src[2][2] * src[0][0] - src[0][2] * src[2][0];
+-	f32 c12 = src[0][1] * src[2][0] - src[0][0] * src[2][1];
+-	f32 c20 = src[0][1] * src[1][2] - src[1][1] * src[0][2];
+-	f32 c21 = src[0][2] * src[1][0] - src[1][2] * src[0][0];
+-	f32 c22 = src[0][0] * src[1][1] - src[0][1] * src[1][0];
+-	f32 det = src[0][0] * c00 + src[1][0] * c10 + src[2][0] * c20;
+-	if (det == 0.0f)
+-		return false;
+-	f32 inv   = 1.0f / det;
+-	dst[0][0] = c00 * inv;
+-	dst[0][1] = c01 * inv;
+-	dst[0][2] = c02 * inv;
+-	dst[1][0] = c10 * inv;
+-	dst[1][1] = c11 * inv;
+-	dst[1][2] = c12 * inv;
+-	dst[2][0] = c20 * inv;
+-	dst[2][1] = c21 * inv;
+-	dst[2][2] = c22 * inv;
+-	return true;
++	// port: the DOL's paired-single code, as the console computes it
++	// (platform/mtx/jsys_ps.inc).
++	return port_J3DPSCalcInverseTranspose(src, dst);
+ #endif // clang-format on
+ }
+ 
+@@ -413,17 +376,8 @@
+ 		psq_st     f0, 0x28(result), 0, qr0
+ 	}
+ #else
+-	// result (3x4) = param_1 (3x4) * param_2 (4x4), one row at a time.
+-	for (int r = 0; r < 3; r++) {
+-		f32 a0 = param_1[r][0], a1 = param_1[r][1];
+-		f32 a2 = param_1[r][2], a3 = param_1[r][3];
+-		f32 row[4];
+-		for (int c = 0; c < 4; c++)
+-			row[c] = a0 * param_2[0][c] + a1 * param_2[1][c]
+-			         + a2 * param_2[2][c] + a3 * param_2[3][c];
+-		for (int c = 0; c < 4; c++)
+-			result[r][c] = row[c];
+-	}
++	// port: the DOL's paired-single code (platform/mtx/jsys_ps.inc).
++	port_J3DMtxProjConcat(param_1, param_2, result);
+ #endif // clang-format on
+ }
+ 
+@@ -620,10 +574,10 @@
+ 	end:
+ 	}
+ #else
++	// port: the DOL's paired-single code (platform/mtx/jsys_ps.inc).
+ 	(void)unit01;
+ 	(void)tmp;
+-	for (u32 i = 0; i < count; i++)
+-		J3DPCConcat(mat1, mat2[param_3[i]], dst[i]);
++	port_J3DMTXConcatArrayIndexedSrc(mat1, mat2, param_3, dst, count);
+ #endif // clang-format on
+ }
+ 
+@@ -696,8 +650,8 @@
+ 
+ 	blr
+ #else
+-	for (u32 i = 0; i < size; i++)
+-		J3DPCConcat(fst, snd + i * 3, dst + i * 3);
++	// port: the DOL's paired-single code (platform/mtx/jsys_ps.inc).
++	port_J3DPSMtxArrayConcat(fst, snd, dst, size);
+ #endif // clang-format on
+ }
+ 
+--- a/libs/JSystem/include/JSystem/J3D/J3DGraphBase/J3DTransform.hpp
++++ b/libs/JSystem/include/JSystem/J3D/J3DGraphBase/J3DTransform.hpp
+@@ -89,11 +89,9 @@
+         psq_st f6, 8(dst), 1, 0
+     }
+ #else
+-    // dst = mtx * (x y z 1); the sum order follows the paired-single lanes.
+-    f32 x = vec->x, y = vec->y, z = vec->z;
+-    dst->x = (mtx[0][2] * z + mtx[0][0] * x) + (mtx[0][3] + mtx[0][1] * y);
+-    dst->y = (mtx[1][2] * z + mtx[1][0] * x) + (mtx[1][3] + mtx[1][1] * y);
+-    dst->z = (mtx[2][2] * z + mtx[2][0] * x) + (mtx[2][3] + mtx[2][1] * y);
++    // port: the DOL's paired-single code, as the console computes it
++    // (platform/mtx/jsys_ps.inc).
++    port_J3DPSMulMtxVec(mtx, &vec->x, &dst->x);
+ #endif // clang-format on
+ }
+ 
+@@ -167,11 +165,9 @@
+         psq_st f6, 8(dst), 1, 0
+     }
+ #else
+-    // dst = mtx * (x y z) for a 3x3 matrix.
+-    f32 x = vec->x, y = vec->y, z = vec->z;
+-    dst->x = (mtx[0][2] * z + mtx[0][0] * x) + mtx[0][1] * y;
+-    dst->y = (mtx[1][2] * z + mtx[1][0] * x) + mtx[1][1] * y;
+-    dst->z = (mtx[2][2] * z + mtx[2][0] * x) + mtx[2][1] * y;
++    // port: the DOL's paired-single code, as the console computes it
++    // (platform/mtx/jsys_ps.inc).
++    port_J3DPSMulMtxVec33(mtx, &vec->x, &dst->x);
+ #endif // clang-format on
+ }
+ 
+--- a/libs/JSystem/src/J3D/J3DGraphAnimator/J3DModel.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphAnimator/J3DModel.cpp
+@@ -921,16 +921,9 @@
+ 				ps_madds0 var_f31, var_f28, weight, var_f31
+ 			}
+ #else
+-			for (int r = 0; r < 3; r++) {
+-				for (int c = 0; c < 4; c++) {
+-					f32 v = (*worldMtx)[r][0] * invMtx[0][c]
+-					        + (*worldMtx)[r][1] * invMtx[1][c]
+-					        + (*worldMtx)[r][2] * invMtx[2][c];
+-					if (c == 3)
+-						v += (*worldMtx)[r][3];
+-					acc[r][c] += v * weight;
+-				}
+-			}
++			// port: the DOL's paired-single code, as the console computes
++			// it (platform/mtx/jsys_ps.inc).
++			port_J3DWeightEnvelopeMix(acc, *worldMtx, invMtx, weight);
+ #endif // clang-format on
+ 
+ 			*pScale &= mScaleFlagArr[idx];
+--- a/libs/JSystem/src/J3D/J3DGraphAnimator/J3DAnimation.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphAnimator/J3DAnimation.cpp
+@@ -409,17 +409,9 @@
+ 	}
+ #else
+ 	// The keys are s16 loaded through GQR5, which OSInitFastCast sets to a
+-	// plain s16 conversion with no scale.
+-	f32 time0f    = *p2;
+-	f32 value0f   = *p3;
+-	f32 tangent0f = *p4;
+-	f32 value1f   = *p6;
+-	f32 range     = *p5 - time0f;
+-	f32 kt        = (p1 - time0f) / range;
+-	f32 kt2       = kt * kt;
+-	f32 a         = (value1f - value0f) - range * tangent0f;
+-	f32 b         = kt2 * (((*p7 * range + value0f) - value1f) - a);
+-	fout          = (a * kt2 + ((range * tangent0f + b) * kt + value0f)) - b;
++	// plain s16 conversion with no scale. port: the DOL's code, as the
++	// console computes it (platform/mtx/jsys_ps.inc).
++	fout = port_J3DHermiteInterpolationS(p1, *p2, *p3, *p4, *p5, *p6, *p7);
+ #endif // clang-format on
+ 	return fout;
+ }
+--- a/src/MarioUtil/MathUtil.cpp
++++ b/src/MarioUtil/MathUtil.cpp
+@@ -485,9 +485,9 @@
+   fsel    f0, f1, f2, f0
+   fmuls   f1, f2, f0
+ #else
+-	f32 mag2  = v->x * v->x + v->z * v->z + v->y * v->y;
+-	f32 rsqrt = -mag2 >= 0.0f ? mag2 : 1.0f / std::sqrt(mag2);
+-	return mag2 * rsqrt;
++	// port: the DOL's code, with the Gekko's frsqrte estimate (no Newton
++	// step), as the console computes it (platform/mtx/jsys_ps.inc).
++	return port_MsVECMag2(&v->x);
+ #endif // clang-format on
+ }
+ 
+@@ -510,10 +510,8 @@
+   fmuls  f4, f4, f0
+   stfs   f4, Vec.z(v2)
+ #else
+-	f32 rsqrt
+-	    = 1.0f / std::sqrt(v1->x * v1->x + v1->z * v1->z + v1->y * v1->y);
+-	v2->x = v1->x * rsqrt;
+-	v2->y = v1->y * rsqrt;
+-	v2->z = v1->z * rsqrt;
++	// port: the DOL's code, with the Gekko's frsqrte estimate (no Newton
++	// step), as the console computes it (platform/mtx/jsys_ps.inc).
++	port_MsVECNormalize(&v1->x, &v2->x);
+ #endif // clang-format on
+ }

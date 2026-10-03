@@ -1,16 +1,16 @@
 Reason: port: code-mod hooks (sms_modhook.h): turbo nozzle door in TTurboNozzleDoor::touchPlayer (BetterSunshineEngine)
 --- a/src/MoveBG/MapObjDolpic.cpp
 +++ b/src/MoveBG/MapObjDolpic.cpp
-@@ -28,6 +28,9 @@
+@@ -27,6 +27,9 @@
+ #include <M3DUtil/InfectiousStrings.hpp>
  #include <MSound/MSSetSound.hpp>
  #include <MSound/MSoundBGM.hpp>
- #include <macros.h>
 +#ifdef TARGET_PC
 +#include <sms_modhook.h>
 +#endif
+ #include <macros.h>
  
  // TMonumentShine
- 
 @@ -610,7 +613,14 @@
  	if (!SMS_IsMarioDashing())
  		return;

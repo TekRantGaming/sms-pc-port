@@ -150,7 +150,6 @@ docs/                 developer documentation and reference screenshots
 
 ## Documentation
 
-- [docs/DECOMP_STATUS.md](docs/DECOMP_STATUS.md): measured decompilation progress, binary verification, and the remaining source-link queue.
 - [BUILD.md](BUILD.md): prerequisites for each system, the standalone build and macOS app, manual CMake builds, troubleshooting.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): where a fix goes (decomp, patch or platform), how the build works, the platform layer, the decomp patches, every environment variable, developer tools, performance.
 - [docs/64-BIT.md](docs/64-BIT.md): how the 64-bit build works and what is left.

@@ -3,13 +3,8 @@ project(sms_gx C CXX)
 
 # GX/GD for the Super Mario Sunshine PC port: OpenGL 3.3 core backend.
 set(SMS_DECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../decomp" CACHE PATH "Path to the decompilation")
-if(EXISTS ${SMS_DECOMP_DIR}/libs/dolphin/src)
-    set(SMS_GX_DOLPHIN_SRC ${SMS_DECOMP_DIR}/libs/dolphin/src)
-    set(SMS_GX_DOLPHIN_INCLUDE ${SMS_DECOMP_DIR}/libs/dolphin/include)
-else()
-    set(SMS_GX_DOLPHIN_SRC ${SMS_DECOMP_DIR}/src/dolphin)
-    set(SMS_GX_DOLPHIN_INCLUDE ${SMS_DECOMP_DIR}/include)
-endif()
+# The decomp's game headers and the SDK's (libs/dolphin/include).
+set(SMS_GX_DECOMP_INCLUDE ${SMS_DECOMP_DIR}/include ${SMS_DECOMP_DIR}/libs/dolphin/include)
 option(SMS_GX_BUILD_TESTS "Build the headless self-test" ON)
 
 set(SMS_GX_SOURCES
@@ -27,12 +22,12 @@ set(SMS_GX_SOURCES
 
 # GD is compiled from the decompiled SDK sources: it only emits command bytes.
 set(SMS_GX_GD_SOURCES
-    ${SMS_GX_DOLPHIN_SRC}/gd/GDBase.c
-    ${SMS_GX_DOLPHIN_SRC}/gd/GDGeometry.c
-    ${SMS_GX_DOLPHIN_SRC}/gd/GDLight.c
-    ${SMS_GX_DOLPHIN_SRC}/gd/GDPixel.c
-    ${SMS_GX_DOLPHIN_SRC}/gd/GDTev.c
-    ${SMS_GX_DOLPHIN_SRC}/gd/GDTransform.c)
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDBase.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDGeometry.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDLight.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDPixel.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDTev.c
+    ${SMS_DECOMP_DIR}/libs/dolphin/src/gd/GDTransform.c)
 set_source_files_properties(${SMS_GX_GD_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/src/gd_host_prefix.h;-w;-fcommon")
 
@@ -51,12 +46,19 @@ endif()
 add_library(sms_gx STATIC ${SMS_GX_SOURCES} ${SMS_GX_GD_SOURCES})
 target_include_directories(sms_gx
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/port_include ${SMS_GX_TYPES_INCLUDE} ${SMS_DECOMP_DIR}/include ${SMS_GX_DOLPHIN_INCLUDE})
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/port_include ${SMS_GX_TYPES_INCLUDE} ${SMS_GX_DECOMP_INCLUDE}
+    # port_fpu.h (the SDK's float-to-unsigned conversion, port_cvt_fp2unsigned)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
 # macOS has no system GL/glcorearb.h; ship Khronos headers under third_party/.
 if(APPLE)
     target_include_directories(sms_gx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 endif()
 target_compile_features(sms_gx PRIVATE cxx_std_17)
+# The SDK functions here that compute in floats round every operation as the
+# DOL's objects do, which MWCC built without contraction: no host compiler may
+# fuse a multiply-add (GCC and Clang do on arm64 by default; x86 builds
+# without -mfma never fuse, so their code does not change).
+target_compile_options(sms_gx PRIVATE -ffp-contract=off)
 set_target_properties(sms_gx PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Window (SDL2) and headless (EGL) context creation; both optional so the
 # library still builds where only a host-supplied context is used.
@@ -111,8 +113,21 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(SMS_GX_BUILD_TESTS)
-    add_executable(gx_selftest tests/gx_selftest.cpp)
-    target_include_directories(gx_selftest PRIVATE ${SMS_DECOMP_DIR}/include ${SMS_GX_DOLPHIN_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    # GXDrawSphere calls MSL's sinf and cosf, which the port links from
+    # platform/misc/msl_math.c; the standalone tests link it themselves.
+    # Built as the port builds it (the top-level CMakeLists.txt): SSE maths on
+    # x86, never x87 extended precision, and no contraction. Source file
+    # properties are per directory, so the tests' copy needs its own.
+    set(SMS_GX_MSL_MATH ${CMAKE_CURRENT_SOURCE_DIR}/../misc/msl_math.c)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+        set(_sms_gx_msl_opts "-msse2;-mfpmath=sse;-ffp-contract=off")
+    else()
+        set(_sms_gx_msl_opts "-ffp-contract=off")
+    endif()
+    set_source_files_properties(${SMS_GX_MSL_MATH} PROPERTIES COMPILE_OPTIONS "${_sms_gx_msl_opts}"
+        INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../src)
+    add_executable(gx_selftest tests/gx_selftest.cpp ${SMS_GX_MSL_MATH})
+    target_include_directories(gx_selftest PRIVATE ${SMS_GX_DECOMP_INCLUDE} ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(gx_selftest PRIVATE sms_gx)
     target_compile_features(gx_selftest PRIVATE cxx_std_17)
     enable_testing()
@@ -123,7 +138,7 @@ if(SMS_GX_BUILD_TESTS)
     target_compile_features(gx_windowtest PRIVATE cxx_std_17)
     add_test(NAME gx_windowtest COMMAND gx_windowtest)
     if(TARGET SDL2::SDL2)
-        add_executable(gx_windowsmoke tests/gx_windowtest.cpp)
+        add_executable(gx_windowsmoke tests/gx_windowtest.cpp ${SMS_GX_MSL_MATH})
         target_include_directories(gx_windowsmoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
         target_compile_features(gx_windowsmoke PRIVATE cxx_std_17)
         target_compile_definitions(gx_windowsmoke PRIVATE SMS_GX_HAVE_SDL2=1)

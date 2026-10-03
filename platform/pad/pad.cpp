@@ -400,7 +400,7 @@ extern "C" u32 PADRead(PADStatus* status)
 	s.analogB      = (b & PAD_BUTTON_B) ? 255 : 0;
 	s.button       = b;
 	// Sticks are reported raw (a real stick reads about +-100 at the rim);
-	// the decomp's PADClamp (src/dolphin/pad/Padclamp.c) then applies the dead
+	// the decomp's PADClamp (libs/dolphin/src/pad/Padclamp.c) then applies the dead
 	// zone and the octagon exactly as on hardware. Keys give full deflection
 	// (half with HALF_TILT).
 	int full = held(C_HALF) ? 50 : 100;
@@ -419,4 +419,4 @@ extern "C" u32 PADRead(PADStatus* status)
 	return PAD_CHAN0_BIT;
 }
 
-// PADClamp comes from the decomp (src/dolphin/pad/Padclamp.c, see CMakeLists.txt).
+// PADClamp comes from the decomp (libs/dolphin/src/pad/Padclamp.c, see CMakeLists.txt).

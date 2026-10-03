@@ -11,9 +11,9 @@ Reason: port: code-mod hooks (sms_modhook.h): TMenuDirector level-select shine r
  
  TMenuDirector::TMenuDirector()
      : unk18(0)
-@@ -209,6 +212,14 @@
+@@ -194,6 +197,14 @@
  		if (unk40->checkFlag(0x1)) {
- 			if (!(unk2C->getButton() & JUTGamePad::X)) {
+ 			if (!(getGamePad()->getButton() & JUTGamePad::X)) {
  				TFlagManager::getInstance()->firstStart();
 +#ifdef TARGET_PC
 +				// BetterSunshineEngine (extendLevelSelectReset, retail

@@ -25,8 +25,8 @@ Reason: port: with frame_rate = 60 a held cursor in the pause menu and the talk 
 +
 +static void portSetPadRepeat(TApplication* app)
 +{
-+	u32 delay = 20.0f / SMSGetAnmFrameRate();
-+	u32 rate  = 6.0f / SMSGetAnmFrameRate();
++	u32 delay = port_cvt_fp2unsigned(20.0f / SMSGetAnmFrameRate());
++	u32 rate  = port_cvt_fp2unsigned(6.0f / SMSGetAnmFrameRate());
 +	for (int i = 0; i < 4; ++i) {
 +		TMarioGamePad* pad = app->mGamePads[i];
 +		if (pad == nullptr)

@@ -41,8 +41,10 @@ def raw_fn_types(shi_root):
     out = {}
     for d in re.finditer(r"#define\s+(\w+)\s+\(\((\w+) \(\*\)\(\.\.\.\)\)(?:sms_rawfn_\w+\) /\* )?(0x[0-9A-Fa-f]+)", m.group(1)):
         ret = d.group(2)
-        # int-returning macros return a pointer-sized integer (fixup_sources.py)
-        out[d.group(1)] = ("intptr_t" if ret in ("int", "__INTPTR_TYPE__") else ret, int(d.group(3), 16))
+        # int-returning macros return a pointer-sized integer (fixup_sources.py),
+        # and f32 and f64 ones the float in f1, as float and double do
+        ret = {"int": "intptr_t", "__INTPTR_TYPE__": "intptr_t", "f32": "float", "f64": "double"}.get(ret, ret)
+        out[d.group(1)] = (ret, int(d.group(3), 16))
     return out
 
 
@@ -100,13 +102,13 @@ def header_for(quals, name):
     global _hdr_files
     if _hdr_files is None:
         _hdr_files = []
-        inc = os.path.join(gh.DECOMP, "include")
-        for dp, _, fs in os.walk(inc):
-            for f in sorted(fs):
-                if f.endswith((".hpp", ".h")):
-                    path = os.path.join(dp, f)
-                    _hdr_files.append((os.path.relpath(path, inc),
-                                       gh.blank_comments_strings(open(path, encoding="utf-8", errors="replace").read())))
+        for inc in gh.include_roots():
+            for dp, _, fs in os.walk(inc):
+                for f in sorted(fs):
+                    if f.endswith((".hpp", ".h")):
+                        path = os.path.join(dp, f)
+                        _hdr_files.append((os.path.relpath(path, inc),
+                                           gh.blank_comments_strings(open(path, encoding="utf-8", errors="replace").read())))
     if quals and not gh.is_namespace(quals):
         cls = re.sub(r"<.*", "", quals[-1])
         pat = r"\b(?:class|struct)\s+%s\b[^;{()]*\{" % re.escape(cls)
@@ -187,8 +189,9 @@ def trampoline(sym, ret, full, typed=False):
         obj = "((%s%s*)self)" % ("const " if is_const else "", qual)
         call = "%s->%s::%s(%s)" % (obj, qual, name, ", ".join(args))
     elif qual == "std":
-        # MSL's float math: the compiler's own
-        call = "__builtin_%s(%s)" % (name, ", ".join(args))
+        # MSL's float math: port_compat.h routes std::fmodf and the rest to
+        # the console's (platform/misc/msl_math.c)
+        call = "std::%s(%s)" % (name, ", ".join(args))
     else:
         call = "%s%s(%s)" % (qual + "::" if qual else "", name, ", ".join(args))
     if typed:

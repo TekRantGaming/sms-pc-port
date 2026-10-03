@@ -136,7 +136,7 @@ Checked for `JUTGamePad` against retail's constructor (`__ct__10JUTGamePadFQ210J
 - `stb 0x98` → `mButtonReset` 0x98.
 
 The resolver computes exactly this.
-Only the offset *comments* in `decomp/include/JSystem/JUtility/JUTGamePad.hpp` are wrong from `mPortNum` on:
+Only the offset *comments* in `decomp/libs/JSystem/include/JSystem/JUtility/JUTGamePad.hpp` are wrong from `mPortNum` on:
 - `mPortNum` 0x78, not 0x7C.
 - `mErrorStatus` 0x7A, not 0x7E.
 - `mLink` 0x7C, not 0x80.
@@ -171,6 +171,7 @@ Findings against `runs/play-r9`, with `play-symbolic.txt` and the re-syncs `app+
    Native sat in the movie from field 1244 to the end of the run.
    `SMS_SKIP_MOVIES=1` avoids it.
    Deterministic runs need AI DMA paced by the retrace clock (lead: platform/audio).
+   Since then the AI DMA is paced by the retraces in deterministic runs, and `SMS_AUDIO=0` keeps it running ([64-BIT.md](../../docs/64-BIT.md), item 19), so the movie no longer stalls.
 2. **From the airstrip re-sync (retail field 5419) Mario's path matches retail.**
    Position agrees within 0.01 through the walk and the first jump (y = 540.5 at retail 5736 on both), with native one field ahead: native field f = retail field f+1.
    **First real divergence: native field 5773 / retail 5774**, Mario x/z 0.01 apart (755.455/1173.571 vs 755.445/1173.575).
@@ -188,7 +189,7 @@ Findings against `runs/play-r9`, with `play-symbolic.txt` and the re-syncs `app+
    - **`TMario::mFlag` bit 0:** 9 native vs 8 retail from the re-sync on.
    - **`mHeadMtx` (head look):** differs by about 1e-3.
 4. **`PADClamp` is a no-op in `platform/pad`.**
-   Retail clamps sticks and triggers (the SDK clamp is in `decomp/src/dolphin/pad/Padclamp.c`).
+   Retail clamps sticks and triggers (the SDK clamp is in `decomp/libs/dolphin/src/pad/Padclamp.c`).
    A trace-worktree build with it applied changed nothing up to 5773 for this movie, since it only uses full deflections.
    It should still be linked for movie fidelity.
 

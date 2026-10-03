@@ -1,13 +1,13 @@
 Reason: g++: case labels jump over initialised locals scenario/stage; brace the case body
 --- a/src/System/MarDirectorDirect.cpp
 +++ b/src/System/MarDirectorDirect.cpp
-@@ -507,9 +507,11 @@
- 		unk18[0]->mFlags &= ~0x1;
+@@ -515,9 +515,11 @@
+ 		getGamePad()->offFlag(0x1);
  		gpCamera->endDemoCamera();
  		mConsole->unk94->startOpenWipe();
 +		{
- 		u8 scenario = gpApplication.mCurrArea.unk1;
- 		u8 stage    = gpApplication.mCurrArea.unk0;
+ 		u8 scenario = gpApplication.mCurrArea.getScenario();
+ 		u8 stage    = gpApplication.mCurrArea.getStage();
  		MSMainProc::endStageEntranceDemo(stage, scenario);
 +		}
  		break;

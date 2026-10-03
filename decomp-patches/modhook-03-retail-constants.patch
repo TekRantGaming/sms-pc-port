@@ -1,11 +1,10 @@
 Reason: port: three retail constants code mods overwrite become variables with the retail values: the 1.0 JASChannel's pitch and pan code reads (gAudioPitch), the 1.0 JASTrack's timing code reads (gAudioSpeed), and the shine shadow sphere's position in ModelWaterManager (gShineShadowPos); unchanged, they behave as the constants
 --- a/libs/JSystem/src/JAudio/JASystem/JASChannel.cpp
 +++ b/libs/JSystem/src/JAudio/JASystem/JASChannel.cpp
-@@ -9,6 +9,15 @@
- #include <JSystem/JAudio/JASystem/JASCalc.hpp>
+@@ -10,6 +10,15 @@
  #include <JSystem/JUtility/JUTAssert.hpp>
  #include <dolphin/types.h>
-+
+ 
 +#ifdef TARGET_PC
 +// Port: the retail code reads this 1.0 from one pooled constant (@324), which
 +// code mods overwrite to change every sound's pitch (retail map name gAudioPitch); so do the functions that read it here.
@@ -14,9 +13,10 @@ Reason: port: three retail constants code mods overwrite become variables with t
 +#else
 +#define JAS_CHANNEL_ONE 1.0f
 +#endif
- 
++
  namespace JASystem {
  
+ namespace Driver {
 @@ -324,9 +333,9 @@
  	                        f32 dolby)
  	{
@@ -196,19 +196,19 @@ Reason: port: three retail constants code mods overwrite become variables with t
  
 --- a/src/Player/ModelWaterManager.cpp
 +++ b/src/Player/ModelWaterManager.cpp
-@@ -29,6 +29,12 @@
- #include <M3DUtil/InfectiousStrings.hpp>
+@@ -30,6 +30,12 @@
  
  #include <System/StageUtil.hpp>
-+
+ 
 +#ifdef TARGET_PC
 +// Port: the position the shine shadow sphere is drawn at is a constant in
 +// the retail game, which code mods overwrite (retail map name gShineShadowPos).
 +Vec gShineShadowPos = { 0.0f, 3600.0f, -7458.0f };
 +#endif
- 
++
  TModelWaterManager* gpModelWaterManager;
  TWaterHitActor TModelWaterManager::mStaticHitActor;
+ GXColor gModelWaterManagerWaterColor[4] = {
 @@ -1815,7 +1821,11 @@
  #endif
  		}

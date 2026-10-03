@@ -126,4 +126,69 @@ static inline float port_gekko_fres(double x)
 	return (float)port_f64_from_bits(sign | ((unsigned long long)re << 52) | mant);
 }
 
+/* MWCC's float-to-integer runtime conversions (runtime.c), which the game
+ * reaches for every float or double it converts to a 32-bit unsigned integer
+ * or to a 64-bit integer. The host's own conversions differ outside the
+ * target range, and between the 32 and 64-bit builds (x86 wraps a negative
+ * value; from 2^31 up the 32-bit build gives 0 or 0x80000000 and the 64-bit
+ * build the low 32 bits); in range both are the same truncation.
+ *
+ * __cvt_fp2unsigned: 0 below zero and for NaN (fctiwz of NaN is 0x80000000,
+ * less the 2^31 it adds back), 0xFFFFFFFF from 2^32 up (+inf included),
+ * otherwise truncation towards zero. */
+static inline unsigned int port_cvt_fp2unsigned(double d)
+{
+	if (!(d >= 0.0))
+		return 0;
+	if (d >= 4294967296.0)
+		return 0xFFFFFFFFu;
+	return (unsigned int)d;
+}
+
+/* __cvt_dbl_usll, which MWCC calls for (u64) and (s64) alike: truncation
+ * towards zero as a signed 64-bit value (so a negative value wraps as a u64),
+ * and from 2^63 in magnitude, infinities and NaN included, 0x7FFF...F or
+ * 0x8000...0 by the sign bit. */
+static inline unsigned long long port_cvt_dbl_usll(double d)
+{
+	if (d > -9223372036854775808.0 && d < 9223372036854775808.0)
+		return (unsigned long long)(long long)d;
+	return __builtin_signbit(d) ? 0x8000000000000000ull : 0x7FFFFFFFFFFFFFFFull;
+}
+
+/* The Gekko's quantised store: psq_st (and psq_stx, psq_stu, psq_stux) of a
+ * paired-single register through a GQR whose store type is an integer
+ * (GQRn bits 0-2: 4 u8, 5 u16, 6 s8, 7 s16; bits 8-13: a signed scale).
+ * The value, taken as a single, is multiplied by 2^scale in single precision,
+ * saturated to the type's range and converted towards zero; the store writes
+ * that integer's low bytes. +-inf saturate; a NaN stores 0.
+ *
+ * Source: the GQR layout is the PowerPC 750CL (Gekko-compatible) User's
+ * Manual's; the conversion is Dolphin's interpreter (ScaleAndClamp in
+ * Interpreter_LoadStorePaired.cpp: scale, clamp, C conversion towards zero, a
+ * NaN giving 0 on x86). It is not measured on hardware: there is neither a
+ * console nor Dolphin here. The game's one integer quantised store outside the
+ * THP decoder is OSf32tos8 in JASTrack (GQR4: s8, scale 0; docs/64-BIT.md,
+ * item 18). */
+static inline int port_gekko_quantize(double ps, unsigned int type, unsigned int scale)
+{
+	int e = (int)(scale & 63) - ((scale & 32) ? 64 : 0);
+	float v = (float)ps * (float)__builtin_ldexp(1.0, e);
+	float lo, hi;
+	switch (type & 7) {
+	case 4: lo = 0.0f; hi = 255.0f; break;
+	case 5: lo = 0.0f; hi = 65535.0f; break;
+	case 6: lo = -128.0f; hi = 127.0f; break;
+	case 7: lo = -32768.0f; hi = 32767.0f; break;
+	default: return 0; /* a float store: not a quantisation */
+	}
+	if (v != v)
+		return 0;
+	if (v < lo)
+		v = lo;
+	else if (v > hi)
+		v = hi;
+	return (int)v;
+}
+
 #endif

@@ -1,0 +1,14 @@
+Reason: TObjHitCheck::getTableIndex converts (|x|+|y|+|z| - radius) * (10/700) to u32. MWCC does that with the runtime's __cvt_fp2unsigned, which gives 0 for a negative value; the host conversion wraps it (-22.5 gives 0xFFFFFFEA, table index 0xEA), so an actor whose entry radius reaches past the world origin was entered in 22 extra hit-check cells from 0xEA round to 0xFF. Convert with port_cvt_fp2unsigned, the runtime's rule.
+--- a/src/Strategic/ObjHitCheck.cpp
++++ b/src/Strategic/ObjHitCheck.cpp
+@@ -155,8 +155,8 @@
+ {
+ 	f32 fVar1 = abs(pos.x) + abs(pos.y) + abs(pos.z);
+ 
+-	u32 i = (fVar1 - entry_radius) * (10.f / 700.f);
+-	*out  = (fVar1 + entry_radius) * (10.f / 700.f);
++	u32 i = port_cvt_fp2unsigned((fVar1 - entry_radius) * (10.f / 700.f));
++	*out  = port_cvt_fp2unsigned((fVar1 + entry_radius) * (10.f / 700.f));
+ 	if (i == *out)
+ 		*out += 1;
+ 	*out &= 0xff;

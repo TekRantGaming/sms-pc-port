@@ -1,6 +1,6 @@
 // The GX API: every call is translated into the BP/CP/XF register writes the
 // hardware would receive.  Field layouts follow the decompiled SDK
-// (decomp/src/dolphin/gx) so that display lists built by GD/J3D and the API
+// (decomp/libs/dolphin/src/gx) so that display lists built by GD/J3D and the API
 // agree bit for bit.
 #include "gx_internal.h"
 #include "sms_gx/gx_pc.h"
@@ -9,6 +9,9 @@
 
 #include <math.h>
 #include <string.h>
+
+#include "port_fpu.h"  // port_cvt_fp2unsigned: MWCC's __cvt_fp2unsigned, as the SDK converts
+#include "gx_sdk_math.h"  // the SDK's float arithmetic, as the DOL computes it
 
 using namespace gx;
 
@@ -683,24 +686,7 @@ void GXSetScissorBoxOffset(s32 x, s32 y) {
 void GXSetClipMode(GXClipMode mode) { apiXF1(XF_REG_BASE + 0x05, uint32_t(mode)); }
 
 void GXProject(f32 x, f32 y, f32 z, f32 mtx[3][4], f32* pm, f32* vp, f32* sx, f32* sy, f32* sz) {
-    float px = mtx[0][0] * x + mtx[0][1] * y + mtx[0][2] * z + mtx[0][3];
-    float py = mtx[1][0] * x + mtx[1][1] * y + mtx[1][2] * z + mtx[1][3];
-    float pz = mtx[2][0] * x + mtx[2][1] * y + mtx[2][2] * z + mtx[2][3];
-    float xc, yc, zc, wc;
-    if (pm[0] == 0.0f) {
-        xc = px * pm[1] + pz * pm[2];
-        yc = py * pm[3] + pz * pm[4];
-        zc = pz * pm[5] + pm[6];
-        wc = 1.0f / -pz;
-    } else {
-        xc = px * pm[1] + pm[2];
-        yc = py * pm[3] + pm[4];
-        zc = pz * pm[5] + pm[6];
-        wc = 1.0f;
-    }
-    *sx = vp[0] + vp[2] * 0.5f + xc * wc * vp[2] * 0.5f;
-    *sy = vp[1] + vp[3] * 0.5f - yc * wc * vp[3] * 0.5f;
-    *sz = vp[5] + zc * wc * (vp[5] - vp[4]);
+    gxsdkProject(x, y, z, mtx, pm, vp, sx, sy, sz);
 }
 
 // ================================================================== GXLight
@@ -717,6 +703,8 @@ void GXInitLightAttnK(GXLightObj* o, f32 k0, f32 k1, f32 k2) {
     LightObjInt* l = reinterpret_cast<LightObjInt*>(o);
     l->k[0] = k0; l->k[1] = k1; l->k[2] = k2;
 }
+// Not in the DOL (UNUSED in marioUS.MAP) and never called by the game, so it
+// keeps the host's cosf; the SDK's calls MSL's (gx_sdk_math.h).
 void GXInitLightSpot(GXLightObj* o, f32 cutoff, GXSpotFn fn) {
     float a0, a1, a2;
     if (cutoff <= 0.0f || cutoff > 90.0f) fn = GX_SP_OFF;
@@ -745,18 +733,9 @@ void GXInitLightSpot(GXLightObj* o, f32 cutoff, GXSpotFn fn) {
     GXInitLightAttnA(o, a0, a1, a2);
 }
 void GXInitLightDistAttn(GXLightObj* o, f32 refDist, f32 refBr, GXDistAttnFn fn) {
-    float k0 = 1.0f, k1 = 0.0f, k2 = 0.0f;
-    if (refDist < 0.0f || refBr <= 0.0f || refBr >= 1.0f) fn = GX_DA_OFF;
-    switch (fn) {
-    case GX_DA_GENTLE: k1 = (1.0f - refBr) / (refBr * refDist); break;
-    case GX_DA_MEDIUM:
-        k1 = 0.5f * (1.0f - refBr) / (refBr * refDist);
-        k2 = 0.5f * (1.0f - refBr) / (refBr * refDist * refDist);
-        break;
-    case GX_DA_STEEP: k2 = (1.0f - refBr) / (refBr * refDist * refDist); break;
-    default: break;
-    }
-    GXInitLightAttnK(o, k0, k1, k2);
+    float k[3];
+    gxsdkLightDistAttn(refDist, refBr, int(fn), k);
+    GXInitLightAttnK(o, k[0], k[1], k[2]);
 }
 void GXInitLightPos(GXLightObj* o, f32 x, f32 y, f32 z) {
     LightObjInt* l = reinterpret_cast<LightObjInt*>(o);
@@ -768,10 +747,7 @@ void GXInitLightDir(GXLightObj* o, f32 nx, f32 ny, f32 nz) {
 }
 void GXInitSpecularDir(GXLightObj* o, f32 nx, f32 ny, f32 nz) {
     LightObjInt* l = reinterpret_cast<LightObjInt*>(o);
-    float vx = -nx, vy = -ny, vz = -nz + 1.0f;
-    float mag = 1.0f / sqrtf(vx * vx + vy * vy + vz * vz);
-    l->dir[0] = vx * mag; l->dir[1] = vy * mag; l->dir[2] = vz * mag;
-    l->pos[0] = -nx * 1048576.0f; l->pos[1] = -ny * 1048576.0f; l->pos[2] = -nz * 1048576.0f;
+    gxsdkSpecularDir(nx, ny, nz, l->dir, l->pos);
 }
 void GXInitSpecularDirHA(GXLightObj* o, f32 nx, f32 ny, f32 nz, f32 hx, f32 hy, f32 hz) {
     LightObjInt* l = reinterpret_cast<LightObjInt*>(o);
@@ -1063,7 +1039,7 @@ void GXSetFog(GXFogType type, f32 startz, f32 endz, f32 nearz, f32 farz, GXColor
     while (bm > 0.0f && bm < 0.5f) { bm *= 2.0f; be--; }
     float a = A / float(1 << (be + 1 > 0 ? be + 1 : 0));
     if (be + 1 < 0) a = A * float(1 << -(be + 1));
-    uint32_t bmant = uint32_t(8.388638e6f * bm);
+    uint32_t bmant = port_cvt_fp2unsigned(8.388638e6f * bm);
     uint32_t bshift = uint32_t(be + 1);
     uint32_t ah = fbits(a), ch = fbits(C);
     uint32_t f0 = ((ah >> 12) & 0x7FF) | ((ah >> 23) & 0xFF) << 11 | (ah >> 31) << 19;
@@ -1074,6 +1050,7 @@ void GXSetFog(GXFogType type, f32 startz, f32 endz, f32 nearz, f32 farz, GXColor
     apiBP(BP_FOG3, f3);
     apiBP(BP_FOG_COLOR, uint32_t(color.r) << 16 | uint32_t(color.g) << 8 | color.b);
 }
+// Not in the DOL (UNUSED in marioUS.MAP) and never called by the game.
 void GXInitFogAdjTable(GXFogAdjTable* table, u16 width, f32 projmtx[4][4]) {
     float xi, iw = 2.0f / width;
     for (int i = 0; i < 10; i++) {
@@ -1166,7 +1143,7 @@ void GXSetCopyClamp(GXFBClamp clamp) {
     s_texCtrl = setField(s_texCtrl, 2, 0, clamp);
 }
 u32 GXSetDispCopyYScale(f32 vscale) {
-    uint32_t s = uint32_t(256.0f / vscale) & 0x1FF;
+    uint32_t s = port_cvt_fp2unsigned(256.0f / vscale) & 0x1FF;
     s_dispYScale = s;
     s_dispCtrl = setField(s_dispCtrl, 1, 10, s != 256);
     uint32_t ht = getField(s_dispSize, 10, 10) + 1;
@@ -1219,7 +1196,7 @@ void GXClearBoundingBox(void) {}
 void GXReadBoundingBox(u16* l, u16* t, u16* r, u16* b) { *l = 0; *t = 0; *r = 639; *b = 527; }
 
 u16 GXGetNumXfbLines(u16 efbHeight, float yScale) {
-    uint32_t iScale = uint32_t(256.0f / yScale) & 0x1FF;
+    uint32_t iScale = port_cvt_fp2unsigned(256.0f / yScale) & 0x1FF;
     if (!iScale) return efbHeight;
     uint32_t n = ((uint32_t(efbHeight) - 1) * 256) / iScale + 1;
     if (iScale > 0x80 && iScale < 0x100) {
@@ -1231,7 +1208,7 @@ u16 GXGetNumXfbLines(u16 efbHeight, float yScale) {
 }
 float GXGetYScaleFactor(u16 efbHeight, u16 xfbHeight) {
     float f = float(xfbHeight) / float(efbHeight);
-    uint32_t iScale = uint32_t(256.0f / f) & 0x1FF;
+    uint32_t iScale = port_cvt_fp2unsigned(256.0f / f) & 0x1FF;
     // step the integer scale until the line count matches the request
     for (int guard = 0; guard < 512 && iScale > 1; guard++) {
         float s = 256.0f / float(iScale);
@@ -1570,22 +1547,13 @@ static void cubeBody() {
     cubeFace(0, 0, 1, 1, 0, 0, 0, -1, 0);
 }
 static uint8_t s_sphMajor, s_sphMinor;
-// The SDK's sphere (GXDrawSphere in GXDraw.c): rings from the +z pole down,
-// each strip emitting the next ring's vertex before the current one's, which
-// sets the winding the sky's front-face culling relies on.
-static void sphereBody() {
-    const float majorStep = 3.1415927f / s_sphMajor, minorStep = 6.2831855f / s_sphMinor;
-    for (int i = 0; i < s_sphMajor; i++) {
-        float a = i * majorStep, b = a + majorStep;
-        float r0 = sinf(a), r1 = sinf(b), z0 = cosf(a), z1 = cosf(b);
-        GXBegin(GX_TRIANGLESTRIP, GX_VTXFMT3, u16((s_sphMinor + 1) * 2));
-        for (int j = 0; j <= s_sphMinor; j++) {
-            float c = j * minorStep, x = cosf(c), y = sinf(c);
-            vtxPN(x * r1, y * r1, z1, x * r1, y * r1, z1);
-            vtxPN(x * r0, y * r0, z0, x * r0, y * r0, z0);
-        }
-    }
-}
+// The SDK's sphere (GXDrawSphere in GXDraw.c, gxsdkSphere): rings from the +z
+// pole down, each strip emitting the next ring's vertex before the current
+// one's, which sets the winding the sky's front-face culling relies on.
+static void sphereBegin(uint16_t count) { GXBegin(GX_TRIANGLESTRIP, GX_VTXFMT3, count); }
+static void sphereVertex(float x, float y, float z) { vtxPN(x, y, z, x, y, z); }
+static void sphereBody() { gxsdkSphere(s_sphMajor, s_sphMinor, sphereBegin, sphereVertex); }
+// GXDrawCylinder is not in the DOL (UNUSED in marioUS.MAP) and never called.
 static uint8_t s_cylEdges;
 static void cylinderBody() {
     const float pi = 3.14159265f;

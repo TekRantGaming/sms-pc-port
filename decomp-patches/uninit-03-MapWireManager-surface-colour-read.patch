@@ -1,0 +1,12 @@
+Reason: TMapWireManager::load reads the tightrope colours through a stack s32 that it never initialises. Delfino Plaza's entry ends before them, so every read fails and all six components are the low byte of whatever the slot held (on the console, what the scene search in the preceding TCubeManagerBase::load left there; not reproduced). Start it at 0, so a missing colour is black in every build rather than host stack residue.
+--- a/src/Map/MapWireManager.cpp
++++ b/src/Map/MapWireManager.cpp
+@@ -296,7 +296,7 @@
+ 	// (one `>>` continuation = 8 low bytes).
+ 	s32 wireNum;
+ 	s32 actorNum;
+-	s32 val;
++	s32 val = 0;
+ 	JDrama::TViewObj::load(stream);
+ 	stream.readString();
+ 	stream >> unk14 >> unk20;

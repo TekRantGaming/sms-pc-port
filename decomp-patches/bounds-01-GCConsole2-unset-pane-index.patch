@@ -1,0 +1,21 @@
+Reason: TGCConsole2 starts unk330, the index of the highlighted unk334 pane, at 0x17, two past the 22-entry array, so drawWaterBack and the selection code call isVisible() and hide() on unk334[23], which is unk390, a TBoundPane. On the console that reads and clears byte 0xC of it, the most significant byte of the big-endian unk4.x2 (0 for a screen coordinate), so nothing happens; on the little-endian host byte 0xC is the least significant byte, which is nonzero (60 in the plaza run), and hide() zeroes it. Skip the access while the index is out of range.
+--- a/src/GC2D/GCConsole2.cpp
++++ b/src/GC2D/GCConsole2.cpp
+@@ -2030,7 +2030,7 @@
+ 		GXTexCoord2f32(0.0f, 1.0f);
+ 	}
+ 
+-	if (unk334[unk330]->isVisible())
++	if (unk330 < 22 && unk334[unk330]->isVisible())
+ 		unk334[unk330]->hide();
+ }
+ 
+@@ -3451,7 +3451,7 @@
+ 
+ 	graph.setup2D();
+ 
+-	if (unk330 != selected - 1)
++	if (unk330 != selected - 1 && unk330 < 22)
+ 		unk334[unk330]->hide();
+ 
+ 	if (selected < 0x17) {

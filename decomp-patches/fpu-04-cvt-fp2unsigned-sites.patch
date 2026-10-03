@@ -1,0 +1,334 @@
+Reason: MWCC converts a float or double to a 32-bit unsigned integer with the runtime's __cvt_fp2unsigned (runtime.c), which gives 0 for a negative value or NaN and 0xFFFFFFFF from 2^32 up; the host wraps a negative value and, from 2^31 up, gives a result that differs between the 32 and 64-bit builds. These are the rest of the DOL's 70 calls (fpu-02..03 have the first 13): hx_wiper's frame-buffer rows, bound timers, test wipes and ring step, the console timer, the sound fades of TSelectDir and TMovieDirector, TMarioGamePad's button repeat, CLBLinearInbetween<u32>, JGadget::TVector's growth, J3DDrawBuffer's z-sort bucket, JAudio's frame-SE priorities, distance waits, random values and pitch spread, the oscillator's table index, JPA's repeating colour-animation frame, and the fog mantissa of J3DGDSetFog and FifoSetFog. Each converts with port_cvt_fp2unsigned (port_cvt_fp<T> in the CLBLinearInbetween template). JGeometry::TUtil<f32>::mod's u64 quotient goes through the runtime's __cvt_dbl_usll, which truncates towards zero and saturates by sign from 2^63; it converts with port_cvt_dbl_usll.
+--- a/src/GC2D/hx_wiper.c
++++ b/src/GC2D/hx_wiper.c
+@@ -829,7 +829,7 @@
+ 
+ 	if (x < (f32)(hx.width >> 2)) {
+ 		for (y = 0.0f; y < hx.height; y += 16.0f) {
+-			Hx_GetFrBuffer(fbuf2, 0, y, 0xA0, 0x10);
++			Hx_GetFrBuffer(fbuf2, 0, port_cvt_fp2unsigned(y), 0xA0, 0x10);
+ 			GXInvalidateTexAll();
+ 			GXLoadTexObj(&obj, GX_TEXMAP0);
+ 
+@@ -876,7 +876,7 @@
+ 
+ 	if (x < (f32)(hx.width >> 2)) {
+ 		for (y = 0.0f; y < hx.height; y += 16.0f) {
+-			Hx_GetFrBuffer(fbuf2, left, y, 0xA0, 0x10);
++			Hx_GetFrBuffer(fbuf2, left, port_cvt_fp2unsigned(y), 0xA0, 0x10);
+ 			GXInvalidateTexAll();
+ 			GXLoadTexObj(&obj, GX_TEXMAP0);
+ 
+@@ -1099,7 +1099,7 @@
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			bounddelta = boundtable[0];
+-			boundtimer = boundtable[1];
++			boundtimer = port_cvt_fp2unsigned(boundtable[1]);
+ 			boundstate = 2;
+ 		}
+ 		mag -= 0.1f;
+@@ -1111,7 +1111,7 @@
+ 
+ 		if (boundtimer == 0) {
+ 			bounddelta = boundtable[boundstate++];
+-			boundtimer = boundtable[boundstate++];
++			boundtimer = port_cvt_fp2unsigned(boundtable[boundstate++]);
+ 			if (boundtimer == 0) {
+ 				hx.step++;
+ 				hx.timer = 0x20;
+@@ -1661,9 +1661,9 @@
+ 	Hx_GxInit(0, 1);
+ 	GXSetLineWidth(7, GX_TO_ZERO);
+ 	rr = r * r;
+-	GXBegin(GX_LINES, GX_VTXFMT0, ((u32)r * 2) + 2);
++	GXBegin(GX_LINES, GX_VTXFMT0, (port_cvt_fp2unsigned(r) * 2) + 2);
+ 
+-	for (i = 0; i <= (u32)r; i++) {
++	for (i = 0; i <= port_cvt_fp2unsigned(r); i++) {
+ 		p[0].z = 1.0f;
+ 		p[1].z = 1.0f;
+ 		d.x = sqrtf(rr - (f32)(i * i));
+@@ -1708,7 +1708,7 @@
+ 
+ 	case 1:
+ 		r = Hx_MotionUpdate(&hx.motion);
+-		Hxs1_Test2(r, 1, hx.width + 200, 300.0f, 900.0f, 650.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 1, hx.width + 200, 300.0f, 900.0f, 650.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.timer = 11;
+@@ -1719,7 +1719,7 @@
+ 	case 2:
+ 		Hxs1_Test2(600, 0, hx.width + 200, 300.0f, 900.0f, 650.0f);
+ 		r = Hx_MotionUpdate(&hx.motion);
+-		Hxs1_Test2(r, 0, hx.width + 200, 150.0f, 700.0f, 450.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 0, hx.width + 200, 150.0f, 700.0f, 450.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.timer = 10;
+@@ -1731,7 +1731,7 @@
+ 		Hxs1_Test2(600, 0, hx.width + 200, 300.0f, 900.0f, 650.0f);
+ 		Hxs1_Test2(600, 0, hx.width + 200, 150.0f, 700.0f, 450.0f);
+ 		r = Hx_MotionUpdate(&hx.motion);
+-		Hxs1_Test2(r, 1, hx.width + 250, 370.0f, 650.0f, 400.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 1, hx.width + 250, 370.0f, 650.0f, 400.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.timer = 12;
+@@ -1744,7 +1744,7 @@
+ 		Hxs1_Test2(600, 0, hx.width + 200, 150.0f, 700.0f, 450.0f);
+ 		Hxs1_Test2(600, 1, hx.width + 250, 370.0f, 650.0f, 400.0f);
+ 		r = Hx_MotionUpdate(&hx.motion);
+-		Hxs1_Test2(r, 0, hx.width + 250, 300.0f, 420.0f, 200.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 0, hx.width + 250, 300.0f, 420.0f, 200.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.state = 3;
+@@ -1776,7 +1776,7 @@
+ 		Hxs1_Test2(600, 0, hx.width + 250, 300.0f, 420.0f, 200.0f);
+ 		r = Hx_MotionUpdate(&hx.motion);
+ 		r = 500.0f - r;
+-		Hxs1_Test2(r, 0, hx.width + 200, 300.0f, 900.0f, 650.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 0, hx.width + 200, 300.0f, 900.0f, 650.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.timer = 11;
+@@ -1789,7 +1789,7 @@
+ 		Hxs1_Test2(600, 0, hx.width + 250, 300.0f, 420.0f, 200.0f);
+ 		r = Hx_MotionUpdate(&hx.motion);
+ 		r = 500.0f - r;
+-		Hxs1_Test2(r, 1, hx.width + 200, 150.0f, 700.0f, 450.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 1, hx.width + 200, 150.0f, 700.0f, 450.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.timer = 10;
+@@ -1801,7 +1801,7 @@
+ 		Hxs1_Test2(600, 0, hx.width + 250, 300.0f, 420.0f, 200.0f);
+ 		r = Hx_MotionUpdate(&hx.motion);
+ 		r = 500.0f - r;
+-		Hxs1_Test2(r, 0, hx.width + 250, 370.0f, 650.0f, 400.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 0, hx.width + 250, 370.0f, 650.0f, 400.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.timer = 12;
+@@ -1812,7 +1812,7 @@
+ 	case 4:
+ 		r = Hx_MotionUpdate(&hx.motion);
+ 		r = 500.0f - r;
+-		Hxs1_Test2(r, 1, hx.width + 250, 300.0f, 420.0f, 200.0f);
++		Hxs1_Test2(port_cvt_fp2unsigned(r), 1, hx.width + 250, 300.0f, 420.0f, 200.0f);
+ 		if (Hx_TimerCountDown() == 0) {
+ 			hx.step++;
+ 			hx.state = 3;
+@@ -1937,7 +1937,7 @@
+ 		/* fall through */
+ 
+ 	case 1:
+-		rstep += rstep_d;
++		rstep = port_cvt_fp2unsigned(rstep + rstep_d);
+ 		thin += thin_d;
+ 
+ 		r  = Hx_HalfWidth() + 200;
+--- a/src/GC2D/GCConsole2.cpp
++++ b/src/GC2D/GCConsole2.cpp
+@@ -2433,7 +2433,7 @@
+ 		s64 uVar9 = OSTicksToMilliseconds(uVar3);
+ 		s64 uVar8 = OSTicksToMilliseconds(uVar5);
+ 
+-		timerValue = (uVar8 - uVar9) * 0.1f;
++		timerValue = port_cvt_fp2unsigned((uVar8 - uVar9) * 0.1f);
+ 
+ 		if (!unk510) {
+ 			if (unk514 < timerValue) {
+--- a/src/GC2D/SelectDir.cpp
++++ b/src/GC2D/SelectDir.cpp
+@@ -314,7 +314,7 @@
+ 			SMSGetApplication()->getFader()->startWipe(0xf, 1.0f, 0.0f);
+ 			SMSGetApplication()->getFader()->setColor(
+ 			    JUtility::TColor(0xff, 0xff, 0xff, 0xff));
+-			SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec());
++			SMSGetMSound()->fadeOutAllSound(port_cvt_fp2unsigned(SMSGetVSyncTimesPerSec()));
+ 		}
+ 		break;
+ 	}
+@@ -322,7 +322,7 @@
+ 	if (unk18->isSomethingPushed() && !unk4C) {
+ 		unk4C = true;
+ 		SMSGetApplication()->getFader()->startWipe(4, 1.0f, 0.0f);
+-		SMSGetMSound()->fadeOutAllSound(SMSGetVSyncTimesPerSec() * 0.4f);
++		SMSGetMSound()->fadeOutAllSound(port_cvt_fp2unsigned(SMSGetVSyncTimesPerSec() * 0.4f));
+ 		unk10->unkC.on(CUE_MOVE | CUE_CALC_ANIM);
+ 	}
+ 
+--- a/src/System/MarioGamePad.cpp
++++ b/src/System/MarioGamePad.cpp
+@@ -11,8 +11,8 @@
+ 
+ void TMarioGamePad::reset()
+ {
+-	setButtonRepeat(0xf00000f, 20.0f / SMSGetAnmFrameRate(),
+-	                6.0f / SMSGetAnmFrameRate());
++	setButtonRepeat(0xf00000f, port_cvt_fp2unsigned(20.0f / SMSGetAnmFrameRate()),
++	                port_cvt_fp2unsigned(6.0f / SMSGetAnmFrameRate()));
+ 	_E4             = 0;
+ 	mDisabledFrames = 0;
+ }
+--- a/src/System/MovieDirector.cpp
++++ b/src/System/MovieDirector.cpp
+@@ -559,7 +559,7 @@
+ 
+ 			if (gpApplication.getMovie() == 9) {
+ 				MSound* sound = gpMSound;
+-				sound->fadeOutAllSound(SMSGetVSyncTimesPerSec());
++				sound->fadeOutAllSound(port_cvt_fp2unsigned(SMSGetVSyncTimesPerSec()));
+ 			}
+ 			THPPlayerSetVolume(0, 1000);
+ 			break;
+--- a/include/Camera/cameralib.hpp
++++ b/include/Camera/cameralib.hpp
+@@ -92,7 +92,7 @@
+ 
+ template <class T> T CLBLinearInbetween(T a, T b, f32 f)
+ {
+-	return (T)(a + f * (b - a));
++	return port_cvt_fp<T>(a + f * (b - a));
+ }
+ 
+ template <class T> T CLBPalFrame(T param_1)
+--- a/libs/JSystem/include/JSystem/JGeometry/JGUtil.hpp
++++ b/libs/JSystem/include/JSystem/JGeometry/JGUtil.hpp
+@@ -36,7 +36,7 @@
+ 	{
+ 		if (fabsf(modulus) > fabsf(value))
+ 			return value;
+-		u64 quotient = (u64)(value / modulus);
++		u64 quotient = port_cvt_dbl_usll(value / modulus);
+ 		return value - modulus * (f32)(s64)quotient;
+ 	}
+ 
+--- a/libs/JSystem/include/JSystem/JGadget/std-vector.hpp
++++ b/libs/JSystem/include/JSystem/JGadget/std-vector.hpp
+@@ -26,7 +26,7 @@
+ 	{
+ 		size_t sz     = size();
+ 		size_t newSz  = sz + count;
+-		size_t newCap = (size_t)(sz * mGrowthMul) + mGrowthAdd;
++		size_t newCap = (size_t)port_cvt_fp2unsigned(sz * mGrowthMul) + mGrowthAdd;
+ 		return newSz > newCap ? newSz : newCap;
+ 	}
+ 
+--- a/libs/JSystem/src/J3D/J3DGraphBase/J3DDrawBuffer.cpp
++++ b/libs/JSystem/src/J3D/J3DGraphBase/J3DDrawBuffer.cpp
+@@ -137,7 +137,7 @@
+ 	u32 idx;
+ 	if (mZNear + mZRatio < value) {
+ 		if (mZFar - mZRatio > value) {
+-			idx = value / mZRatio;
++			idx = port_cvt_fp2unsigned(value / mZRatio);
+ 		} else {
+ 			idx = mSize - 1;
+ 		}
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIGFrameSe.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIGFrameSe.cpp
+@@ -122,11 +122,11 @@
+ 					}
+ 
+ 					it->mPriority
+-					    = (u32)((0xff - prio) * (0xff - prio) * 0x1690 / fVar1)
+-					      + (u32)(pi->unk18 / fVar1);
++					    = port_cvt_fp2unsigned((0xff - prio) * (0xff - prio) * 0x1690 / fVar1)
++					      + port_cvt_fp2unsigned(pi->unk18 / fVar1);
+ 					if (pi->mCamSpacePos.z > 0.0f)
+ 						it->mPriority
+-						    += (u32)(pi->mCamSpacePos.z * 6.0f / fVar1);
++						    += port_cvt_fp2unsigned(pi->mCamSpacePos.z * 6.0f / fVar1);
+ 
+ 					if (cam == 0 || pi->unk18 < fVar2)
+ 						fVar2 = pi->unk18;
+@@ -362,8 +362,8 @@
+ 					if (sound->unk1C[0].unk18
+ 					    < JAIGlobalParameter::distanceMax) {
+ 						distArg = JAIGlobalParameter::seDistanceWaitMax
+-						          * (u32)sound->unk1C[0].unk18
+-						          / (u32)JAIGlobalParameter::distanceMax;
++						          * port_cvt_fp2unsigned(sound->unk1C[0].unk18)
++						          / port_cvt_fp2unsigned(JAIGlobalParameter::distanceMax);
+ 					} else {
+ 						distArg = JAIGlobalParameter::seDistanceWaitMax;
+ 					}
+--- a/libs/JSystem/src/JAudio/JAInterface/JAISound.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAISound.cpp
+@@ -548,7 +548,7 @@
+ 
+ static inline u32 rand_u32()
+ {
+-	return JAIConst::random.get_ufloat_1() * 4294967300.0f;
++	return port_cvt_fp2unsigned(JAIConst::random.get_ufloat_1() * 4294967300.0f);
+ }
+ 
+ void JAISound::setSeInterRandomPara(f32* target, u32 random, f32 min, f32 max)
+@@ -649,7 +649,7 @@
+ 	JAIMoveParaSet* set = &getSeParameter()->mPitch[param_1];
+ 	set->mTargetValue   = param_2;
+ 	if (param_4 != 0) {
+-		u32 uVar5 = (param_4 * 1000);
++		u32 uVar5 = port_cvt_fp2unsigned(param_4 * 1000);
+ 		setSeInterRandomPara(&set->mTargetValue, uVar5, 0.1f, 16.0f);
+ 	}
+ 
+--- a/libs/JSystem/src/JAudio/JASystem/JASOscillator.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASOscillator.cpp
+@@ -251,7 +251,7 @@
+ 			else
+ 				fIdx = 16.0f * (mReleaseRate / mInitialReleaseRate);
+ 
+-			u32 idx  = fIdx;
++			u32 idx  = port_cvt_fp2unsigned(fIdx);
+ 			f32 prop = fIdx - (f32)idx;
+ 			if (idx >= 16) {
+ 				idx  = 15;
+--- a/libs/JSystem/src/JParticle/JPADrawVisitor.cpp
++++ b/libs/JSystem/src/JParticle/JPADrawVisitor.cpp
+@@ -1473,7 +1473,7 @@
+ {
+ 	f32 tick = dc->mBaseEmitter->getFrame();
+ 	dc->pcb->mColorAnmFrame
+-	    = ((u32)tick) % (dc->mBaseShape->getColorRegAnmMaxFrm() + 1);
++	    = port_cvt_fp2unsigned(tick) % (dc->mBaseShape->getColorRegAnmMaxFrm() + 1);
+ }
+ 
+ void JPADrawCalcColorAnmFrameReverse::calc(const JPADrawContext* dc)
+--- a/libs/JSystem/src/JRenderer.cpp
++++ b/libs/JSystem/src/JRenderer.cpp
+@@ -223,7 +223,7 @@
+ 	}
+ 
+ 	A_f = A / (1 << b_expn);
+-	b_m = (u32)(8388638.0f * B_mant);
++	b_m = port_cvt_fp2unsigned(8388638.0f * B_mant);
+ 
+ 	a_hex = *(u32*)&A_f;
+ 	c_hex = *(u32*)&C;
+--- a/src/MSound/MSoundStruct.cpp
++++ b/src/MSound/MSoundStruct.cpp
+@@ -177,7 +177,7 @@
+                                         MSSetSoundGrp* grp)
+ {
+ 	u32 bVar1 = tl->unk1D.get();
+-	u32 uVar5 = JALCalc::getRandom_0_1() * tl->unk1E.unk0;
++	u32 uVar5 = port_cvt_fp2unsigned(JALCalc::getRandom_0_1() * tl->unk1E.unk0);
+ 	bVar1 += uVar5;
+ 	u32 uVar7 = tl->unk5C[tl->unk5A]->getPlayGameFrameCounter();
+ 	if (uVar7 < bVar1)
+--- a/src/MarioUtil/PacketUtil.cpp
++++ b/src/MarioUtil/PacketUtil.cpp
+@@ -200,7 +200,7 @@
+ 	GXWGFifo.u32 = fog0;
+ 
+ 	GXWGFifo.u8  = 0x61;
+-	GXWGFifo.u32 = (u32)(8.388638e6f * B_mant) | 0xEF000000;
++	GXWGFifo.u32 = port_cvt_fp2unsigned(8.388638e6f * B_mant) | 0xEF000000;
+ 
+ 	GXWGFifo.u8  = 0x61;
+ 	GXWGFifo.u32 = B_expn | 0xF0000000;

@@ -27,7 +27,7 @@ Needed after moving to another SHI, BetterSunshineEngine, Moveset or Eclipse rev
 
 ```
 cmake -S . -B build-ecl -DSMS_ECLIPSE=ON ...   # fetches the sources to build-ecl/eclipse-src
-cmake --build build && cmake --build build-64  # the plain 32- and 64-bit builds (their debug info gives the port's layouts)
+./build.sh && SMS_ARCH=64 ./build.sh           # build/linux-32 and build/linux-64: the plain builds (their debug info gives the port's layouts)
 tools/mods/shi_layout/regen.sh /tmp/shi-layout-work
 ```
 

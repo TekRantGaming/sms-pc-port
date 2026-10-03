@@ -1,4 +1,4 @@
-/* Force-included before the decompiled GD sources (decomp/src/dolphin/gd).
+/* Force-included before the decompiled GD sources (decomp/libs/dolphin/src/gd).
  * GD only writes command bytes into memory, so it runs unchanged on the host
  * once the two PowerPC-isms it touches are mapped: the cached->physical
  * address conversion (onto sms_gx's physical-address window) and __cntlzw. */

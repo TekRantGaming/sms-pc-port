@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 bdir = os.path.join(root, os.environ.get('SMS_BUILD', 'build/linux-' + os.environ.get('SMS_ARCH', '32')))
 cc = json.load(open(os.path.join(bdir, 'compile_commands.json')))
-cc = [e for e in cc if '/decomp/src/' in e['file'] or '/patched/src/' in e['file']]
+cc = [e for e in cc if re.search(r'/(decomp|patched)/(src|libs/[^/]+/src)/', e['file'])]
 if len(sys.argv) > 1:
     cc = [e for e in cc if any(a in e['file'] for a in sys.argv[1:])]
 def run(e):

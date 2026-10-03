@@ -103,6 +103,20 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/eclipse/ra
   PROPERTIES COMPILE_OPTIONS "-std=gnu++11;-fno-access-control")
 
 add_dependencies(sms sms_eclipse_build)
+# After each link, check that the game and the mods agree on the widths and
+# signedness of the integer and float results and arguments where they call
+# each other: by name, through game virtual functions, and at the patch
+# targets (tools/mods/abi_check.py, from the binary's debug info: about half
+# a minute). A failed check is redone on the next build.
+option(SMS_ECLIPSE_ABI_CHECK "Check the mods' result and argument types against the game's after linking" ON)
+if(SMS_ECLIPSE_ABI_CHECK)
+  add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/sms_abi_check.stamp
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py $<TARGET_FILE:sms> ${_eclipse_lib}
+    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/sms_abi_check.stamp
+    DEPENDS sms ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py
+    COMMENT "Checking the mods' result and argument types against the game's" VERBATIM)
+  add_custom_target(sms_abi_check ALL DEPENDS ${CMAKE_BINARY_DIR}/sms_abi_check.stamp)
+endif()
 target_compile_definitions(sms PRIVATE SMS_ECLIPSE=1)
 target_link_libraries(sms PRIVATE -Wl,--whole-archive ${_eclipse_lib} -Wl,--no-whole-archive)
 set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_eclipse_lib})
@@ -113,10 +127,15 @@ target_link_options(sms PRIVATE
   -Wl,--defsym=gStageBGM=_ZN10MSMainProc11MSStageInfo8stageBgmE
   -Wl,--defsym=gAudioVolume=_ZN5MSBgm12smMainVolumeE
   -Wl,--defsym=waterColor=gModelWaterManagerWaterColor)
+# TMarDirector::fireStartDemoCamera's callback argument (and the callback's
+# first parameter) is uintptr_t in the decomp and u32 in the mods' headers;
+# the mods pass their own callbacks and 0 through it, and the game only hands
+# the argument back to the callback.
 if(SMS_ARCH STREQUAL "32")
   target_link_options(sms PRIVATE
     -Wl,--defsym=_ZN7JKRHeap5allocEjiPS_=_ZN7JKRHeap5allocEmiPS_
-    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag)
+    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag
+    -Wl,--defsym=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFlmmEmPN6JDrama6TActorENS9_6TFlagTItEE=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFljmEjPN6JDrama6TActorENS9_6TFlagTItEE)
 else()
   # On LP64 hosts it is the other way round: the game's u32 is unsigned int,
   # and these declarations (size_t, unsigned long) say unsigned long.
@@ -126,6 +145,7 @@ else()
     -Wl,--defsym=_ZN6JStage6TActor11JSGSetShapeEm=_ZN6JStage6TActor11JSGSetShapeEj
     -Wl,--defsym=_ZN6JStage6TActor15JSGSetAnimationEm=_ZN6JStage6TActor15JSGSetAnimationEj
     -Wl,--defsym=_ZN6JStage7TSystem16JSGGetSystemDataEm=_ZN6JStage7TSystem16JSGGetSystemDataEj
-    -Wl,--defsym=_ZN6JStage7TSystem16JSGSetSystemDataEmm=_ZN6JStage7TSystem16JSGSetSystemDataEjj)
+    -Wl,--defsym=_ZN6JStage7TSystem16JSGSetSystemDataEmm=_ZN6JStage7TSystem16JSGSetSystemDataEjj
+    -Wl,--defsym=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFijjEjPN6JDrama6TActorENS9_6TFlagTItEE=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFimjEmPN6JDrama6TActorENS9_6TFlagTItEE)
 endif()
 message(STATUS "SMS port: Super Mario Eclipse built in (sources in ${SMS_ECLIPSE_SRC_DIR})")

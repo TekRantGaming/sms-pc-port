@@ -28,7 +28,7 @@ Reason: port: code-mod hooks (sms_modhook.h): TMario::startVoiceIfNoVoice voices
 +			u8 sms_mod_status_ = getVoiceStatus();
 +			SMS_MOD_GPR(29, this);
 +			return ((u32 (*)(MSound*, u32, s16, u8))sms_mod_t_)(
-+			    MarioSoundGetMSound(), param_1, mHealth, sms_mod_status_);
++			    SMSGetMSoundBound(), param_1, mHealth, sms_mod_status_);
 +		}
 +#endif
  		return startVoice(param_1);

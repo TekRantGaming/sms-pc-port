@@ -98,6 +98,16 @@ void rawfn_missing(const char* sym)
 }
 } // namespace
 
+extern "C" float sms_rawfn_CLBEaseOutInbetween_f(double p0, double p1, double p2)
+{
+	return (float)(CLBEaseOutInbetween<float>((float)p0, (float)p1, (float)p2));
+}
+
+extern "C" float sms_rawfn_CLBLinearInbetween_f(double p0, double p1, double p2)
+{
+	return (float)(CLBLinearInbetween<float>((float)p0, (float)p1, (float)p2));
+}
+
 extern "C" intptr_t sms_rawfn_CLBPalFrame_l(s32 p0)
 {
 	return rawfn_int([&]() -> decltype(CLBPalFrame<s32>(p0)) { return CLBPalFrame<s32>(p0); });
@@ -250,7 +260,7 @@ extern "C" intptr_t sms_rawfn_fill_rect__9()
 
 extern "C" float sms_rawfn_fmodf__3stdFff(double p0, double p1)
 {
-	return (float)(__builtin_fmodf((float)p0, (float)p1));
+	return (float)(std::fmodf((float)p0, (float)p1));
 }
 
 extern "C" intptr_t sms_rawfn_generate__16TEffectExplosionFRQ29JGeometry8TVec3_f(void* self, JGeometry::TVec3<float>* p0, JGeometry::TVec3<float>* p1)

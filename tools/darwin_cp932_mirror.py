@@ -76,16 +76,26 @@ def main() -> int:
     patched_root: Path = args.patched
     decomp: Path = args.decomp
 
-    roots = [decomp / "include", decomp / "src"]
-    libs = decomp / "libs"
-    if libs.is_dir():
-        for library in sorted(libs.iterdir()):
-            roots.extend([library / "include", library / "src"])
-    for source_root in roots:
-        for path in source_root.rglob("*"):
+    # The game's include/ and src/, and each library's libs/<name>/include
+    # and libs/<name>/src, each mirrored at its own path.
+    libs = sorted(p for p in (decomp / "libs").iterdir() if p.is_dir()) if (decomp / "libs").is_dir() else []
+    include_roots = [Path("include")] + [p.relative_to(decomp) / "include" for p in libs]
+    src_roots = [Path("src")] + [p.relative_to(decomp) / "src" for p in libs]
+
+    for sub in include_roots:
+        for path in (decomp / sub).rglob("*"):
             if not path.is_file():
                 continue
-            if source_root.name == "src" and path.suffix.lower() not in {".c", ".cpp", ".cc", ".h", ".hpp"}:
+            rel = path.relative_to(decomp)
+            patched = patched_root / rel
+            src = patched if patched.is_file() else path
+            mirror(src, out / rel)
+
+    for sub in src_roots:
+        for path in (decomp / sub).rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".c", ".cpp", ".cc", ".h", ".hpp"}:
                 continue
             rel = path.relative_to(decomp)
             patched = patched_root / rel

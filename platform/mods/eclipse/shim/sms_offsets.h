@@ -28,8 +28,8 @@ inline constexpr sms_offset_entry sms_offset_table[] = {
     {"MActorAnmBck", 0x24, 0x24, 0x38},  // MActorAnmEach<J3DAnmTransformKey>.unk24
     {"MSBgm", 0x14, 0x14, 0x28},  // unk14
     {"MSound", 0x8c, 0x8c, 0xe8},  // JAIBasic.unk8C.[0]
-    {"MSound", 0x94, 0x94, 0xf8},  // JAIBasic.unk94
-    {"MSound", 0x98, 0x98, 0xfc},  // mWaterFilterOverride
+    {"MSound", 0x94, 0x94, 0xf8},  // unk94
+    {"MSound", 0x98, 0x98, 0xfc},  // mWaterFirEnabled
     {"MSound", 0x9c, 0x9c, 0x100},  // unk98
     {"MSound", 0xb0, 0xb0, 0x120},  // unkAC.[0]
     {"MSound", 0xbc, 0xbc, 0x138},  // unkAC.[1]

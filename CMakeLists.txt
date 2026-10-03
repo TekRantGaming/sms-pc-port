@@ -4,18 +4,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SMS_DECOMP ${CMAKE_CURRENT_SOURCE_DIR}/decomp)
 set(SMS_PORT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set(SMS_MIDDLEWARE_LIBS JSystem dolphin THPPlayer PowerPC_EABI_Support TRK_MINNOW_DOLPHIN OdemuExi2)
-set(SMS_DECOMP_INCLUDE_DIRS ${SMS_DECOMP}/include)
-foreach(lib ${SMS_MIDDLEWARE_LIBS})
-  if(EXISTS ${SMS_DECOMP}/libs/${lib}/include)
-    list(APPEND SMS_DECOMP_INCLUDE_DIRS ${SMS_DECOMP}/libs/${lib}/include)
-  endif()
+# The decomp's header roots, in configure.py's order: the game's include/,
+# then each library's libs/<name>/include. (MSL's C and C++ headers,
+# libs/PowerPC_EABI_Support/.../MSL_Common, are not used: the port builds
+# against the host C and C++ libraries.)
+set(SMS_DECOMP_INCLUDE_SUBDIRS include
+  libs/dolphin/include libs/JSystem/include libs/THPPlayer/include
+  libs/PowerPC_EABI_Support/include libs/TRK_MINNOW_DOLPHIN/include
+  libs/OdemuExi2/include)
+set(SMS_DECOMP_INCLUDE_DIRS "")
+foreach(d ${SMS_DECOMP_INCLUDE_SUBDIRS})
+  list(APPEND SMS_DECOMP_INCLUDE_DIRS ${SMS_DECOMP}/${d})
 endforeach()
-if(EXISTS ${SMS_DECOMP}/libs/dolphin/src)
-  set(SMS_DOLPHIN_SRC_DIR ${SMS_DECOMP}/libs/dolphin/src)
-else()
-  set(SMS_DOLPHIN_SRC_DIR ${SMS_DECOMP}/src/dolphin)
-endif()
 
 # Default: optimised with debug info. -DNDEBUG is left to the decomp's own
 # NDEBUG=1 definition, so the stock RelWithDebInfo flags are replaced.
@@ -122,8 +122,8 @@ if(APPLE)
   endif()
 endif()
 
-set(SMS_GAME_INCLUDE_DIR ${SMS_DECOMP}/include)
-set(_sms_game_header_root ${SMS_DECOMP})
+set(SMS_GAME_INCLUDE_DIRS ${SMS_DECOMP_INCLUDE_DIRS})
+set(SMS_GAME_PCH_DIR ${SMS_DECOMP}/include)
 if(NOT SMS_HAVE_CP932)
   set(SMS_CP932_ROOT ${CMAKE_BINARY_DIR}/cp932)
   execute_process(
@@ -135,8 +135,11 @@ if(NOT SMS_HAVE_CP932)
   if(NOT _cp932_rc EQUAL 0)
     message(FATAL_ERROR "tools/darwin_cp932_mirror.py failed")
   endif()
-  set(SMS_GAME_INCLUDE_DIR ${SMS_CP932_ROOT}/include)
-  set(_sms_game_header_root ${SMS_CP932_ROOT})
+  set(SMS_GAME_INCLUDE_DIRS "")
+  foreach(d ${SMS_DECOMP_INCLUDE_SUBDIRS})
+    list(APPEND SMS_GAME_INCLUDE_DIRS ${SMS_CP932_ROOT}/${d})
+  endforeach()
+  set(SMS_GAME_PCH_DIR ${SMS_CP932_ROOT}/include)
   list(APPEND SMS_GAME_FLAGS -Wno-invalid-source-encoding)
   foreach(lst SMS_DECOMP_CXX_SOURCES SMS_DECOMP_C_SOURCES SMS_DECOMP_PCH_SOURCES)
     set(_retargeted "")
@@ -155,18 +158,12 @@ if(NOT SMS_HAVE_CP932)
   endforeach()
   message(STATUS "SMS port: compiling game sources from CP932 mirror")
 endif()
-set(SMS_GAME_INCLUDE_DIRS ${SMS_GAME_INCLUDE_DIR})
-foreach(lib ${SMS_MIDDLEWARE_LIBS})
-  if(EXISTS ${SMS_DECOMP}/libs/${lib}/include)
-    list(APPEND SMS_GAME_INCLUDE_DIRS ${_sms_game_header_root}/libs/${lib}/include)
-  endif()
-endforeach()
 
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} PROPERTIES LANGUAGE CXX)
 set_source_files_properties(${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES} PROPERTIES
   OBJECT_DEPENDS ${SMS_PATCH_HEADER_STAMP})
-if(EXISTS "${SMS_GAME_INCLUDE_DIR}/SMS.pch")
-  set(_sms_pch ${SMS_GAME_INCLUDE_DIR}/SMS.pch)
+if(EXISTS "${SMS_GAME_PCH_DIR}/SMS.pch")
+  set(_sms_pch ${SMS_GAME_PCH_DIR}/SMS.pch)
 else()
   set(_sms_pch ${SMS_DECOMP}/include/SMS.pch)
 endif()
@@ -226,7 +223,7 @@ add_library(sms_game STATIC ${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES})
 # Host THP decoders (the decomp's SDK decoder, patched; platform/thp).
 include(${CMAKE_CURRENT_SOURCE_DIR}/platform/thp/thp.cmake)
 # The SDK's PADClamp (dead zone / octagon), built from the decomp as C.
-target_sources(sms_game PRIVATE ${SMS_DOLPHIN_SRC_DIR}/pad/Padclamp.c)
+target_sources(sms_game PRIVATE ${SMS_DECOMP}/libs/dolphin/src/pad/Padclamp.c)
 # port_include must stay ahead of the game headers: its dolphin/types.h
 # overrides the decomp's (LP64 integer widths, weak AT_ADDRESS globals).
 if(DEFINED SMS_CP932_ROOT)
@@ -241,8 +238,7 @@ if(TARGET sms_gx AND SMS_GX_OVERRIDE_INCLUDE_DIR)
   # GXVert.h vertex writers become functions implemented by sms_gx.
   target_include_directories(sms_game BEFORE PRIVATE ${SMS_GX_OVERRIDE_INCLUDE_DIR})
 endif()
-target_compile_definitions(sms_game PRIVATE ${SMS_COMMON_DEFS}
-  $<$<COMPILE_LANGUAGE:CXX>:nullptr=0>)
+target_compile_definitions(sms_game PRIVATE ${SMS_COMMON_DEFS})
 target_compile_options(sms_game PRIVATE ${SMS_GAME_FLAGS})
 
 # The game replaces the global operator new/delete with JKRHeap allocation,
@@ -306,6 +302,30 @@ if(WIN32 OR APPLE)
   list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/trace/trace\\.cpp$")
 endif()
 add_executable(sms ${SMS_PORT_SRC}/port_main.cpp ${SMS_PLATFORM_SOURCES})
+# MSL's maths and the MTX/VEC library round every operation to single or
+# double as the Gekko does: SSE on x86 (never x87 extended precision) and no
+# contraction (their fused multiply-adds are explicit), on every host.
+foreach(gekko_src platform/misc/msl_math.c platform/mtx/mtx.cpp)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/${gekko_src} PROPERTIES
+      COMPILE_OPTIONS "-msse2;-mfpmath=sse;-ffp-contract=off")
+  else()
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/${gekko_src} PROPERTIES
+      COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
+endforeach()
+# The rest of the platform layer, the graphics layer (sms_gx) included, does
+# its float maths in SSE on x86 as well: the 32-bit build would otherwise
+# evaluate it in x87 extended precision, and its results would differ in the
+# last bit from the 64-bit build's (GXInitSpecularDir's half-angle vector
+# moved a specular highlight by one level; docs/64-BIT.md, item 17). These
+# are the x86-64 compiler's defaults, so the 64-bit build does not change.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i.86)$" OR CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+  target_compile_options(sms PRIVATE -msse2 -mfpmath=sse)
+  if(TARGET sms_gx)
+    target_compile_options(sms_gx PRIVATE -msse2 -mfpmath=sse)
+  endif()
+endif()
 if(APPLE AND SMS_SDL2_FRAMEWORK_DIR)
   # @rpath/SDL2.framework: beside the executable (build.sh copies it
   # there) or in SMS.app/Contents/Frameworks. No absolute path, so a copy

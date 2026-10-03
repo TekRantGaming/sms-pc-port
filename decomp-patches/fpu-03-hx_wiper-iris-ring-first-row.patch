@@ -1,0 +1,12 @@
+Reason: Hxs2_Circle starts its rows at the u32 hx.centerY - r_out, a float. MWCC converts it with the runtime's __cvt_fp2unsigned, which gives 0 once the ring's outer radius passes the screen centre, so the ring is drawn from the top row; the host conversion wraps it (-20 gives 0xFFFFFFEC), the loop condition fails at once and the translucent ring of the iris wipe was not drawn at all. Convert with port_cvt_fp2unsigned, the runtime's rule.
+--- a/src/GC2D/hx_wiper.c
++++ b/src/GC2D/hx_wiper.c
+@@ -774,7 +774,7 @@
+ 	color = alpha;
+ 	ro2 = r_out * r_out;
+ 
+-	for (y = hx.centerY - r_out; y <= hx.centerY; y++) {
++	for (y = port_cvt_fp2unsigned(hx.centerY - r_out); y <= hx.centerY; y++) {
+ 		f32 dy = hx.centerY - y;
+ 
+ 		d0 = sqrtf(ro2 - dy * dy);

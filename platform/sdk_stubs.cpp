@@ -209,11 +209,11 @@ SDK_WEAK void GXDrawCube(void) { SDK_STUB(GXDrawCube); }
 SDK_WEAK void GXInitTexCacheRegion(GXTexRegion* region, u8 is_32b_mipmap, u32 tmem_even, GXTexCacheSize size_even, u32 tmem_odd, GXTexCacheSize size_odd) { SDK_STUB(GXInitTexCacheRegion); }
 SDK_WEAK void GXSetTevIndWarp(GXTevStageID tev_stage, GXIndTexStageID ind_stage, u8 signed_offset, u8 replace_mode, GXIndTexMtxID matrix_sel) { SDK_STUB(GXSetTevIndWarp); }
 SDK_WEAK void GXSetTevIndirect(GXTevStageID tev_stage, GXIndTexStageID ind_stage, GXIndTexFormat format, GXIndTexBiasSel bias_sel, GXIndTexMtxID matrix_sel, GXIndTexWrap wrap_s, GXIndTexWrap wrap_t, GXBool add_prev, GXBool utc_lod, GXIndTexAlphaSel alpha_sel) { SDK_STUB(GXSetTevIndirect); }
-SDK_WEAK long long OSCheckStopwatch(struct OSStopwatch* sw) { SDK_STUB(OSCheckStopwatch); return stub_default<long long >(); }
+SDK_WEAK OSTime OSCheckStopwatch(OSStopwatch* sw) { SDK_STUB(OSCheckStopwatch); return stub_default<OSTime >(); }
 SDK_WEAK void OSSetProgressiveMode(u32 mode) { SDK_STUB(OSSetProgressiveMode); }
 SDK_WEAK void OSSetSoundMode(u32 mode) { SDK_STUB(OSSetSoundMode); }
-SDK_WEAK void OSStartStopwatch(struct OSStopwatch* sw) { SDK_STUB(OSStartStopwatch); }
-SDK_WEAK void OSStopStopwatch(struct OSStopwatch* sw) { SDK_STUB(OSStopStopwatch); }
+SDK_WEAK void OSStartStopwatch(OSStopwatch* sw) { SDK_STUB(OSStartStopwatch); }
+SDK_WEAK void OSStopStopwatch(OSStopwatch* sw) { SDK_STUB(OSStopStopwatch); }
 SDK_WEAK void AIInitDMA(u32 start_addr, u32 length) { SDK_STUB(AIInitDMA); }
 SDK_WEAK void AISetStreamPlayState(u32 state) { SDK_STUB(AISetStreamPlayState); }
 SDK_WEAK s32 CARDGetStatus(s32 chan, s32 fileNo, CARDStat* stat) { SDK_STUB(CARDGetStatus); return stub_default<s32 >(); }
@@ -352,10 +352,10 @@ SDK_WEAK long OSGetThreadPriority(OSThread* thread) { SDK_STUB(OSGetThreadPriori
 SDK_WEAK void* OSInitAlloc(void* arenaStart, void* arenaEnd, int maxHeaps) { SDK_STUB(OSInitAlloc); return stub_default<void* >(); }
 SDK_WEAK void OSInitCond(struct OSCond* cond) { SDK_STUB(OSInitCond); }
 SDK_WEAK BOOL OSInitFont(OSFontHeader* fontData) { SDK_STUB(OSInitFont); return stub_default<BOOL >(); }
-SDK_WEAK void OSInitStopwatch(struct OSStopwatch* sw, char* name) { SDK_STUB(OSInitStopwatch); }
+SDK_WEAK void OSInitStopwatch(OSStopwatch* sw, char* name) { SDK_STUB(OSInitStopwatch); }
 SDK_WEAK void OSInitThreadQueue(OSThreadQueue* queue) { SDK_STUB(OSInitThreadQueue); }
 SDK_WEAK unsigned long OSReferentSize(void* ptr) { SDK_STUB(OSReferentSize); return stub_default<unsigned long >(); }
-SDK_WEAK void OSResetStopwatch(struct OSStopwatch* sw) { SDK_STUB(OSResetStopwatch); }
+SDK_WEAK void OSResetStopwatch(OSStopwatch* sw) { SDK_STUB(OSResetStopwatch); }
 SDK_WEAK void OSResetSystem(int reset, u32 resetCode, BOOL forceMenu) { SDK_STUB(OSResetSystem); }
 SDK_WEAK void OSSetArenaHi(void*) { SDK_STUB(OSSetArenaHi); }
 SDK_WEAK void OSSetArenaLo(void*) { SDK_STUB(OSSetArenaLo); }

@@ -1,0 +1,108 @@
+Reason: Scene data gives some NPCs a body or cloth colour index past the end of its NpcInitData table (Super Mario Eclipse's Yoshi village Yoshis, NPCMonteMA with sMonteM_BodyColor indices 10 and 11 of 10 entries; Pianta indices in other Eclipse stages and Nintendo's test11). SMS_InitChangeNpcColor reads the entry anyway: on the console it is the next bytes of NpcInitData.cpp's .rodata (for index 10 the string "_hand_mat", a green colour once the TEV register keeps its 11 bits), while the host reads whatever its own layout puts there (the 32-bit build another table's white, the 64-bit build zero padding, so the Yoshi was white or black). Give each such entry retail's bytes.
+--- a/src/NPC/NpcColor.cpp
++++ b/src/NPC/NpcColor.cpp
+@@ -54,31 +54,32 @@
+ 	case 0:
+ 		if (param2->unk8 != nullptr) {
+ 			GXColor* matColor = new GXColor();
+-			matColor->r       = param2->unk8[param3].r;
+-			matColor->g       = param2->unk8[param3].g;
+-			matColor->b       = param2->unk8[param3].b;
++			const GXColorS10* entry = SMSPortNpcColorEntry(param2->unk8, param3);
++			matColor->r       = entry->r;
++			matColor->g       = entry->g;
++			matColor->b       = entry->b;
+ 			matColor->a       = 0xff;
+ 			SMS_InitPacket_MatColor(model, matIdx, GX_COLOR0, matColor);
+ 		}
+ 		break;
+ 	case 1:
+ 		if (param2->unk8 != nullptr) {
+-			const GXColorS10* tevColor = &param2->unk8[param3];
++			const GXColorS10* tevColor = SMSPortNpcColorEntry(param2->unk8, param3);
+ 			InitChangeOneColor_Base(model, matIdx, GX_TEVREG0, tevColor,
+ 			                        param4);
+ 		}
+ 		break;
+ 	case 2:
+ 		if (param2->unk8 != nullptr && param2->unkC != nullptr) {
+-			const GXColorS10* tevColor  = &param2->unkC[param3];
+-			const GXColorS10* tevColor2 = &param2->unk8[param3];
++			const GXColorS10* tevColor  = SMSPortNpcColorEntry(param2->unkC, param3);
++			const GXColorS10* tevColor2 = SMSPortNpcColorEntry(param2->unk8, param3);
+ 			InitChangeTwoColor_Base(model, matIdx, tevColor2, tevColor, param4);
+ 		} else if (param2->unk8 != nullptr && param2->unkC == nullptr) {
+-			const GXColorS10* tevColor = &param2->unk8[param3];
++			const GXColorS10* tevColor = SMSPortNpcColorEntry(param2->unk8, param3);
+ 			InitChangeOneColor_Base(model, matIdx, GX_TEVREG1, tevColor,
+ 			                        param4);
+ 		} else if (param2->unk8 == nullptr && param2->unkC != nullptr) {
+-			const GXColorS10* tevColor = &param2->unkC[param3];
++			const GXColorS10* tevColor = SMSPortNpcColorEntry(param2->unkC, param3);
+ 			InitChangeOneColor_Base(model, matIdx, GX_TEVREG2, tevColor,
+ 			                        param4);
+ 		}
+--- a/src/NPC/NpcInitData.cpp
++++ b/src/NPC/NpcInitData.cpp
+@@ -1622,3 +1622,50 @@
+ 	};
+ 	return sAllNpcInitData[idx];
+ }
++
++// Scene data indexes some of the tables above past their ends (a body or
++// cloth colour index the table has no entry for). On the console the entry
++// is the next bytes of this file's .rodata, which the port lays out
++// otherwise (sizes, order, 8-byte pointers, byte order), so each such entry
++// a stage uses is given here with retail's bytes (addresses from
++// marioUS.MAP; .rodata 80395d50). Any other index reads the table as before.
++struct TPortNpcColorOverrun {
++	const GXColorS10* buf;
++	s16 idx;
++	GXColorS10 color;
++};
++
++static const TPortNpcColorOverrun sPortNpcColorOverrun[] = {
++	// sMonteM_BodyColorBuf (803976b0, 10 entries), then @1617 "_hand_mat"
++	// and sMonteM_BodyColor
++	{ sMonteM_BodyColorBuf, 10, { 0x5f68, 0x616e, 0x645f, 0x6d61 } },
++	{ sMonteM_BodyColorBuf, 11, { 0x7400, 0x0000, 0x0000, 0x0001 } },
++	{ sMonteM_BodyColorBuf, 12, { (s16)0x8039, 0x7700, (s16)0x8039, 0x76b0 } },
++	// 80397ea8, in sMonteMH_InitData (test11's first Pianta)
++	{ sMonteM_BodyColorBuf, 255, { (s16)0x8039, 0x6230, (s16)0x8039, 0x5f34 } },
++	// sMonteMA_ClothColorBuf0 (8039771c): the end of sMonteM_BodyColor
++	{ sMonteMA_ClothColorBuf0, -1, { (s16)0x8039, 0x76b0, 0x0000, 0x0000 } },
++	// sMonteMA_ClothColorBuf1 (80397774): the last of sMonteMA_ClothColorBuf0
++	{ sMonteMA_ClothColorBuf1, -1, { 255, 255, 150, 255 } },
++	// sMonteMB_BodyColorBuf (803977e8, 4 entries), then sMonteMB_BodyColor
++	{ sMonteMB_BodyColorBuf, 4, { 0x0000, 0x0001, (s16)0x8039, 0x7700 } },
++	{ sMonteMB_BodyColorBuf, 5, { (s16)0x8039, 0x77e8, 0x0000, 0x0000 } },
++	// sMonteMD_ClothColorBuf (80397918, 5 entries), then sMonteMD_ClothColor
++	{ sMonteMD_ClothColorBuf, 5, { 0x0000, 0x0001, (s16)0x8039, 0x77cc } },
++	// sMonteW_ColorBuf (80397950, 6 entries), then sMonteW_BodyColor and
++	// sMonteWA_ClothColorBuf
++	{ sMonteW_ColorBuf, 6, { 0x0000, 0x0001, (s16)0x8039, 0x7700 } },
++	{ sMonteW_ColorBuf, 7, { (s16)0x8039, 0x7950, 0x0000, 0x0000 } },
++	{ sMonteW_ColorBuf, 8, { 380, 330, 150, 255 } },
++	{ sMonteW_ColorBuf, 9, { 300, 100, 200, 255 } },
++};
++
++const GXColorS10* SMSPortNpcColorEntry(const GXColorS10* buf, s16 idx)
++{
++	for (u32 i = 0; i < sizeof(sPortNpcColorOverrun) / sizeof(sPortNpcColorOverrun[0]); ++i) {
++		const TPortNpcColorOverrun& e = sPortNpcColorOverrun[i];
++		if (e.buf == buf && e.idx == idx)
++			return &e.color;
++	}
++	return &buf[idx];
++}
+--- a/include/NPC/NpcInitData.hpp
++++ b/include/NPC/NpcInitData.hpp
+@@ -43,4 +43,8 @@
+ 
+ const TNpcInitInfo* SMSGetNpcInitData(u32 idx);
+ 
++// port: entry idx of a colour table, with retail's bytes where scene data
++// indexes past the table (NpcInitData.cpp)
++const GXColorS10* SMSPortNpcColorEntry(const GXColorS10* buf, s16 idx);
++
+ #endif

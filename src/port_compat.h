@@ -30,13 +30,14 @@
 #include <algorithm>
 #include <iterator>
 #include <utility>
-/* libc++ (macOS) defines nullptr as __nullptr in C++03 mode; the decomp's
- * types.h expects it undefined so it becomes a plain 0, which the game assigns
- * to integer fields (MActorAnmBck::unk28). */
-#if defined(_LIBCPP_VERSION) && __cplusplus < 201103L
+#endif
+
+/* The decomp's configure.py passes -Dnullptr=0: nullptr is a plain 0, which
+ * the game also assigns to integer fields (MActorAnmBck::unk28). Before C++11
+ * it is no keyword (libc++ on macOS defines it as __nullptr in C++03 mode). */
+#if !defined(__cplusplus) || __cplusplus < 201103L
 #undef nullptr
 #define nullptr 0
-#endif
 #endif
 
 #include <dolphin/types.h> /* the port override (see port_include/) */
@@ -89,6 +90,30 @@ static inline float __fres(float x) { return port_gekko_fres(x); }
 #ifdef __cplusplus
 }
 #endif
+/* MWCC converts a float or double to a 32-bit unsigned integer through the
+ * runtime's __cvt_fp2unsigned, and to a 64-bit one through __cvt_dbl_usll;
+ * port_cvt_fp2unsigned and port_cvt_dbl_usll (port_fpu.h) give their
+ * results, and every such conversion the DOL makes goes through them
+ * (decomp-patches/fpu-02..04). port_cvt_fp<T> is the conversion for a
+ * template whose T may be u32: the runtime's for a 32-bit unsigned T, a plain
+ * cast (fctiwz and the low bits on the console, as on the host) otherwise. */
+#ifdef __cplusplus
+extern "C++" {
+template <class T> struct port_cvt_fp_impl {
+	template <class F> static T cvt(F x) { return (T)x; }
+};
+template <> struct port_cvt_fp_impl<unsigned int> {
+	static unsigned int cvt(double d) { return port_cvt_fp2unsigned(d); }
+};
+template <> struct port_cvt_fp_impl<unsigned long> {
+	static unsigned long cvt(double d) { return port_cvt_fp2unsigned(d); }
+};
+template <class T, class F> inline T port_cvt_fp(F x) { return port_cvt_fp_impl<T>::cvt(x); }
+}
+#endif
+/* JSystem's and the game's paired-single routines outside MTX/VEC, as the
+ * console computes them (platform/mtx/jsys_ps.inc). */
+#include "port_ps.h"
 
 /* Non-standard names MSL's math.h provides. MSL spells M_PI as a float. */
 #undef M_PI
@@ -123,6 +148,49 @@ using std::floor;
 using std::fmod;
 using std::pow;
 #endif
+
+/* MSL's maths. The game calls the maths library in its DOL, whose results
+ * differ from every host libm (and i386 glibc differs from x86-64 glibc), so
+ * its calls go to the same code compiled for the host
+ * (platform/misc/msl_math.c), with MSL's overloads:
+ *   sinf cosf tanf atanf atan2f acosf  MSL's float functions (C and C++)
+ *   expf powf
+ *   atan2(double, double)             fdlibm's atan2
+ *   C++ sin(float) cos(float)         MSL's float overloads: sinf, cosf and
+ *       atan2(float, float)           atan2f
+ *   C++ std::atan2f                   MSL's is ::atan2((double)y, (double)x)
+ *   sqrtf, std::sqrtf, std::fmodf     MSL's header inlines (the console's
+ *                                     sqrtf returns x for x <= 0 and NaN,
+ *                                     and a NaN for +inf)
+ * They are function-like macros, so the game's variables named sin or tan
+ * keep their names; <math.h> and <cmath> are already included above. */
+#include "msl_math.h"
+#ifdef __cplusplus
+static inline float sms_msl_sin(float x) { return sms_msl_sinf(x); }
+static inline double sms_msl_sin(double x) { return ::sin(x); } /* no sin(double) in the DOL */
+static inline float sms_msl_cos(float x) { return sms_msl_cosf(x); }
+static inline double sms_msl_cos(double x) { return ::cos(x); } /* no cos(double) in the DOL */
+static inline float sms_msl_atan2(float y, float x) { return sms_msl_atan2f(y, x); }
+namespace std {
+using ::sms_msl_sinf; using ::sms_msl_cosf; using ::sms_msl_tanf; using ::sms_msl_atanf;
+using ::sms_msl_acosf; using ::sms_msl_sin; using ::sms_msl_cos; using ::sms_msl_atan2;
+inline float sms_msl_atan2f(float y, float x) { return (float)::sms_msl_atan2((double)y, (double)x); }
+using ::sms_msl_expf; using ::sms_msl_powf; using ::sms_msl_fmodf; using ::sms_msl_sqrtf;
+}
+#define sin(x) sms_msl_sin(x)
+#define cos(x) sms_msl_cos(x)
+#endif
+#define sinf(x) sms_msl_sinf(x)
+#define cosf(x) sms_msl_cosf(x)
+#define tanf(x) sms_msl_tanf(x)
+#define atanf(x) sms_msl_atanf(x)
+#define atan2f(y, x) sms_msl_atan2f(y, x)
+#define acosf(x) sms_msl_acosf(x)
+#define atan2(y, x) sms_msl_atan2(y, x)
+#define expf(x) sms_msl_expf(x)
+#define powf(x, y) sms_msl_powf(x, y)
+#define fmodf(x, y) sms_msl_fmodf(x, y)
+#define sqrtf(x) sms_msl_sqrtf(x)
 
 /* Heaps the game sizes with fixed GameCube constants (decomp-patches/ptr64-*):
  * with 8-byte pointers objects are up to twice as large, so 64-bit hosts

@@ -214,6 +214,8 @@ def upscale(a):
         raise ValueError(f'Choose a new output filename: {out}')
     if a.thp and a.thp.exists():
         raise ValueError(f'Choose a new THP filename: {a.thp}')
+    if a.no_preview and not a.thp:
+        raise ValueError('--no-preview requires --thp')
     out.parent.mkdir(parents=True, exist_ok=True)
     ffmpeg = a.ffmpeg or shutil.which('ffmpeg')
     if not ffmpeg:
@@ -252,17 +254,19 @@ def upscale(a):
         source = ['-framerate', fps, '-i', enhanced/'frame%06d.png', '-i', original]
         maps = ['-map', '0:v:0', '-map', '1:a:0?']
         natural = 'setsar=1'
-    fit = natural+',scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1'
-    tmp = out.with_name(out.stem+'.tmp.mp4')
-    run(common+source+maps+['-vf', fit, '-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-threads', '4',
-        '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', '-fps_mode', 'passthrough', tmp], work/'encode.log')
-    progress = work/'verify-progress.txt'
-    run(common+['-v', 'error', '-i', tmp, '-progress', progress, '-nostats', '-f', 'null', '-'], work/'verify.log')
-    decoded = [int(line[6:]) for line in progress.read_text().splitlines() if line.startswith('frame=')]
-    if not decoded or decoded[-1] != meta['frames']:
-        raise ValueError('Preview frame count differs from the source')
-    os.replace(tmp, out)
-    result = dict(spec, source=meta, preview=str(out), preview_sha256=hashlib.sha256(out.read_bytes()).hexdigest(),
+    if not a.no_preview:
+        fit = natural+',scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1'
+        tmp = out.with_name(out.stem+'.tmp.mp4')
+        run(common+source+maps+['-vf', fit, '-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-threads', '4',
+            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', '-fps_mode', 'passthrough', tmp], work/'encode.log')
+        progress = work/'verify-progress.txt'
+        run(common+['-v', 'error', '-i', tmp, '-progress', progress, '-nostats', '-f', 'null', '-'], work/'verify.log')
+        decoded = [int(line[6:]) for line in progress.read_text().splitlines() if line.startswith('frame=')]
+        if not decoded or decoded[-1] != meta['frames']:
+            raise ValueError('Preview frame count differs from the source')
+        os.replace(tmp, out)
+    result = dict(spec, source=meta, preview=None if a.no_preview else str(out),
+                  preview_sha256=None if a.no_preview else hashlib.sha256(out.read_bytes()).hexdigest(),
                   note='1920x1080 canvas, preserved framing, frame rate and dialogue. '
                        + ('AI detail is reconstructed.' if a.method == 'ai' else 'Lanczos interpolation; no reconstructed detail.'))
     if a.thp:
@@ -292,6 +296,7 @@ def main():
     u.add_argument('--realesrgan', type=Path);u.add_argument('--models', type=Path);u.add_argument('--model', default='realesr-animevideov3');u.add_argument('--gpu', default='0')
     u.add_argument('--work', type=Path);u.add_argument('--thp', type=Path, help='also write a native THP override; requires the HD playback patches')
     u.add_argument('--keep-frames', action='store_true')
+    u.add_argument('--no-preview', action='store_true', help='generate only --thp and the output JSON report')
     a = p.parse_args()
     try:
         extract(a) if a.command == 'extract' else upscale(a)

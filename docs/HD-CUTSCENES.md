@@ -3,32 +3,60 @@
 The optional HD pack replaces movie pixels while keeping the game's cutscene playback, subtitles, rumble, skip controls, frame rate and original compressed audio tracks.
 The disc stays intact; movies without a replacement play normally.
 The first completed AI pilot is the entire 68-second opening (`openingA.thp`), upscaled from 640×320 to 1920×960.
-All 21 original THP files have been extracted locally; the other movies have not yet been AI-upscaled.
+All 21 original THP files have been extracted locally. The full AI batch, native decoder checks and distributable movie patches are in progress.
 
-## Play
+## Play with HD textures
 
-Build this version of the port with `SMS_ARCH=64 ./build.sh /path/to/GMSE01.iso` (see [build instructions](../BUILD.md)), then put generated replacements in `mods/hd-cutscenes/files/data/`, using the original movie filenames.
-Run:
+The complete patch release is still being prepared. The completed opening pilot can already be played with the helper below.
+
+In the updated SMS Launcher, enable **HD textures** in Settings and choose **Finish HD setup** or **Play**.
+The launcher downloads the texture pack and movie patches, then prepares the movies using your own North American Sunshine disc image (GMSE01).
+Existing HD texture users also receive the cutscenes when finishing setup.
+The game loads a complete installed movie pack automatically while HD textures are enabled.
+Turning HD textures off disables the automatic movie replacement.
+Your disc and saves stay intact, and the pack carries over across game updates.
+Eclipse uses its own movie assets; the Sunshine patches are installed for Sunshine mode.
+
+For a source installation, build this revision of the port (see [build instructions](../BUILD.md)), then run the same installer used by the launcher:
+
+```sh
+python3 tools/media/install_cutscenes.py --iso /path/to/GMSE01.iso
+./run.sh
+```
+
+The installer accepts ISO, GCM and CISO images.
+Python 3 is needed for installation; FFmpeg and an AI runtime are not needed to install or play the pack.
+Each movie requires its exact original disc checksum.
+All 21 reconstructed movies must match the release checksums before the pack becomes active.
+Failed or cancelled setup keeps the previously installed pack.
+Allow space for the completed movies, extracted originals and one patch at a time; the installer checks space before starting.
+The launcher shows download and installation progress and the required space.
+
+For offline installation, add `--manifest /path/to/cutscene-release.json --bundle /path/to/patches`.
+The local bundle must contain all 21 matching `.smpatch` assets.
+To disable only the automatic movie enhancement from a source installation, use `SMS_HD_CUTSCENES=0 ./run.sh`.
+Explicit asset mods retain precedence over the automatic enhancement pack.
+
+## Play a locally generated movie
+
+Put generated THP replacements in `mods/hd-cutscenes/files/data/`, using the original movie filenames, then run:
 
 ```sh
 ./run-hd-cutscenes.sh /path/to/GMSE01.iso
 ```
 
+This helper also supports an incomplete set of locally generated movies, and enables cutscenes even if they were disabled in settings.
 With a freshly built standalone executable, the disc argument is optional.
 Use `SMS_ARCH=64` to select the 64-bit build on Linux when both builds exist.
-The helper enables cutscenes even if they were disabled in settings.
-Existing `SMS_MOD` entries are retained; the HD pack takes precedence for movies it replaces.
-Run `./run.sh` normally to play without the HD pack.
-
+Existing `SMS_MOD` entries are retained; the helper's HD pack takes precedence for the movies it replaces.
 For a pack elsewhere:
 
 ```sh
 SMS_HD_CUTSCENES=/path/to/hd-cutscenes ./run-hd-cutscenes.sh
 ```
 
-This machine's pilot pack is linked at `mods/hd-cutscenes`.
-Its files and conversion work are stored at `/mnt/1tbhdd2/sms-hd-cutscenes-v1` to avoid filling the system disk.
-The HD movies are local assets, separate from Git.
+Movies and conversion work are separate from Git.
+Use a drive with enough free space for large movie and intermediate frame files.
 
 ## Generate from your disc
 
@@ -98,3 +126,21 @@ make -C platform/thp/tests tiles ARCH=-m32
 
 Full opening playback completed in both Linux word sizes; matching captures were pixel-identical.
 The ordinary plaza and audio checks also match the existing regression baseline on Mesa software rendering.
+
+## Build the patch release
+
+The installer applies SMP1 patches to movies extracted from the player's own disc.
+Patches contain enhanced video frames; audio and original timing metadata come from that disc.
+Maintainers build and round-trip verify the full release with:
+
+```sh
+python3 tools/media/build_cutscene_release.py \
+  --source /path/to/cutscene-work/originals \
+  --pack /path/to/hd-cutscenes --out /path/to/patches \
+  --url-base https://github.com/chasem-dev/sms-pc-port/releases/download/hd-cutscenes-ai-v1
+```
+
+Each patch reconstructs the exact verified HD THP hash.
+The catalog records source, patch and output identities for all 21 movies; it is committed with the matching port revision after the full set passes verification.
+Publish the catalog and patch files at its pinned release URLs before selecting that revision in the launcher.
+The large movie assets are release files, not Git files.

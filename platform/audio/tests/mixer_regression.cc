@@ -116,7 +116,15 @@ int main()
 	voice(true);
 	render();
 	assert(left[79] == 8191 && right[79] == 0);
-	assert(delay[2][79] == 8191 && delay[3][79] == 0 && delay[0][79] == 0 && delay[1][79] == 0);
+	assert(delay[2][79] == 4063 && delay[3][79] == 0 && delay[0][79] == 0 && delay[1][79] == 0);
+	// The largest game-generated factor (127 << 8) is just under 0.5,
+	// not a full-strength wet send. Changing it must leave dry levels alone.
+	put<uint16_t>(voices, 0x52, 0x4000);
+	render();
+	assert(left[79] == 8191 && delay[2][79] == 2047);
+	put<uint16_t>(voices, 0x52, 1);
+	render();
+	assert(left[79] == 8191 && delay[2][79] == 0);
 	for (int automatic = 0; automatic < 2; automatic++) {
 		reset();
 		voice(automatic);
@@ -139,5 +147,5 @@ int main()
 			assert(left[i] == 0 && right[i] == 0);
 	}
 	puts("PASS: Q15 returns, filter modes/history, RAM clears, cross-bus feedback, "
-	     "footstep sends, dry levels, smooth release and silence");
+	     "Q16 footstep sends, unchanged dry levels, smooth release and silence");
 }

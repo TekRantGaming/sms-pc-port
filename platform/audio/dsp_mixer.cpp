@@ -379,7 +379,10 @@ void render_voice(int vi, int n)
 			v.amVolTarget = (uint16_t)tgt;
 			v.done = tgt == 0;
 		}
-		double pan = (v.amPan >> 8) / 127.0, fx = (v.amFx >> 8) / 127.0;
+		// Sunshine's early Zelda DSP uses a Q16 auto-mixer reverb factor.
+		// Normalising its high byte to 127 doubled the wet send (and made
+		// short footsteps leave an unusually prominent ringing tail).
+		double pan = (v.amPan >> 8) / 127.0, fx = v.amFx / 65536.0;
 		double gl = cos(pan * M_PI / 2), gr = sin(pan * M_PI / 2);
 		int32_t lc = (int32_t)(cur * gl), lt = (int32_t)(tgt * gl);
 		int32_t rc = (int32_t)(cur * gr), rt = (int32_t)(tgt * gr);

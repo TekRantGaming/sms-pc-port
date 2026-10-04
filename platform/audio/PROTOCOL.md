@@ -92,13 +92,18 @@ supported bus. The resulting feedback occupies bus 3+*i*; new voice sends are
 added before that bus is written back into the game's circular buffer.
 Using the real buffer also respects the CPU's `setFXLine` clears.
 
-The auto mixer sends front wet audio to buses 5/6 (lines 2/3), while explicit
+Sunshine's early Zelda DSP uses a Q16 auto-mixer reverb factor: `fx << 8`
+is divided by 65536, so the game's maximum `127 << 8` is just under 0.5.
+Treating the high byte as a fraction of 127 doubled footstep wet sends;
+the boot jingle's zero reverb could not reveal that error. The dry volume
+and master calibration remain unchanged. The auto mixer sends front wet
+audio to buses 5/6 (lines 2/3), while explicit
 music mix configurations send to buses 3/4 (lines 0/1). Stop requests halve
 current volumes each 80-sample subframe, rather than cutting a voice off in
 one subframe. These protocol rules are documented by the development oracle
 and [Dolphin's Zelda DSP implementation](https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/Core/HW/DSPHLE/UCodes/Zelda.cpp).
 `tests/mixer_regression.cc` checks impulse gain, both filter modes, history,
-RAM clears, cross-bus returns, wet routing, unchanged dry levels, and release
+RAM clears, cross-bus returns, Q16 wet gain/routing, unchanged dry levels, and release
 through complete silence without using disc assets.
 
 ## Levels (measured against retail)

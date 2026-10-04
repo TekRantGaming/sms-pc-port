@@ -46,6 +46,9 @@
 extern char** environ;
 #endif
 
+// platform/netplay (weak: the launcher also links without it)
+extern "C" __attribute__((weak)) int port_net_local_addresses(char* out, int size);
+
 namespace {
 
 // ------------------------------------------------------------------ files
@@ -320,15 +323,16 @@ void applyTheme(float scale) {
 }
 
 // ------------------------------------------------------------------ the menu
-enum Page { P_INSTALL, P_DISPLAY, P_GRAPHICS, P_CAMERA, P_GAMEPLAY, P_AUDIO, P_CONTROLS, P_ABOUT, P_COUNT };
-const char* const kPageNames[P_COUNT] = {"Install", "Display", "Graphics", "Camera",
-                                         "Gameplay", "Audio", "Controls", "About"};
+enum Page { P_INSTALL, P_DISPLAY, P_GRAPHICS, P_CAMERA, P_GAMEPLAY, P_ONLINE, P_AUDIO, P_CONTROLS, P_ABOUT, P_COUNT };
+const char* const kPageNames[P_COUNT] = {"Install", "Display", "Graphics", "Camera", "Gameplay",
+                                         "Online", "Audio", "Controls", "About"};
 const char* const kPageBlurbs[P_COUNT] = {
     "Point the launcher at your own Super Mario Sunshine disc image to install the game.",
     "Window, monitor and how the picture fits your screen.",
     "Resolution, anti-aliasing, filtering and HD textures.",
     "Camera direction, speed, free camera and mouse look.",
     "Frame rate, movies, mods and the performance overlay.",
+    "Play together: host a game or join a friend's, and see each other in the same level.",
     "Sound output and volume.",
     "Keyboard bindings for controller 1. Game controllers work automatically.",
     "About this build.",
@@ -1255,6 +1259,47 @@ struct Launcher {
                "mod", "none", opts);
     }
 
+    // a text setting, written when it changes
+    void textField(const char* label, const char* help, const char* key, const char* def, const char* hint) {
+        char buf[128];
+        snprintf(buf, sizeof buf, "%s", settings.get(key, def).c_str());
+        rowBegin(label, help);
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::InputTextWithHint("##t", hint, buf, sizeof buf)) settings.set(key, trim(buf));
+        rowEnd();
+    }
+
+    std::string localAddresses;
+    bool addressesRead = false;
+
+    void pageOnline() {
+        std::string mode;
+        choice("Online play",
+               "Host a game for friends to join, or join one. Everyone needs this version of the port and their "
+               "own copy of the game. Other players appear when you are in the same level and episode.",
+               "net_mode", "off", {{"off", "Off"}, {"host", "Host"}, {"join", "Join"}}, &mode);
+        if (mode == "off") return;
+        textField("Your name", "Shown to the other players (up to 15 letters).", "net_name", "", "Mario");
+        if (mode == "join") {
+            textField("Host address", "The IP address or name of the computer hosting the game.", "net_address", "",
+                      "for example 192.168.1.20");
+        } else {
+            if (!addressesRead && port_net_local_addresses) {
+                char buf[256] = "";
+                port_net_local_addresses(buf, sizeof buf);
+                localAddresses = buf;
+                addressesRead = true;
+            }
+            info("Your address",
+                 (localAddresses.empty() ? std::string("(not found)") : localAddresses).c_str());
+            info("Playing over the internet",
+                 "Players on your home network join with the address above. For friends elsewhere, forward the UDP "
+                 "port below to this computer on your router and give them your public IP address.");
+        }
+        textField("Port", "The UDP port the game uses. The host and the players joining must use the same one.",
+                  "net_port", "27016", "27016");
+    }
+
     void pageAudio() {
         toggle("Sound", "Turn all sound output on or off.", "audio", true);
         sliderInt("Master volume", nullptr, "volume", 100, 0, 100, "%d%%");
@@ -1587,6 +1632,9 @@ struct Launcher {
         ImGui::SetCursorPos(ImVec2(12 * scale, 14 * scale));
         ImGui::BeginGroup();
         ImGui::PushFont(bold, ImGui::GetStyle().FontSizeBase * 1.08f);
+        // every page fits: items shrink from 46 when the window is short
+        const float navH = std::min(46.0f * scale, (bodyH - 28.0f * scale) / float(P_COUNT) -
+                                                       ImGui::GetStyle().ItemSpacing.y);
         for (int i = 0; i < P_COUNT; i++) {
             const bool on = page == i;
             ImGui::PushStyleColor(ImGuiCol_Header, on ? kAccent : ImVec4(0, 0, 0, 0));
@@ -1596,7 +1644,7 @@ struct Launcher {
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f * scale);
             char id[64];
             snprintf(id, sizeof id, "   %s##nav%d", kPageNames[i], i);
-            if (ImGui::Selectable(id, true, 0, ImVec2(sideW - 24 * scale, 46 * scale))) {
+            if (ImGui::Selectable(id, true, 0, ImVec2(sideW - 24 * scale, navH))) {
                 page = Page(i);
                 capture = -1;
             }
@@ -1624,6 +1672,7 @@ struct Launcher {
         case P_DISPLAY: pageDisplay(); break;
         case P_GRAPHICS: pageGraphics(); break;
         case P_GAMEPLAY: pageGameplay(); break;
+        case P_ONLINE: pageOnline(); break;
         case P_AUDIO: pageAudio(); break;
         case P_CONTROLS: pageControls(); break;
         default: pageAbout(); break;

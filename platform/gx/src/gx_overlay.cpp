@@ -110,9 +110,48 @@ void drawText(std::vector<uint8_t>& px, int w, int h, int x, int y, const char* 
     }
 }
 
+// Name tags over other players (GXPC_SetNameTags): set by the game each frame,
+// drawn once at present, then cleared so a paused or departed player's tag
+// does not linger.
+std::vector<GXPCNameTag> s_tags;
+
+void drawNameTags(int winW, int winH) {
+    if (s_tags.empty()) return;
+    // the picture's rectangle in the window, letterboxed as GXPC_PresentXFB does
+    const float wide = GXPC_GetWidescreen() > 1.0f ? GXPC_GetWidescreen() : 1.0f;
+    const float aspect = 4.0f / 3.0f * wide;
+    float vw = float(winW), vh = float(winH);
+    if (vw > vh * aspect) vw = vh * aspect;
+    else vh = vw / aspect;
+    const float ox = (float(winW) - vw) * 0.5f, oy = (float(winH) - vh) * 0.5f;
+    const int scale = winH >= 1400 ? 4 : winH >= 720 ? 3 : 2;
+    for (const GXPCNameTag& t : s_tags) {
+        char name[17];
+        memcpy(name, t.name, 16);
+        name[16] = 0;
+        const int pad = 3;
+        const int w = stb_easy_font_width(name) + pad * 2 + 1, h = stb_easy_font_height(name) + pad * 2;
+        std::vector<uint8_t> px(size_t(w) * h * 4);
+        const uint8_t bg[4] = {12, 30, 60, 170}, fg[4] = {255, 225, 120, 255};
+        fillRect(px, w, h, 0, 0, w, h, bg);
+        drawText(px, w, h, pad + 1, pad, name, fg);
+        // the 3D scene is widened by `wide`: a 4:3 coordinate lands nearer the centre
+        const float sx = ox + (t.x / wide * 0.5f + 0.5f) * vw;
+        const float sy = oy + (0.5f - t.y * 0.5f) * vh;
+        const int x = int(sx) - w * scale / 2, y = int(sy) - h * scale;
+        if (x < -w * scale || y < -h * scale || x > winW || y > winH) continue;
+        GXPC_DrawOverlay(px.data(), w, h, x, y, scale, winW, winH);
+    }
+    s_tags.clear();
+}
+
 }  // namespace
 
 extern "C" {
+
+void GXPC_SetNameTags(const GXPCNameTag* tags, int count) {
+    s_tags.assign(tags, tags + (count > 0 ? count : 0));
+}
 
 void GXPC_OverlayToggle(void) {
     s_visible = !s_visible;
@@ -131,6 +170,7 @@ void GXPC_OverlayDraw(int winW, int winH) {
         if (e && *e && strcmp(e, "0") != 0 && !s_visible) GXPC_OverlayToggle();
     }
     s_clock.tick();
+    drawNameTags(winW, winH);
     if (!s_visible) return;
     if (s_renderer.empty()) {
         const char* r = reinterpret_cast<const char*>(glGetString(GL_RENDERER));

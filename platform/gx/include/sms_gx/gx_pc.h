@@ -50,6 +50,14 @@ void GXPC_SetWindowIcon(const uint8_t* rgba, int w, int h);
 int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPath, int force);
 /* 1 while the window holds the mouse for mouse look (SMS_MOUSE_CAMERA). */
 int GXPC_MouseCaptured(void);
+/* Name tags over other players (online co-op), for the next presented frame:
+ * x, y in the game camera's 4:3 normalized device coordinates (-1..1, +y up),
+ * placed into the picture as the renderer widens and letterboxes it. */
+typedef struct GXPCNameTag {
+    float x, y;
+    char name[16];
+} GXPCNameTag;
+void GXPC_SetNameTags(const GXPCNameTag* tags, int count);
 /* Widescreen: the displayed width over the GameCube's 4:3 (1 = off). Set
  * before the context exists; the EFB, the display and the window widen, and
  * draws map the game's 640-wide coordinates into it (see gx_render.cpp). The

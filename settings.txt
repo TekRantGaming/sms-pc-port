@@ -70,6 +70,13 @@ frame_rate = 60
 # camera_speed = 100
 # mouse_camera = off
 # mouse_sensitivity = 100
+
+# Online co-op (the launcher's Online page): off, host or join; the host's address
+# for join; the UDP port (the same for everyone); your name over your Mario.
+# net_mode = off
+# net_address =
+# net_port = 27016
+# net_name = Mario
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
 

@@ -466,6 +466,11 @@ static const struct {
 	{ "free_camera", "SMS_FREE_CAMERA" },         // no automatic swing-back
 	{ "mouse_camera", "SMS_MOUSE_CAMERA" },       // mouse look
 	{ "mouse_sensitivity", "SMS_MOUSE_SENSITIVITY" }, // percent
+	// online co-op (platform/netplay)
+	{ "net_mode", "SMS_NET_MODE" },               // off, host or join
+	{ "net_address", "SMS_NET_ADDRESS" },         // the host, for join
+	{ "net_port", "SMS_NET_PORT" },               // UDP, 27016
+	{ "net_name", "SMS_NET_NAME" },               // shown to other players
 	{ "launcher", "SMS_LAUNCHER" },               // show the launcher at start
 };
 

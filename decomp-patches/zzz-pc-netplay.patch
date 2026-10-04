@@ -1,0 +1,50 @@
+Reason: port: online co-op hooks (platform/netplay/net_game.cpp): the local Mario publishes his pose after calcAnim, and the other players' Marios are animated, view-calculated and entered alongside him
+--- a/src/Player/MarioMain.cpp
++++ b/src/Player/MarioMain.cpp
+@@ -25,6 +25,13 @@
+ #include <sms_modhook.h>
+ #endif
+ 
++#ifdef TARGET_PC
++// Online co-op (platform/netplay/net_game.cpp): publishes the local Mario's
++// pose and animates, view-calculates and enters the other players' Marios
++// alongside him (0: after calcAnim, 1: after calcView, 2: after entry).
++extern "C" void port_net_mario(TMario* mario, int stage, JDrama::TGraphics* graphics);
++#endif
++
+ static JGeometry::TVec3<f32> cDeformedTerrainCenter(0.0f, 5000.0f, 0.0f);
+ 
+ TMario* gpMarioOriginal;
+@@ -167,6 +174,10 @@
+ 		thinkAloha();
+ 		calcAnim(CUE_CALC_ANIM, graphics);
+ 		animSound();
++#ifdef TARGET_PC
++		if (this == gpMarioOriginal)
++			port_net_mario(this, 0, graphics);
++#endif
+ 
+ 		if (MarioMainGetFludd(this) != nullptr) {
+ 			MarioMainGetFludd(this)->setBaseTRMtx(
+@@ -192,6 +203,10 @@
+ 			dir.z = JMASCos(mFaceAngle.y);
+ 			PSMTXMultVecSR(graphics->mViewMtx, &dir, &unk4F0);
+ 		}
++#ifdef TARGET_PC
++		if (this == gpMarioOriginal)
++			port_net_mario(this, 1, graphics);
++#endif
+ 	}
+ 
+ 	if (cue & CUE_ENTRY) {
+@@ -228,6 +243,10 @@
+ 		} else if (!onYoshi()) {
+ 			mYoshi->entry();
+ 		}
++#ifdef TARGET_PC
++		if (this == gpMarioOriginal)
++			port_net_mario(this, 2, graphics);
++#endif
+ 	}
+ 
+ 	if (cue & CUE_SEMITRANSPARENT_PRIO_1)

@@ -1,34 +1,47 @@
-# Online co-op: plan
+# Online co-op
 
-Goal: play [Better Super Mario Sunshine Online](https://github.com/Daytendo64/Better-Super-Mario-Sunshine-Online-BSMSO-) (BSMSO, GPL-3.0) co-op on the native port, chosen from the launcher, with the port's PC options and frame rate.
+Players connect from the launcher's **Online** page (`net_mode`, `net_address`, `net_port`, `net_name` in `settings.txt`). One player hosts and up to seven join. Each player sees the others in the same level and episode, with name tags. Everyone plays their own game: levels, enemies and progress are not shared yet.
 
-## How BSMSO works
+The port has its own netcode, written for the port. It does not reuse [Better Super Mario Sunshine Online](https://github.com/Daytendo64/Better-Super-Mario-Sunshine-Online-BSMSO-) (BSMSO), for three reasons:
 
-```
-BSMSO launcher (C#/.NET) <-> TCP/UDP relay server (C#) <-> other launchers
-        | ReadProcessMemory / WriteProcessMemory
-        v
-   Dolphin: game RAM, mailbox at 0x817FC000 (CommBuffer, 5493 bytes, big-endian)
-        ^
-   _BSMSO.kxe: about 28k lines of C++ built for PowerPC on Better Sunshine Engine (BSE)
-```
+- BSMSO's protocol is gated on its build number, which changes with every release.
+- Its launcher and memory bridge run only on Windows.
+- Its game module is written for PowerPC against Better Sunshine Engine.
 
-The game-side module copies the local Mario's state into the mailbox, and draws remote players, applies world and flag sync and runs Hide & Seek from what the launcher writes back.
-The launcher does the networking, interpolation and session logic.
+BSMSO's design (60 Hz state snapshots and remote Mario puppets) was the model.
 
-## What carries over
+## How it works
 
-- **Game memory addresses.** The port maps MEM1 at `0x80000000` in its own process, so the mailbox can sit at the same `0x817FC000`.
-- **Launcher, server and protocol.** If the native module writes the mailbox big-endian, BSMSO's networking, server and UI stay as they are. Only `SMSO.Bridge/DolphinBridge.cs` changes: it attaches to `sms.exe` and reads the guest address directly, with no Dolphin RAM base.
-- **The game-side module.** It must be ported. It is written against BSE's own headers (`SMS/*.hxx`, `raw_fn` calls at retail addresses, Kuribo module hooks), not the decomp's classes. Each use becomes a decomp class or member, or an `SMS_MOD_SITE` hook like those already in `decomp-patches/modhook-*`.
+**Network** (`platform/netplay/netplay.cpp`, host code)
+- UDP on a background thread.
+- The host relays every player's pose to everyone else, about 60 times a second.
+- Packets start with `"SMSN"`, a protocol version and a type: HELLO/WELCOME/REJECT to join, POSE from each player, STATE from the host (every other player's slot, name and pose), and BYE.
+- A player silent for five seconds is dropped. A joining player keeps retrying until the host answers.
 
-## Milestones
+**Pose** (`NetPose`). Everything needed to draw a Mario as he looks on his player's screen:
+- the body's base matrix after `calcBaseMtx`;
+- both animation layers (body and upper body), each with its BCK indices, frame and blend ratio;
+- the face texture pattern;
+- the FLUDD nozzle;
+- the stage and episode.
 
-1. **Presence.** Port `comm_buffer`, `module` and `remote_mario` in reduced form. Export the local Mario (position, angle, animation, FLUDD) and draw remote Marios as stock `TMario` puppets. Adapt the bridge. Test: two PCs see each other move in Delfino Plaza.
-2. **Gameplay sync.** `world_sync`, `story_flag_sync`, `red_coin_sync`, `fruit_sync`, `npc_sync`, `yoshi_sync`, `remote_water_sync`, voice and audio. Shines and blue coins are shared.
-3. **Modes and polish.** Hide & Seek, name tags, the connection HUD, custom character packs (BSMSO's assets, installed from its release), and warps.
-4. **Launcher.** An Online page: host or join (address, port 27015, name), start the bundled bridge and server, then Play. Linux needs a cross-platform bridge: the C# code runs on .NET 7+, and only the memory access is Win32. It can be replaced by an in-process client, since the module lives in the same process.
+Sending the finished pose inputs, rather than inputs or physics state, makes the remote Mario look exactly right in every state (running, swimming, poles, cutscenes) with no game logic on the receiving side.
 
-## Licensing
+**Puppets** (`platform/netplay/net_game.cpp`, built into the game library)
+- A remote Mario is a set of `J3DModel`s made from the local Mario's own model data: body, hands, cap, FLUDD and nozzle.
+- Each has its own frame controls and layer state. The animation tables and blend calculators are shared, and the remote's blend ratios are set around its calc.
+- `decomp-patches/zzz-pc-netplay.patch` calls into it from `TMario::perform`:
+  - after `calcAnim`: publish the local pose, then pose the puppets;
+  - after `calcView`: view-calc them, and compute name tags through the game camera;
+  - after entry: enter them into the same draw buffers as the local Mario, so they are lit the same.
+- The models live on the stage's heap and are rebuilt in each new stage.
 
-BSMSO and BSE are GPL-3.0. Shipping a port that includes their code makes the combined work GPL-3.0. The fork must then publish its source under GPL-3.0 and keep BSMSO's notices and credits. The upstream port has no LICENSE file, so its authors' terms should be confirmed too.
+**Name tags.** These are projected from the head joint with the game camera's field of view, and drawn over the presented frame by `platform/gx` (`GXPC_SetNameTags`). They follow the renderer's widescreen and letterbox.
+
+## Next
+
+1. **Shared progress.** Shine Sprites, blue coins and story flags collected by one player are applied for everyone (`TFlagManager`), with the host as the authority.
+2. **Warps and lobby.** Follow the host into a level, and see a player list with where everyone is.
+3. **Smoother remote motion.** Interpolate between snapshots for internet latency, and add shadows under remote Marios.
+4. **Yoshi, water and sounds.** Draw a remote player's Yoshi and spray, and play their sounds positionally.
+5. **Hands.** Hand model visibility lives on shared model data, so remote Marios currently show the local Mario's hand pose.

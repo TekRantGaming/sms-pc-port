@@ -1,8 +1,14 @@
 A native PC port of Super Mario Sunshine, built from the decompilation, with a launcher and PC enhancements.
 
-### New in this release
-- **HD texture pack installer.** On the Graphics page, **Download and install** fetches the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (qashto, razius) from its own release and installs it, with progress, resume and Cancel. Then switch it on or off, reinstall it or remove it. Earlier releases had only a toggle, and no pack to use with it.
-- The packages now include `bsdtar` to unpack the pack, so nothing else needs installing.
+### New in this release: online co-op (first stage)
+- A new **Online** page in the launcher: one player chooses **Host**, the others choose **Join** and enter the host's address, and everyone presses Play.
+- Other players appear in your game when you are in the same level and episode, fully animated, with their cap, hands, FLUDD and nozzle, and a **name tag** over their head.
+- Up to **8 players**. It works on a home network straight away. Over the internet, the host forwards UDP port 27016 (it can be changed) on their router.
+- Everyone needs this version. Each player plays their own game for now: levels, enemies and Shine Sprites are not shared yet. Shared progress is the next stage.
+- The launcher's sidebar now fits all of its pages on shorter screens.
+
+### Earlier: HD texture pack installer
+- **Download and install** on the Graphics page fetches the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (qashto, razius) from its own release, with progress, resume and Cancel. You can then switch it on or off, reinstall it or remove it.
 
 **These downloads contain no game data.** You need your own disc image of Super Mario Sunshine, North America (GMSE01), revision 0 (ISO, GCM, NKit ISO or Dolphin CISO). The launcher's Install page copies it into place.
 

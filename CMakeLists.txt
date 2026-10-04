@@ -224,6 +224,8 @@ add_library(sms_game STATIC ${SMS_DECOMP_CXX_SOURCES} ${SMS_DECOMP_C_SOURCES})
 include(${CMAKE_CURRENT_SOURCE_DIR}/platform/thp/thp.cmake)
 # The SDK's PADClamp (dead zone / octagon), built from the decomp as C.
 target_sources(sms_game PRIVATE ${SMS_DECOMP}/libs/dolphin/src/pad/Padclamp.c)
+# Online co-op, game side (it uses the decomp's classes): platform/netplay.
+target_sources(sms_game PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/platform/netplay/net_game.cpp)
 # port_include must stay ahead of the game headers: its dolphin/types.h
 # overrides the decomp's (LP64 integer widths, weak AT_ADDRESS globals).
 if(DEFINED SMS_CP932_ROOT)
@@ -297,6 +299,8 @@ file(GLOB_RECURSE SMS_PLATFORM_SOURCES CONFIGURE_DEPENDS
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/gx/")
 # platform/mods/eclipse is built by cmake/eclipse.cmake, and only with SMS_ECLIPSE.
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/mods/eclipse/")
+# net_game.cpp is built into the game library (above).
+list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/netplay/net_game\\.cpp$")
 list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/tests/")
 if(WIN32 OR APPLE)
   list(FILTER SMS_PLATFORM_SOURCES EXCLUDE REGEX "/platform/trace/trace\\.cpp$")
@@ -396,6 +400,9 @@ if(APPLE)
   endif()
 else()
   target_link_libraries(sms PRIVATE -Wl,--whole-archive sms_game -Wl,--no-whole-archive Threads::Threads m ${CMAKE_DL_LIBS})
+  if(WIN32)
+    target_link_libraries(sms PRIVATE ws2_32) # platform/netplay
+  endif()
   if(TARGET sms_gx)
     target_link_libraries(sms PRIVATE -Wl,--whole-archive sms_gx -Wl,--no-whole-archive)
   endif()

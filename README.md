@@ -59,8 +59,28 @@ Invert X and Y separately, a free camera that stays where you point it, adjustab
 </td>
 <td valign="top">
 
-**60 fps and rebinding**<br>
-Gameplay at 60 fps at the original speed. Rebind every key, and use Xbox, PlayStation and other controllers automatically.
+**Online co-op** <sup>new</sup><br>
+Host or join a game from the launcher and see up to seven friends in the same level, animated and named. Works on your home network or over the internet.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**60 fps**<br>
+Gameplay at 60 fps at the original speed. Menus and movies stay at 30.
+
+</td>
+<td valign="top">
+
+**Rebinding and controllers**<br>
+Rebind every key, and use Xbox, PlayStation and other controllers automatically.
+
+</td>
+<td valign="top">
+
+**One-step install**<br>
+Point the launcher at your disc image and it checks it and puts it in place.
 
 </td>
 </tr>
@@ -157,6 +177,30 @@ Point the launcher at your disc image with **Browse**, or drag the file onto the
 </tr>
 </table>
 
+### Play together online
+
+<table>
+<tr>
+<td width="45%"><img src="docs/images/coop-plaza.jpg" alt="Another player's Mario, with a name tag, in Delfino Plaza"></td>
+<td valign="middle">
+
+On the **Online** page, one player chooses **Host** and the others choose **Join** and enter the host's address. Everyone presses Play.
+
+- Other players appear in your game when you are in the same level and episode
+- Their Mario is fully animated, with his cap, hands and FLUDD with the nozzle he has on
+- A **name tag** shows who is who
+- Up to **8 players**; on a home network it works straight away, and over the internet the host forwards UDP port 27016
+
+Each player plays their own game: levels, enemies and Shine Sprites are not shared yet. This is the first stage of online play. Shared progress is next.
+
+</td>
+</tr>
+</table>
+
+<div align="center">
+<img src="docs/images/page-online.png" alt="Online page" width="70%">
+</div>
+
 ### HD textures in one click
 
 <div align="center">
@@ -194,6 +238,7 @@ The [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mari
 | Display modes | TV | windowed, borderless, exclusive fullscreen |
 | Camera | C-stick | inverted axes, free camera, speed, mouse look |
 | Controls | GameCube controller | keyboard (rebindable), any SDL controller |
+| Multiplayer | single player | online co-op: see up to 7 friends in your world |
 
 ### Hotkeys
 
@@ -344,6 +389,10 @@ It runs as a separate process so its window and GPU driver leave the game's low 
 | `camera_speed = 150` | `SMS_CAMERA_SPEED` | manual camera rotation speed in percent (100 is the original) |
 | `mouse_camera = on` | `SMS_MOUSE_CAMERA` | mouse look: the window captures the mouse while focused; F10 releases it, a click takes it back |
 | `mouse_sensitivity = 150` | `SMS_MOUSE_SENSITIVITY` | mouse look speed in percent |
+| `net_mode = host` | `SMS_NET_MODE` | online co-op: `off`, `host` or `join` |
+| `net_address = 192.168.1.20` | `SMS_NET_ADDRESS` | the host to join |
+| `net_port = 27016` | `SMS_NET_PORT` | the UDP port (the same for everyone) |
+| `net_name = Luigi` | `SMS_NET_NAME` | your name over your Mario |
 
 ### Releases
 

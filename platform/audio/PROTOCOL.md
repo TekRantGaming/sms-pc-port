@@ -66,7 +66,7 @@ Fields the DSP writes back are marked ←.
 | 0x102 | `isLooping` | |
 | 0x104/0x106 | `loopYN1`/`loopYN2` | ADPCM history for the loop |
 | 0x108 | `filterMode` | bit 5: IIR on, low 5 bits: FIR8 length (**filters not applied yet**) |
-| 0x10A | `endRequested` | `TDSPChannel::forceStop`: fade out this subframe, then `done` |
+| 0x10A | `endRequested` | `TDSPChannel::forceStop`: halve current volumes each subframe until zero, then `done` |
 | 0x10C | `unk10C` | CPU-owned age counter (voice stealing) |
 | 0x110 | `loopAddress` | loop start, a **sample index** (stored through an `s16*`); streams: ring start |
 | 0x114 | `endPosition` | loop end, or sample count; streams: ring length << 16 |
@@ -83,8 +83,23 @@ So bus 1 is left and bus 2 right (pan 0 → bus 1), `outA` carries bus 1 and `ou
 
 `setFXLine` from `JAIData` with the AAF's FX scene table (cmd 7): mode (0x00), delay length in 80-sample subframes (0x02), a main-memory delay buffer (0x04), bus/gain pairs `SEND_TABLE[cfg.unk2]`/`cfg.unk4` (0x08/0x0A) and `SEND_TABLE[cfg.unk6]`/`cfg.unk8` (0x0C/0x0E), and 8 FIR taps (0x10).
 SMS's scenes: lines 0/1 return to buses 1/2 (gain 4096 or 2047), second target bus 8, delay 48 subframes (120 ms), taps `0 0 846 846 4715 8343 13421 −4096`.
-**Assumed**: line *i* is fed by bus 3+*i* (the per-voice fx sends), its delayed signal is FIR-filtered, fed back into the delay line, and returned to its first bus at gain/4096; returns to buses other than 1/2 are dropped.
-This gives an echo/reverb tail of the right length and routing, not a verified match.
+Each line reads its circular buffer in main memory before voices are mixed. It
+prepends the previous eight raw samples, in chronological order, and applies
+an eight-tap Q15 FIR over that forward window. Mode bit 0 filters before
+returning the signal; mode bit 1 filters after the returns, for feedback.
+Both return gains are Q15 (`4096` = 1/8), and either return can target any
+supported bus. The resulting feedback occupies bus 3+*i*; new voice sends are
+added before that bus is written back into the game's circular buffer.
+Using the real buffer also respects the CPU's `setFXLine` clears.
+
+The auto mixer sends front wet audio to buses 5/6 (lines 2/3), while explicit
+music mix configurations send to buses 3/4 (lines 0/1). Stop requests halve
+current volumes each 80-sample subframe, rather than cutting a voice off in
+one subframe. These protocol rules are documented by the development oracle
+and [Dolphin's Zelda DSP implementation](https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/Core/HW/DSPHLE/UCodes/Zelda.cpp).
+`tests/mixer_regression.cc` checks impulse gain, both filter modes, history,
+RAM clears, cross-bus returns, wet routing, unchanged dry levels, and release
+through complete silence without using disc assets.
 
 ## Levels (measured against retail)
 

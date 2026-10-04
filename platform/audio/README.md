@@ -10,7 +10,7 @@ This module replaces the hardware it talks to: the DSP microcode that mixes voic
 | `dsp_hle.cpp` | audio | The DSP task's side of the mail protocol: setup (0x81), sync frame (0x82), release-halt → render one subframe → `0xF355FF00` through `__DSPHandler`. The SDK-named `DSP*` functions are built only with `SMS_AUDIO_DSP_HLE` (see Integration). |
 | `ai.cpp` | audio | `AI*`: DMA latch/callback emulation, SDL2 output (loaded with `dlopen`), host-clock pacing without a device, WAV recording. |
 | `noaudio.cpp` | bring-up lead | `SMS_NO_AUDIO` (empty sound configuration). |
-| `tests/` | audio | `audio_test`: offline mixer test against the disc (not part of the CMake build). |
+| `tests/` | audio | `audio_test`: offline mixer test against the disc; `mixer_regression`: asset-free reverb and release checks (not part of the CMake build). |
 | `../../decomp-patches/audio-01-*.patch`, `audio-02-*.patch` | audio | JAudio bitfield/byte views that assumed big-endian layout (mix-config bus numbers, BMS note-on flags). |
 | `../../decomp-patches/audio-03-*.patch` | audio | No host-time "DSP overload" voice stealing on TARGET_PC. |
 
@@ -72,6 +72,7 @@ Compared against retail running under Dolphin with DSP LLE (the game's own micro
   File-select music plays with retail's voice count (11–13 vs 10.9) and a continuous floor, after two timing fixes: AI blocks wait for the DSP frame, and `audio-03` stops the host-time "DSP overload" voice stealing that cut notes to about a third.
 - Bus 1 is left, bus 2 right, as retail.
 - **Decoders are bit-exact against the disc** (all 449 ADPCM4 and 3 ADPCM2 loop histories; `tests/audio_test`).
+- FX returns use Q15 gains, mode-specific FIR ordering, and the game's RAM delay buffers. Auto-mixer wet sends use the front-effect buses. Stop requests release gradually through zero. Asset-free impulse and release checks cover these rules in both word sizes; see PROTOCOL.md.
 - Untested against retail: stream voices (not used in this segment), surround mode, FX lines (no fx sends in this segment), oscillator voices, per-voice filters (retail's IIR coefficients were identity here).
 
 Debug aids: `SMS_AUDIO_TRACE=1` (voice starts, ends with reason and lifetime, counts every 5 s) and `SMS_AUDIO_ARAM_DUMP=file[,subframe]` (writes the ARAM image once, for replaying traced voice blocks offline).
@@ -79,7 +80,11 @@ Debug aids: `SMS_AUDIO_TRACE=1` (voice starts, ends with reason and lifetime, co
 ## Offline test
 
 ```sh
-cd platform/audio/tests && make && ./audio_test /path/to/disc/files out/
+cd platform/audio/tests
+make check                 # no disc required
+make audio_test
+mkdir -p out
+./audio_test /path/to/disc/files out/
 ```
 
 It reads `mSound.aaf` from `data/nintendo.szs` (Yaz0 + RARC), checks the decoders over all 24 wave archives, and writes WAVs.

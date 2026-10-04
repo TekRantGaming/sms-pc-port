@@ -28,9 +28,14 @@ void port_dspmix_setup(uint32_t nvoices, void* voices, const uint32_t* res_filte
                        void* fx_lines);
 void port_dspmix_set_aram(port_dspmix_aram_fn fn);
 
+/* Optional main-memory resolver for offline FX tests. NULL uses the game
+ * buffer address directly; production delay buffers live in mapped MEM1. */
+typedef int16_t* (*port_dspmix_mram_fn)(uint32_t addr, uint32_t samples);
+void port_dspmix_set_mram(port_dspmix_mram_fn fn);
+
 /* Render one subframe of `n` samples (80 in SMS) into outA/outB (bus 1 and
  * bus 2, see PROTOCOL.md). `master` is the mixer level from the 0x82
- * command (Q14: 0x4000, the microcode's default, is unity). Voice blocks are updated in place (done/endReached/volumes). */
+ * command (Q15; SMS uses 0x5000 = 0.625). Voice blocks are updated in place (done/endReached/volumes). */
 void port_dspmix_render(int16_t* outA, int16_t* outB, int n, uint16_t master);
 
 /* Diagnostics: voices rendered in the last subframe, total unsupported

@@ -4,7 +4,7 @@ name: Eclipse build
 # where platform/mods/modhooks.cpp finds them. No disc image is used.
 on:
   push:
-    branches: [main, eclipse-ci-baseline]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:

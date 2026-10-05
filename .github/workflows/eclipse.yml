@@ -1,0 +1,72 @@
+name: Eclipse build
+# Builds Super Mario Eclipse into the 64-bit game on each platform and starts
+# it far enough to see that the mods' constructors were linked in where
+# platform/mods/modhooks.cpp finds them. No disc image is used.
+on:
+  push:
+    branches: [main, 'eclipse-*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  eclipse:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            shell: bash
+          - os: macos-15
+            shell: bash
+          - os: windows-2025
+            shell: msys2 {0}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      SMS_ARCH: '64'
+      SMS_ECLIPSE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install Linux tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake make python3 patch binutils g++ clang llvm libsdl2-dev libegl-dev libgl-dev
+      - name: Install Mac tools
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm
+          echo "SMS_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+          sudo softwareupdate --install-rosetta --agree-to-license
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git patch mingw-w64-x86_64-gcc mingw-w64-x86_64-clang mingw-w64-x86_64-llvm-tools
+            mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-make
+            mingw-w64-x86_64-python mingw-w64-x86_64-SDL2
+      - name: Build Eclipse
+        run: ./build.sh
+      - name: Check the mods are linked in
+        run: |
+          os=$(case "$RUNNER_OS" in Linux) echo linux;; macOS) echo macos;; Windows) echo windows;; esac)
+          exe=build/$os-64-eclipse/sms
+          [[ "$os" != windows ]] || exe+=.exe
+          head -c 32 /dev/zero > invalid.iso
+          set +e
+          limit=$(command -v timeout || command -v gtimeout || true)
+          SMS_CODE_MODS=0 SMS_HEADLESS=1 SMS_SAVE_DIR="$PWD/test-saves" SMS_DISC_IMAGE="$PWD/invalid.iso" \
+            ${limit:+$limit 60} "$exe" "$PWD/invalid.iso" > start.log 2>&1
+          echo "exit status $?"
+          set -e
+          cat start.log
+          grep -q 'code mods linked in but switched off' start.log
+          grep -q 'not a usable GameCube disc image' start.log

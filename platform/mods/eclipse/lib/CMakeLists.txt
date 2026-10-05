@@ -88,6 +88,7 @@ endif()
 if(WIN32)
   # lld (MinGW clang's linker in some environments) has no -r; GNU ld does.
   list(APPEND _ld_arch -fuse-ld=bfd)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/object_response.cmake)
 endif()
 
 # Kuribo loads each module on its own, so their private names never meet;
@@ -102,6 +103,12 @@ set(_modules)
 foreach(m moveset eclipse)
   target_compile_options(${m}_objs PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
   set(_o ${CMAKE_CURRENT_BINARY_DIR}/${m}_module.o)
+  set(_partial_objects $<TARGET_OBJECTS:${m}_objs>)
+  set(_response_dependency)
+  if(WIN32)
+    set(_response_dependency ${CMAKE_CURRENT_BINARY_DIR}/${m}_module.rsp)
+    sms_object_response(_partial_objects "${_response_dependency}" $<TARGET_OBJECTS:${m}_objs>)
+  endif()
   if(APPLE)
     # ld64 -r already turns hidden (private extern) definitions into local ones.
     set(_localize)
@@ -109,9 +116,9 @@ foreach(m moveset eclipse)
     set(_localize COMMAND ${Python3_EXECUTABLE} ${_tools}/localize_module.py ${CMAKE_OBJCOPY} ${_o})
   endif()
   add_custom_command(OUTPUT ${_o}
-    COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
+    COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_o} ${_partial_objects}
     ${_localize}
-    DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> ${_tools}/localize_module.py COMMAND_EXPAND_LISTS VERBATIM)
+    DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> ${_response_dependency} ${_tools}/localize_module.py COMMAND_EXPAND_LISTS VERBATIM)
   list(APPEND _modules ${_o})
 endforeach()
 
@@ -122,6 +129,12 @@ endforeach()
 # them: on ELF the section sms_mod_ctors (mod_ctors.ld), on Mach-O
 # __DATA,__sms_mod_ctors (tools/mods/macho_ctors.py), on PE .data$sms_mod_ctors_m.
 set(_obj ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.o)
+set(_partial_objects $<TARGET_OBJECTS:bse_objs> ${_modules})
+set(_response_dependency)
+if(WIN32)
+  set(_response_dependency ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.rsp)
+  sms_object_response(_partial_objects "${_response_dependency}" $<TARGET_OBJECTS:bse_objs> ${_modules})
+endif()
 if(APPLE)
   set(_ctors COMMAND ${Python3_EXECUTABLE} ${_tools}/macho_ctors.py ${_obj})
 elseif(WIN32)
@@ -132,9 +145,9 @@ else()
 endif()
 add_custom_command(OUTPUT ${_obj}
   COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_obj}
-    $<TARGET_OBJECTS:bse_objs> ${_modules}
+    ${_partial_objects}
   ${_ctors}
-  DEPENDS bse_objs $<TARGET_OBJECTS:bse_objs> ${_modules} ${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld
+  DEPENDS bse_objs $<TARGET_OBJECTS:bse_objs> ${_modules} ${_response_dependency} ${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld
   COMMAND_EXPAND_LISTS VERBATIM)
 add_library(sms_eclipse STATIC ${_obj})
 set_target_properties(sms_eclipse PROPERTIES LINKER_LANGUAGE CXX)

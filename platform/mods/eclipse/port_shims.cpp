@@ -7,6 +7,7 @@
 #include <new>
 
 #include <Enemy/Graph.hpp>
+#include <JSystem/JDrama/JDRActor.hpp>
 #include <JSystem/JDrama/JDRNameRef.hpp>
 #include <JSystem/JDrama/JDRNameRefGen.hpp>
 #include <JSystem/JDrama/JDRViewObj.hpp>
@@ -60,6 +61,10 @@ SHIM(void, shim_JSUInputStream_ctor, "_ZN14JSUInputStreamC2Ev", JSUInputStream* 
 SHIM(void, shim_TNameRef_ctor, "_ZN6JDrama8TNameRefC2EPKc", JDrama::TNameRef* self, const char* name)
 {
 	new (self) JDrama::TNameRef(name);
+}
+SHIM(void, shim_TActor_ctor, "_ZN6JDrama6TActorC2EPKc", JDrama::TActor* self, const char* name)
+{
+	new (self) JDrama::TActor(name);
 }
 SHIM(void, shim_TViewObj_ctor, "_ZN6JDrama8TViewObjC2EPKc", JDrama::TViewObj* self, const char* name)
 {

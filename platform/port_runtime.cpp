@@ -436,6 +436,7 @@ static const struct {
 } kSettings[] = {
 	{ "texture_packs", "SMS_TEXTURE_PACKS" }, // on (mods/textures), off, or folders
 	{ "texture_pack_mb", "SMS_TEXTURE_PACK_MB" },
+	{ "hd_cutscenes", "SMS_HD_CUTSCENES" }, // follows HD textures; 0 disables
 	{ "widescreen", "SMS_WIDESCREEN" },
 	{ "widescreen_hud", "SMS_WIDESCREEN_HUD" }, // centre or edges
 	{ "frame_rate", "SMS_FRAME_RATE" },         // 30 or 60

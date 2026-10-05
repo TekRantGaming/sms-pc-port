@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <vector>
 
 namespace {
 
@@ -87,9 +86,9 @@ struct FxLine {
 	uint16_t length;    // 0x02 delay length in subframes (config unkC)
 	uint32_t buffer;    // 0x04 main-memory delay buffer (non-zero = active)
 	uint16_t busA;      // 0x08 SEND_TABLE[config unk2]
-	int16_t gainA;      // 0x0A Q12
+	int16_t gainA;      // 0x0A Q15
 	uint16_t busB;      // 0x0C SEND_TABLE[config unk6]
-	int16_t gainB;      // 0x0E Q12
+	int16_t gainB;      // 0x0E Q15
 	int16_t taps[8];    // 0x10 Q15 FIR
 };
 static_assert(sizeof(FxLine) == 0x20, "FXBuffer is 0x20 bytes");
@@ -142,7 +141,9 @@ struct State {
 	port_dspmix_aram_fn aram;
 	Decoder dec[64];
 	int32_t bus[kBuses][kMaxN];
-	std::vector<int32_t> fxDelay[4];
+	port_dspmix_mram_fn mram;
+	uint32_t fxBuffer[4];
+	uint32_t fxLength[4];
 	uint32_t fxPos[4];
 	int32_t fxHist[4][8];
 	int active;
@@ -373,25 +374,39 @@ void render_voice(int vi, int n)
 
 	if (v.amEnabled) {
 		// Auto mixer (mix config 0xFFFF): volume ramp, sine-law pan, fx send.
-		int32_t cur = v.amVolCurrent, tgt = stopping ? 0 : v.amVolTarget;
-		double pan = (v.amPan >> 8) / 127.0, fx = (v.amFx >> 8) / 127.0;
+		int32_t cur = v.amVolCurrent, tgt = stopping ? cur / 2 : v.amVolTarget;
+		if (stopping) {
+			v.amVolTarget = (uint16_t)tgt;
+			v.done = tgt == 0;
+		}
+		// Sunshine's early Zelda DSP uses a Q16 auto-mixer reverb factor.
+		// Normalising its high byte to 127 doubled the wet send (and made
+		// short footsteps leave an unusually prominent ringing tail).
+		double pan = (v.amPan >> 8) / 127.0, fx = v.amFx / 65536.0;
 		double gl = cos(pan * M_PI / 2), gr = sin(pan * M_PI / 2);
 		int32_t lc = (int32_t)(cur * gl), lt = (int32_t)(tgt * gl);
 		int32_t rc = (int32_t)(cur * gr), rt = (int32_t)(tgt * gr);
 		mix_slot(g.bus[1], src, n, lc, lt, 15);
 		mix_slot(g.bus[2], src, n, rc, rt, 15);
-		mix_slot(g.bus[3], src, n, (int32_t)(lc * fx), (int32_t)(lt * fx), 15);
-		mix_slot(g.bus[4], src, n, (int32_t)(rc * fx), (int32_t)(rt * fx), 15);
+		mix_slot(g.bus[5], src, n, (int32_t)(lc * fx), (int32_t)(lt * fx), 15);
+		mix_slot(g.bus[6], src, n, (int32_t)(rc * fx), (int32_t)(rt * fx), 15);
 		v.amVolCurrent = (uint16_t)tgt;
 	} else {
+		bool released = true;
 		for (int s = 0; s < 6; s++) {
 			MixSlot& m  = v.slot[s];
 			int b       = bus_index(m.bus);
-			int32_t tgt = stopping ? 0 : (int16_t)m.target;
+			int32_t tgt = stopping ? (int16_t)m.current / 2 : (int16_t)m.target;
+			if (stopping) {
+				m.target = (uint16_t)tgt;
+				released = released && tgt == 0;
+			}
 			if (b)
 				mix_slot(g.bus[b], src, n, (int16_t)m.current, tgt, g.slotShift);
 			m.current = (uint16_t)tgt;
 		}
+		if (stopping)
+			v.done = released;
 	}
 	if (v.sourceType == kDirectPcm) {
 		// The CPU paces its decoder from these (Get_DirectPCM_*): position of
@@ -411,53 +426,85 @@ void render_voice(int vi, int n)
 	if (got < n || (d.ended && d.tail > 2)) {
 		v.endReached = 1;
 		v.done       = 1;
-	} else if (stopping) {
-		v.done = 1;
 	}
 	if (v.done && g.trace)
 		fprintf(stderr, "[audio] voice %2d end: %s after %u subframes at sample %u\n", vi,
 		        stopping ? "stop request" : "source end", g.traceTick - d.startTick, d.idx);
 }
 
-void run_fx(int n)
+// Reverb is prepared before voices, then their wet sends are written back to
+// the game's circular buffers. This lets CPU clears (setFXLine/stage changes)
+// take effect instead of keeping an unrelated private copy of the delay.
+int16_t* fx_memory(const FxLine& f, uint32_t len)
+{
+	return g.mram ? g.mram(f.buffer, len) : (int16_t*)(uintptr_t)f.buffer;
+}
+
+void prepare_fx(int n)
 {
 	if (!g.fx || g.fxOff)
 		return;
 	for (int i = 0; i < 4; i++) {
-		FxLine& f = g.fx[i];
-		if (!f.mode || !f.buffer || !f.length)
+		const FxLine& f = g.fx[i];
+		uint32_t len = (uint32_t)f.length * 80;
+		if (!f.mode || !f.buffer || !len) {
+			g.fxBuffer[i] = 0;
 			continue;
-		size_t len = (size_t)f.length * 80;
-		std::vector<int32_t>& dl = g.fxDelay[i];
-		if (dl.size() != len) {
-			dl.assign(len, 0);
+		}
+		if (g.fxBuffer[i] != f.buffer || g.fxLength[i] != len) {
+			g.fxBuffer[i] = f.buffer;
+			g.fxLength[i] = len;
 			g.fxPos[i] = 0;
 			memset(g.fxHist[i], 0, sizeof g.fxHist[i]);
 		}
-		// FX line i is fed by bus 3+i (the per-voice fx sends), delays by
-		// `length` subframes, filters the delayed signal with the 8-tap FIR
-		// and feeds it back, and returns it to busA/busB with Q12 gains.
-		int32_t* in  = g.bus[3 + i];
-		int a        = bus_index(f.busA), b = bus_index(f.busB);
-		int32_t* h   = g.fxHist[i];
-		for (int k = 0; k < n; k++) {
-			uint32_t p = g.fxPos[i];
-			for (int t = 7; t > 0; t--)
-				h[t] = h[t - 1];
-			h[0]      = dl[p];
-			int64_t y = 0;
-			for (int t = 0; t < 8; t++)
-				y += (int64_t)f.taps[t] * h[t];
-			int32_t yo = sat16((int32_t)(y >> 15));
-			dl[p]      = sat16(in[k] + yo);
-			g.fxPos[i] = (p + 1) % len;
-			// Only buses 1/2 reach the output; returns aimed elsewhere (bus 8
-			// in SMS's configs) are dropped rather than re-entering a line.
-			if (a == 1 || a == 2)
-				g.bus[a][k] += (yo * f.gainA) >> 12;
-			if (b == 1 || b == 2)
-				g.bus[b][k] += (yo * f.gainB) >> 12;
+		const int16_t* delay = fx_memory(f, len);
+		if (!delay)
+			continue;
+		int32_t window[kMaxN + 8];
+		memcpy(window, g.fxHist[i], sizeof g.fxHist[i]);
+		for (int k = 0; k < n; k++)
+			window[k + 8] = delay[(g.fxPos[i] + k) % len];
+		memcpy(g.fxHist[i], window + n, sizeof g.fxHist[i]);
+		// The history is chronological. Mode bit 0 filters the return; bit
+		// 1 filters the feedback after the return has been mixed.
+		for (int pass = 0; pass < 2; pass++) {
+			if (f.mode & (1 << pass)) {
+				for (int k = 0; k < n; k++) {
+					int64_t sum = 0;
+					for (int t = 0; t < 8; t++)
+						sum += (int64_t)window[k + t] * f.taps[t];
+					window[k] = sat16((int32_t)(sum >> 15));
+				}
+			}
+			if (pass == 0) {
+				int a = bus_index(f.busA), b = bus_index(f.busB);
+				for (int k = 0; k < n; k++) {
+					if (a)
+						g.bus[a][k] += (window[k] * f.gainA) >> 15;
+					if (b)
+						g.bus[b][k] += (window[k] * f.gainB) >> 15;
+				}
+			}
 		}
+		memcpy(g.bus[3 + i], window, sizeof(int32_t) * n);
+	}
+}
+
+void finish_fx(int n)
+{
+	if (!g.fx || g.fxOff)
+		return;
+	for (int i = 0; i < 4; i++) {
+		const FxLine& f = g.fx[i];
+		uint32_t len = (uint32_t)f.length * 80;
+		if (!f.mode || !f.buffer || !len)
+			continue;
+		int16_t* delay = fx_memory(f, len);
+		if (!delay)
+			continue;
+		for (int k = 0; k < n; k++)
+			delay[(g.fxPos[i] + k) % len] = (int16_t)sat16(g.bus[3 + i][k]);
+		g.fxPos[i] = (g.fxPos[i] + n) % len;
 	}
 }
 
@@ -479,6 +526,8 @@ extern "C" void port_dspmix_setup(uint32_t nvoices, void* voices, const uint32_t
 	}
 	load_adpcm_table(adpcm_filter ? adpcm_filter : kAdpcmDefault);
 	memset(g.dec, 0, sizeof g.dec);
+	memset(g.fxBuffer, 0, sizeof g.fxBuffer);
+	memset(g.fxHist, 0, sizeof g.fxHist);
 	const char* e = getenv("SMS_AUDIO_FX");
 	g.fxOff       = e && strcmp(e, "0") == 0;
 	e             = getenv("SMS_AUDIO_MASTER_SHIFT");
@@ -490,6 +539,7 @@ extern "C" void port_dspmix_setup(uint32_t nvoices, void* voices, const uint32_t
 }
 
 extern "C" void port_dspmix_set_aram(port_dspmix_aram_fn fn) { g.aram = fn; }
+extern "C" void port_dspmix_set_mram(port_dspmix_mram_fn fn) { g.mram = fn; }
 
 extern "C" void port_dspmix_render(int16_t* outA, int16_t* outB, int n, uint16_t master)
 {
@@ -498,6 +548,7 @@ extern "C" void port_dspmix_render(int16_t* outA, int16_t* outB, int n, uint16_t
 	for (int b = 0; b < kBuses; b++)
 		memset(g.bus[b], 0, sizeof(int32_t) * n);
 	g.active = 0;
+	prepare_fx(n);
 	if (g.voices) {
 		for (uint32_t i = 0; i < g.nvoices; i++) {
 			Voice& v = g.voices[i];
@@ -526,7 +577,7 @@ extern "C" void port_dspmix_render(int16_t* outA, int16_t* outB, int n, uint16_t
 		fprintf(stderr, "[audio] %u subframes: %d voices mixed, %d enabled, %d stopping, %d at zero volume\n",
 		        g.traceTick, g.active, en, stop, silent);
 	}
-	run_fx(n);
+	finish_fx(n);
 	for (int k = 0; k < n; k++) {
 		outA[k] = (int16_t)sat16((int32_t)(((int64_t)g.bus[1][k] * master) >> g.masterShift));
 		outB[k] = (int16_t)sat16((int32_t)(((int64_t)g.bus[2][k] * master) >> g.masterShift));

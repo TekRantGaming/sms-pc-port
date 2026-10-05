@@ -474,3 +474,8 @@ docs/                 developer documentation and reference screenshots
 - `platform/*/README.md`: each platform module in detail.
 
 The standalone build contains the whole game, so keep it to yourself: sharing it is sharing the game.
+
+## HD cutscenes
+
+The optional HD pack enhances all 21 original movies at 3× resolution and preserves their timing and original audio. The updated launcher installs the movie patches from your own disc when **HD textures** are enabled.
+See [HD cutscenes](docs/HD-CUTSCENES.md) for installation, conversion tools and playback checks.

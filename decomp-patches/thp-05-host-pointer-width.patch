@@ -1,0 +1,37 @@
+Reason: port: preserve host pointer width when aligning THP work and entropy buffers
+--- a/libs/dolphin/src/thp/THPDec.c
++++ b/libs/dolphin/src/thp/THPDec.c
+@@ -9,6 +9,9 @@
+ // is read as big-endian 32-bit words, as the GameCube reads it.
+ #include <math.h>
+ #include <string.h>
++#include <stdint.h>
++#undef OSRoundUp32B
++#define OSRoundUp32B(x) (((uintptr_t)(x) + 31) & ~(uintptr_t)31)
+ #define LCQueueWait(n)           ((void)0)
+ // The locked-cache DMA wrote main memory behind the CPU; flushing tells the
+ // GX layer the texture changed (DCFlushRange -> GXPC_InvalidateRange).
+@@ -330,7 +333,11 @@
+ 	u16 length, num_Vij;
+ 
+ 	__THPHuffmanSizeTab = __THPWorkArea;
++#ifdef TARGET_PC
++	__THPHuffmanCodeTab = (u16*)(__THPWorkArea + 256 + 1);
++#else
+ 	__THPHuffmanCodeTab = (u16*)((u32)__THPWorkArea + 256 + 1);
++#endif
+ 	length              = (u16)((__THPInfo->c)[0] << 8 | (__THPInfo->c)[1]);
+ 	__THPInfo->c += 2;
+ 	length -= 2;
+@@ -473,7 +480,11 @@
+ 	u32* ptr;
+ 	u32 offset, i, j, k;
+ 
++#ifdef TARGET_PC
++	ptr    = (u32*)((uintptr_t)__THPInfo->c & ~(uintptr_t)3);
++#else
+ 	ptr    = (u32*)((u32)__THPInfo->c & 0xFFFFFFFC);
++#endif
+ 	offset = (u32)__THPInfo->c & 3;
+ 
+ 	if (__THPInfo->cnt != 33) {

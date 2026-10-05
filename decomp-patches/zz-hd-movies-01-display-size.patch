@@ -1,0 +1,21 @@
+Reason: port: center HD cutscenes at their original display size and subtitle position
+--- a/src/System/MovieDirector.cpp
++++ b/src/System/MovieDirector.cpp
+@@ -350,6 +350,17 @@
+ 
+ 	THPVideoInfo videoInfo;
+ 	THPPlayerGetVideoInfo(&videoInfo);
++#ifdef TARGET_PC
++	// HD overrides retain the original movie's on-screen footprint.
++	// Only this display copy changes; the player still decodes the HD size.
++	if (videoInfo.xSize > 640 || videoInfo.ySize > 448) {
++		double scale = 640.0 / videoInfo.xSize;
++		if (448.0 / videoInfo.ySize < scale)
++			scale = 448.0 / videoInfo.ySize;
++		videoInfo.xSize = (u32)(videoInfo.xSize * scale + 0.5);
++		videoInfo.ySize = (u32)(videoInfo.ySize * scale + 0.5);
++	}
++#endif
+ 
+ 	thpRender->mPos = JGeometry::TVec2<u32>(
+ 	    (SMSGetGameRenderWidth() - videoInfo.xSize) / 2,

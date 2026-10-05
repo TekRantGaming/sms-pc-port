@@ -101,6 +101,13 @@ static const uint8_t* aram_at(uint32_t a) { return a < g_aram.size() ? &g_aram[a
 
 // Voice blocks as the game allocates them (64 x 0x180, 32-byte aligned).
 alignas(32) static uint8_t g_voices[64][0x180];
+static std::vector<int16_t> fxMemory[4];
+static int16_t* resolve_fx(uint32_t addr, uint32_t samples)
+{
+	if (addr < 1 || addr > 4 || fxMemory[addr - 1].size() < samples)
+		return NULL;
+	return fxMemory[addr - 1].data();
+}
 alignas(32) static uint8_t g_fx[4][0x20];
 
 template <class T> static void put(uint8_t* b, int off, T v) { memcpy(b + off, &v, sizeof v); }
@@ -304,6 +311,7 @@ int main(int argc, char** argv)
 
 	port_dspmix_set_aram(aram_at);
 	port_dspmix_setup(64, g_voices, NULL, NULL, g_fx);
+	port_dspmix_set_mram(resolve_fx);
 
 	// Decoder check over every archive: decoding a looped wave from its start
 	// must reproduce the ADPCM history the wave table stores for the loop
@@ -416,7 +424,8 @@ int main(int argc, char** argv)
 			memset(f, 0, 0x20);
 			put<uint16_t>(f, 0x00, c[0]);
 			put<uint16_t>(f, 0x02, (uint16_t)be32(c + 0xC));
-			put<uint32_t>(f, 0x04, 1); // buffer present
+			fxMemory[l].assign(be32(c + 0xC) * 80, 0);
+			put<uint32_t>(f, 0x04, l + 1); // offline main-memory buffer token
 			put<uint16_t>(f, 0x08, kSend[be16(c + 2)]);
 			put<int16_t>(f, 0x0A, (int16_t)be16(c + 4));
 			put<uint16_t>(f, 0x0C, kSend[be16(c + 6)]);

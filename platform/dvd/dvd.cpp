@@ -20,6 +20,7 @@
 #include <strings.h>
 #include <algorithm>
 #include "disc/gcdisc.h"
+#include <sms_hd_movies.h>
 
 namespace {
 
@@ -375,7 +376,7 @@ static void overlay_dir(const std::string& host, const std::string& rel, int* re
 	}
 }
 
-static void apply_mods()
+static void apply_user_mods()
 {
 	const char* list = getenv("SMS_MOD");
 	if (!list || !*list || !strcmp(list, "0") || !strcmp(list, "none"))
@@ -405,6 +406,18 @@ static void apply_mods()
 		}
 		name.clear();
 	}
+}
+
+static void apply_mods()
+{
+	if (const char* pack = port_hd_cutscene_directory()) {
+		int replaced = 0, added = 0;
+		std::string files = std::string(pack) + "/files";
+		overlay_dir(files, std::string(), &replaced, &added);
+		port_log("[dvd] HD cutscenes: %d movies replaced (%s)\n", replaced, pack);
+	}
+	// Explicit mods may provide their own story movies or other assets.
+	apply_user_mods();
 }
 
 extern "C" void port_dvd_init(void)

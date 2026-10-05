@@ -1,0 +1,23 @@
+Reason: port: draw HD THP frames through host tiles within GX texture limits
+--- a/libs/THPPlayer/src/THPDraw.c
++++ b/libs/THPPlayer/src/THPDraw.c
+@@ -1,4 +1,7 @@
+ #include <THPPlayer/THPDraw.h>
++#ifdef TARGET_PC
++#include <sms_hd_movies.h>
++#endif
+ 
+ #include <dolphin/gx.h>
+ #include <dolphin/mtx.h>
+@@ -131,6 +134,11 @@
+                       s16 textureWidth, s16 textureHeight, s16 polygonWidth,
+                       s16 polygonHeight)
+ {
++#ifdef TARGET_PC
++	if (port_draw_hd_thp(y_data, u_data, v_data, x, y, textureWidth,
++	                     textureHeight, polygonWidth, polygonHeight))
++		return;
++#endif
+ 	GXTexObj tobj0, tobj1, tobj2;
+ 
+ 	GXInitTexObj(&tobj0, y_data, textureWidth, textureHeight, GX_TF_I8,

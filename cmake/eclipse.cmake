@@ -199,7 +199,9 @@ else()
   sms_eclipse_alias(_ZN6JStage7TSystem16JSGGetSystemDataEm _ZN6JStage7TSystem16JSGGetSystemDataEj)
   sms_eclipse_alias(_ZN6JStage7TSystem16JSGSetSystemDataEmm _ZN6JStage7TSystem16JSGSetSystemDataEjj)
   if(WIN32)
-    # LLP64: the game's uintptr_t is unsigned long long.
+    # LLP64: size_t and the game's uintptr_t are unsigned long long.
+    sms_eclipse_alias(_ZN7JKRHeap5allocEyiPS_ _ZN7JKRHeap5allocEjiPS_)
+    sms_eclipse_alias(_ZN13JKRMemArchiveC1EPvy15JKRMemBreakFlag _ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag)
     sms_eclipse_alias(_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFijjEjPN6JDrama6TActorENS9_6TFlagTItEE _ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFiyjEyPN6JDrama6TActorENS9_6TFlagTItEE)
   else()
     sms_eclipse_alias(_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFijjEjPN6JDrama6TActorENS9_6TFlagTItEE _ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFimjEmPN6JDrama6TActorENS9_6TFlagTItEE)

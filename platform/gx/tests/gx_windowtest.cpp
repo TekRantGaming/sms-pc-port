@@ -49,7 +49,14 @@ int main(int argc, char** argv) {
     expect(invalid.w > 0 && invalid.h > 0, "invalid aspect ratio has a safe fallback");
 
 #ifdef SMS_GX_HAVE_SDL2
-    if (argc > 1 && std::strcmp(argv[1], "--window") == 0) {
+    if (argc > 1 && std::strcmp(argv[1], "--headless") == 0) {
+        GXPC_SetHeadless(1);
+        expect(GXPC_InitAuto(1) && GXPC_IsHeadless(), "headless rendering still initializes with fullscreen requested");
+        expect(!SDL_GL_GetCurrentWindow(), "fullscreen does not create a window in headless mode");
+        GXPC_Shutdown();
+    }
+    const bool fullscreen = argc > 1 && std::strcmp(argv[1], "--fullscreen") == 0;
+    if (fullscreen || (argc > 1 && std::strcmp(argv[1], "--window") == 0)) {
         // Exercise the game's actual SDL/OpenGL bring-up, even at 4x quality.
         GXPC_SetHeadless(0);
         GXPC_SetWidescreen(4.0f / 3.0f);
@@ -62,13 +69,43 @@ int main(int argc, char** argv) {
         SDL_GetWindowPosition(window, &x, &y);
         SDL_GetWindowMinimumSize(window, &minW, &minH);
         std::printf("Initial game window: %dx%d at %d,%d\n", w, h, x, y);
+        // Fullscreen transitions are asynchronous on some window managers.
+        // Pump resize events until SDL reports the completed transition.
+        const auto waitForSize = [&](auto ready) {
+            for (int attempt = 0; attempt < 200; ++attempt) {
+                SDL_PumpEvents();
+                SDL_GetWindowSize(window, &w, &h);
+                if (ready(w, h)) return true;
+                SDL_Delay(10);
+            }
+            return false;
+        };
         SDL_Rect desktop;
         expect(SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(window), &desktop) == 0, "usable desktop available");
-        expect(w <= desktop.w * 0.8 && h <= desktop.h * 0.8, "real window fits screen at high render quality");
-        expect(x >= desktop.x && y >= desktop.y && x + w <= desktop.x + desktop.w && y + h <= desktop.y + desktop.h,
-               "real window fully visible");
-        expect(std::abs(2 * x + w - 2 * desktop.x - desktop.w) <= 64 &&
-               std::abs(2 * y + h - 2 * desktop.y - desktop.h) <= 64, "real window is centered with decoration allowance");
+        const Uint32 flags = SDL_GetWindowFlags(window);
+        if (fullscreen) {
+            expect((flags & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP,
+                   "launcher fullscreen setting opens desktop fullscreen");
+            SDL_Rect display = {};
+            expect(SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(window), &display) == 0, "full display bounds available");
+            expect(waitForSize([&](int width, int height) { return width == display.w && height == display.h; }),
+                   "fullscreen fills the display at high render quality");
+            SDL_GetWindowPosition(window, &x, &y);
+            expect(x == display.x && y == display.y, "fullscreen starts at the display origin");
+            std::printf("Fullscreen smoke: %dx%d at %d,%d\n", w, h, x, y);
+            expect(SDL_SetWindowFullscreen(window, 0) == 0, "fullscreen can return to a window");
+            expect(waitForSize([&](int width, int height) { return width <= desktop.w * 0.8 && height <= desktop.h * 0.8; }),
+                   "leaving fullscreen restores the fitted window size");
+        } else {
+            expect(!(flags & SDL_WINDOW_FULLSCREEN), "fullscreen is off when not requested");
+        }
+        expect(w <= desktop.w * 0.8 && h <= desktop.h * 0.8, "window fits screen at high render quality");
+        if (!fullscreen) {
+            expect(x >= desktop.x && y >= desktop.y && x + w <= desktop.x + desktop.w && y + h <= desktop.y + desktop.h,
+                   "real window fully visible");
+            expect(std::abs(2 * x + w - 2 * desktop.x - desktop.w) <= 64 &&
+                   std::abs(2 * y + h - 2 * desktop.y - desktop.h) <= 64, "real window is centered with decoration allowance");
+        }
         expect(SDL_GetWindowFlags(window) & SDL_WINDOW_RESIZABLE, "native resizing is enabled");
         expect(minW <= 320 && minH <= 240, "minimum size allows shrinking");
         SDL_SetWindowSize(window, std::min(480, w), std::min(360, h));

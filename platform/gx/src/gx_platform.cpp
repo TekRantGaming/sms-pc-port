@@ -142,8 +142,16 @@ bool openWindow(int scale) {
     SDL_SetWindowPosition(s_window,
         desktop.x + (desktop.w - layout.w - borders.left - borders.right) / 2 + borders.left,
         desktop.y + (desktop.h - layout.h - borders.top - borders.bottom) / 2 + borders.top);
-    logmsg("window %dx%d centered on display %d, internal resolution scale %d, OpenGL context ready",
-           layout.w, layout.h, display, scale);
+    // Apply the launcher's choice after normal placement so fullscreen uses
+    // the same monitor. Desktop fullscreen keeps the display's native mode;
+    // rendering quality and aspect ratio are still handled by the renderer.
+    if (envTrue("SMS_FULLSCREEN") && SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
+        logmsg("fullscreen failed: %s; continuing in a window", SDL_GetError());
+    if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
+        logmsg("desktop fullscreen on display %d, internal resolution scale %d, OpenGL context ready", display, scale);
+    else
+        logmsg("window %dx%d centered on display %d, internal resolution scale %d, OpenGL context ready",
+               layout.w, layout.h, display, scale);
     return true;
 }
 #endif

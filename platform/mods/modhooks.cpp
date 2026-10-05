@@ -203,9 +203,18 @@ extern "C" ctor_t __start_sms_mod_ctors[] __attribute__((weak));
 extern "C" ctor_t __stop_sms_mod_ctors[] __attribute__((weak));
 #endif
 
+// Any constructor at all: the list may hold padding (and, from .ctors, 0 and -1 markers).
+static bool mods_linked_in()
+{
+	for (ctor_t* c = __start_sms_mod_ctors; c < __stop_sms_mod_ctors; ++c)
+		if (*c && *c != (ctor_t)-1)
+			return true;
+	return false;
+}
+
 extern "C" void sms_mod_activate(void)
 {
-	if (s_enabled || __start_sms_mod_ctors == __stop_sms_mod_ctors)
+	if (s_enabled || !mods_linked_in())
 		return;
 	const char* e = getenv("SMS_CODE_MODS");
 	if (e && !strcmp(e, "0")) {

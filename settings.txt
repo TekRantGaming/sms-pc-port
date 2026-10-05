@@ -7,6 +7,8 @@
 texture_packs = on
 # Video memory for texture pack images before the least used are freed, in MiB.
 # texture_pack_mb = 1536
+# HD cutscenes (the launcher installs them into mods/hd-cutscenes): on or off.
+# hd_cutscenes = on
 
 # Widescreen: off, 16:9, 21:9, 16:10 (or on for 16:9). The game sees a wider
 # view; the HUD and menus stay at 4:3 in the middle.

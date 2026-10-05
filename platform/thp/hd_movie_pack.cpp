@@ -29,9 +29,8 @@ bool complete_pack(const std::string& directory)
 
 extern "C" const char* port_hd_cutscene_directory(void)
 {
-    const char* textures = std::getenv("SMS_TEXTURE_PACKS");
-    if (textures && std::string(textures) == "0")
-        return nullptr;
+    // HD cutscenes have their own switch (settings.txt hd_cutscenes, the
+    // launcher's Graphics page): turning texture packs off leaves them on.
     const char* configured = std::getenv("SMS_HD_CUTSCENES");
     static std::string selected;
     selected.clear();

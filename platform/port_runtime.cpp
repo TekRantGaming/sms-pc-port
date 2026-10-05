@@ -467,6 +467,7 @@ static const struct {
 	{ "free_camera", "SMS_FREE_CAMERA" },         // no automatic swing-back
 	{ "mouse_camera", "SMS_MOUSE_CAMERA" },       // mouse look
 	{ "mouse_sensitivity", "SMS_MOUSE_SENSITIVITY" }, // percent
+	{ "hd_cutscenes", "SMS_HD_CUTSCENES" },       // on (mods/hd-cutscenes), off, or a folder
 	// online co-op (platform/netplay)
 	{ "net_mode", "SMS_NET_MODE" },               // off, host or join
 	{ "net_address", "SMS_NET_ADDRESS" },         // the host, for join
@@ -676,7 +677,7 @@ static void load_settings()
 			val = "1";
 		else if (!strcmp(v, "off") || !strcmp(v, "no") || !strcmp(v, "false"))
 			val = "0";
-		if (!strcmp(env, "SMS_TEXTURE_PACKS") && !strcmp(val, "1"))
+		if ((!strcmp(env, "SMS_TEXTURE_PACKS") || !strcmp(env, "SMS_HD_CUTSCENES")) && !strcmp(val, "1"))
 			continue; // on: the default folder
 		if (!*val || getenv(env))
 			continue;

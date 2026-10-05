@@ -133,6 +133,7 @@ Point the launcher at your disc image with **Browse**, or drag the file onto the
 - **Anisotropic filtering** up to 16x
 - **Sharpening** and **brightness**
 - **HD texture pack**: install, switch on or off, set its memory budget
+- **HD cutscenes**: all 21 movies at 3x resolution, built from your own disc; install, then switch on or off
 
 </td>
 </tr>
@@ -235,6 +236,7 @@ The [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mari
 | Anti-aliasing | none | MSAA 2x/4x/8x, FXAA |
 | Texture filtering | bilinear | up to 16x anisotropic |
 | Textures | original | original or the UHD pack |
+| Cutscenes | 640 x 448 | original or 3x AI-enhanced (1920 x 960) |
 | Display modes | TV | windowed, borderless, exclusive fullscreen |
 | Camera | C-stick | inverted axes, free camera, speed, mouse look |
 | Controls | GameCube controller | keyboard (rebindable), any SDL controller |
@@ -477,5 +479,5 @@ The standalone build contains the whole game, so keep it to yourself: sharing it
 
 ## HD cutscenes
 
-The optional HD pack enhances all 21 original movies at 3× resolution and preserves their timing and original audio. The updated launcher installs the movie patches from your own disc when **HD textures** are enabled.
+The optional HD pack enhances all 21 original movies at 3× resolution and preserves their timing and original audio. On the launcher's **Graphics** page, **HD cutscenes → Download and install** fetches the movie patches, builds the movies from your own disc image and checks every one; a switch then turns them on or off (`hd_cutscenes` in `settings.txt`).
 See [HD cutscenes](docs/HD-CUTSCENES.md) for installation, conversion tools and playback checks.

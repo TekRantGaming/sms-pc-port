@@ -48,6 +48,15 @@ extern char** environ;
 
 // platform/netplay (weak: the launcher also links without it)
 extern "C" __attribute__((weak)) int port_net_local_addresses(char* out, int size);
+// platform/thp/hd_install.cpp: the HD cutscene catalog and patcher
+#include "../../thp/hd_install.h"
+extern "C" {
+__attribute__((weak)) int port_hd_catalog(PortHdMovie* out, int max, char* release, int releaseSize);
+__attribute__((weak)) const char* port_hd_catalog_json(void);
+__attribute__((weak)) int port_hd_sha256_file(const char* path, char hex[65]);
+__attribute__((weak)) int port_hd_apply(const char* disc, const PortHdMovie* movie, const char* patchPath,
+                                         const char* outPath, char* err, int errSize);
+}
 
 namespace {
 
@@ -359,18 +368,20 @@ FILE* openUtf8(const std::string& path, const char* mode) {
 #endif
 }
 
+// A file's size, or -1. Read from the directory entry, never by opening the
+// file: an open handle would make Windows refuse a rename of a download that
+// is finishing while the progress bar asks for its size.
 long long fileSize(const std::string& path) {
-    FILE* f = openUtf8(path, "rb");
-    if (!f) return -1;
+    std::error_code ec;
 #ifdef _WIN32
-    _fseeki64(f, 0, SEEK_END);
-    long long n = _ftelli64(f);
+    wchar_t w[1024];
+    if (!MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, w, 1024)) return -1;
+    const std::filesystem::path p(w);
 #else
-    fseeko(f, 0, SEEK_END);
-    long long n = (long long)ftello(f);
+    const std::filesystem::path p(path);
 #endif
-    fclose(f);
-    return n;
+    const auto n = std::filesystem::file_size(p, ec);
+    return ec ? -1 : (long long)n;
 }
 
 DiscCheck checkDisc(const std::string& path) {
@@ -856,6 +867,189 @@ struct TexturePackJob {
     }
 };
 
+std::string curlPath() {
+#ifdef _WIN32
+    char sys[MAX_PATH] = "";
+    GetSystemDirectoryA(sys, MAX_PATH);
+    return fileSize(std::string(sys) + "\\curl.exe") > 0 ? std::string(sys) + "\\curl.exe" : std::string("curl");
+#else
+    return "curl";
+#endif
+}
+
+// ------------------------------------------------------------------ HD cutscenes
+// The 3x AI-enhanced movies (docs/HD-CUTSCENES.md): for each of the 21, the
+// SMP1 patch from the catalog's release is downloaded and checked, applied to
+// the original movie read from the player's disc image, and checked again
+// (platform/thp/hd_install.cpp). The pack is built in a staging folder and
+// moved to mods/hd-cutscenes only once all 21 pass, so a cancelled or failed
+// install keeps whatever was there before.
+const char* const kHdMarker = "sms-hd-cutscenes-v1.complete";
+
+struct HdCutsceneJob {
+    enum Phase { IDLE, WORKING, REMOVING, DONE, FAILED, CANCELLED };
+    std::thread worker;
+    std::atomic<int> phase{IDLE};
+    std::atomic<bool> cancel{false};
+    std::atomic<int> movie{0}, step{0};  // 1..21; 0 downloading, 1 preparing
+    std::atomic<long long> doneBytes{0};
+    long long totalBytes = 1;
+    std::mutex mu;
+    Process* child = nullptr;
+    std::string error, modsDir, disc, part;
+
+    bool busy() const { return phase == WORKING || phase == REMOVING; }
+    std::string packDir() const { return modsDir + "hd-cutscenes"; }
+    float progress() {
+        long long now = doneBytes;
+        if (step == 0) {
+            std::lock_guard<std::mutex> lk(mu);
+            if (!part.empty()) now += std::max(0LL, fileSize(part));
+        }
+        return std::min(1.0f, float(double(now) / double(totalBytes)));
+    }
+    void begin(void (HdCutsceneJob::*fn)()) {
+        if (worker.joinable()) worker.join();
+        cancel = false;
+        error.clear();
+        movie = step = 0;
+        doneBytes = 0;
+        phase = fn == &HdCutsceneJob::uninstall ? REMOVING : WORKING;
+        worker = std::thread(fn, this);
+    }
+    void stop() {
+        cancel = true;
+        std::lock_guard<std::mutex> lk(mu);
+        if (child) child->kill();
+    }
+    ~HdCutsceneJob() {
+        stop();
+        if (worker.joinable()) worker.join();
+    }
+    void fail(const std::string& why) {
+        if (cancel) {
+            phase = CANCELLED;
+            return;
+        }
+        error = why;
+        phase = FAILED;
+    }
+
+    void install() {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        if (!port_hd_catalog || !port_hd_apply || !port_hd_sha256_file || !port_hd_catalog_json)
+            return fail("This build cannot install HD cutscenes");
+        static PortHdMovie movies[32];
+        char release[64] = "";
+        const int n = port_hd_catalog(movies, 32, release, sizeof release);
+        if (n != 21) return fail("The HD cutscene catalog is incomplete");
+        long long total = 0, targets = 0, biggestPatch = 0;
+        for (int i = 0; i < n; i++) {
+            total += movies[i].patch_bytes;
+            targets += movies[i].target_bytes;
+            biggestPatch = std::max(biggestPatch, movies[i].patch_bytes);
+        }
+        totalBytes = total;
+        fs::create_directories(modsDir, ec);
+        const auto space = fs::space(modsDir, ec);
+        const long long needed = targets + (900LL << 20) + biggestPatch + (64LL << 20);
+        if (!ec && (long long)space.available < needed) {
+            char buf[128];
+            snprintf(buf, sizeof buf, "Not enough free space: about %.1f GB is needed", double(needed) / 1e9);
+            return fail(buf);
+        }
+        const std::string stage = modsDir + ".hd-cutscenes-staging", cache = modsDir + ".downloads/hd-cutscenes";
+        fs::remove_all(stage, ec);
+        fs::create_directories(stage + "/files/data", ec);
+        fs::create_directories(cache, ec);
+        const std::string curl = curlPath();
+        for (int i = 0; i < n && !cancel; i++) {
+            const PortHdMovie& m = movies[i];
+            movie = i + 1;
+            step = 0;
+            const std::string patch = cache + "/" + m.patch_file;
+            char hex[65] = "";
+            bool have = fileSize(patch) == m.patch_bytes && port_hd_sha256_file(patch.c_str(), hex) &&
+                        !strcmp(hex, m.patch_sha256);
+            if (!have) {
+                {
+                    std::lock_guard<std::mutex> lk(mu);
+                    part = patch + ".part";
+                }
+                if (fileSize(part) > m.patch_bytes) fs::remove(part, ec);
+                Process p;
+                {
+                    std::lock_guard<std::mutex> lk(mu);
+                    if (cancel) break;
+                    if (!p.start({curl, "-L", "-f", "-sS", "--retry", "3", "-C", "-", "-o", part, m.url}))
+                        return fail("Cannot run curl to download the HD cutscenes");
+                    child = &p;
+                }
+                std::string line, last;
+                while (p.line(line))
+                    if (!line.empty()) last = line;
+                const int rc = p.wait();
+                {
+                    std::lock_guard<std::mutex> lk(mu);
+                    child = nullptr;
+                }
+                if (cancel) break;
+                if (rc != 0 || fileSize(part) != m.patch_bytes)
+                    return fail("Downloading " + std::string(m.patch_file) + " failed" + (last.empty() ? "" : ": " + last));
+                {  // the progress bar reads `part`: rename and forget it together
+                    std::lock_guard<std::mutex> lk(mu);
+                    fs::remove(patch, ec);
+                    fs::rename(part, patch, ec);
+                    part.clear();
+                }
+                if (ec) return fail("Cannot move " + std::string(m.patch_file) + " into place: " + ec.message());
+                if (!port_hd_sha256_file(patch.c_str(), hex) || strcmp(hex, m.patch_sha256)) {
+                    fs::remove(patch, ec);
+                    return fail(std::string(m.patch_file) + " failed its checksum; try again");
+                }
+            }
+            if (cancel) break;
+            step = 1;
+            char err[256] = "";
+            const std::string out = stage + "/files/" + m.disc_path;
+            if (!port_hd_apply(disc.c_str(), &m, patch.c_str(), out.c_str(), err, sizeof err))
+                return fail(std::string(m.disc_path).substr(5) + ": " + err);
+            fs::remove(patch, ec);
+            doneBytes += m.patch_bytes;
+        }
+        if (cancel) {
+            fs::remove_all(stage, ec);
+            return fail("");
+        }
+        // the record and marker the game checks, then the swap
+        if (FILE* f = openUtf8(stage + "/installed.json", "w")) {
+            fputs(port_hd_catalog_json(), f);
+            fclose(f);
+        }
+        if (FILE* f = openUtf8(stage + "/" + kHdMarker, "w")) {
+            fprintf(f, "%s\n", release);
+            fclose(f);
+        }
+        const std::string backup = modsDir + ".hd-cutscenes-previous";
+        fs::remove_all(backup, ec);
+        if (isDir(packDir())) fs::rename(packDir(), backup, ec);
+        fs::rename(stage, packDir(), ec);
+        if (ec) {
+            if (isDir(backup)) fs::rename(backup, packDir(), ec);
+            return fail("Cannot move the HD cutscenes into place");
+        }
+        fs::remove_all(backup, ec);
+        phase = DONE;
+    }
+    void uninstall() {
+        std::error_code ec;
+        std::filesystem::remove_all(packDir(), ec);
+        if (ec) return fail("Cannot remove " + packDir() + ": " + ec.message());
+        phase = DONE;
+    }
+};
+
 int countTextures(const std::string& dir) {  // tex1_* files below dir
     std::error_code ec;
     int n = 0;
@@ -889,6 +1083,8 @@ struct Launcher {
     int texturePacks = 0;   // folders in mods/textures
     int packTextures = 0;   // textures in the UHD pack's folder, mods/textures/GMS
     TexturePackJob tex;
+    HdCutsceneJob hd;
+    bool hdInstalled = false; // mods/hd-cutscenes holds a complete pack
     std::string status;
     double statusUntil = 0;
 
@@ -1051,9 +1247,10 @@ struct Launcher {
         mods.clear();
         const std::string dir = baseDir + "mods";
         for (const std::string& d : listDirs(dir))
-            if (d != "textures" && isDir(dir + "/" + d + "/files")) mods.push_back(d);
+            if (d != "textures" && d != "hd-cutscenes" && isDir(dir + "/" + d + "/files")) mods.push_back(d);
         texturePacks = int(listDirs(dir + "/textures").size());
         packTextures = isDir(dir + "/textures/GMS") ? countTextures(dir + "/textures/GMS") : 0;
+        hdInstalled = fileSize(dir + "/hd-cutscenes/" + kHdMarker) > 0;
     }
 
     // --- pages
@@ -1234,6 +1431,86 @@ struct Launcher {
                       "Video memory kept for texture pack images, in MiB, before the least used are freed.",
                       "texture_pack_mb", 1536, 512, 8192, "%d MiB", 256);
         }
+        cutsceneRows();
+    }
+
+    // --- HD cutscenes: install, then on/off
+    std::string discForInstall() const {
+        if (discSource == "bundled" || installed.compare(0, 8, "Built in") == 0) return "bundled";
+        return discSource.empty() ? installed : discSource;
+    }
+
+    void cutsceneRows() {
+        const int ph = hd.phase;
+        if (ph == HdCutsceneJob::DONE || ph == HdCutsceneJob::FAILED || ph == HdCutsceneJob::CANCELLED) {
+            scanMods();
+            if (ph == HdCutsceneJob::FAILED) status = "HD cutscenes: " + hd.error;
+            else if (ph == HdCutsceneJob::CANCELLED) status = "HD cutscene install cancelled.";
+            else status = hdInstalled ? "HD cutscenes installed and switched on." : "HD cutscenes removed.";
+            statusUntil = ImGui::GetTime() + 8.0;
+            if (ph == HdCutsceneJob::DONE && hdInstalled) settings.set("hd_cutscenes", "on");
+            hd.phase = HdCutsceneJob::IDLE;
+        }
+        rowBegin("HD cutscenes",
+                 "All 21 movies enhanced to 3x resolution with AI upscaling, with their original timing and audio. "
+                 "Built from your own disc image: about 5.7 GB to download, 5.8 GB installed.");
+        const float w = ImGui::GetContentRegionAvail().x;
+        if (hd.busy()) {
+            char label[96];
+            if (hd.phase == HdCutsceneJob::REMOVING) snprintf(label, sizeof label, "Removing...");
+            else if (hd.step == 0)
+                snprintf(label, sizeof label, "Downloading movie %d of 21... %.0f%%", int(hd.movie),
+                         double(hd.progress()) * 100.0);
+            else snprintf(label, sizeof label, "Preparing movie %d of 21...", int(hd.movie));
+            ImGui::ProgressBar(hd.phase == HdCutsceneJob::REMOVING ? -1.0f * float(ImGui::GetTime()) : hd.progress(),
+                               ImVec2(w * 0.68f, 0), label);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(hd.phase == HdCutsceneJob::REMOVING);
+            if (ImGui::Button("Cancel##hd", ImVec2(-FLT_MIN, 0))) hd.stop();
+            ImGui::EndDisabled();
+        } else if (hdInstalled) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.92f, 0.65f, 1));
+            ImGui::TextUnformatted("Installed: 21 HD movies");
+            ImGui::PopStyleColor();
+            if (ImGui::Button("Remove##hd", ImVec2(w * 0.5f - ImGui::GetStyle().ItemSpacing.x / 2, 0)))
+                ImGui::OpenPopup("Remove the HD cutscenes?");
+            ImGui::SameLine();
+            if (ImGui::Button("Reinstall##hd", ImVec2(-FLT_MIN, 0))) startCutsceneInstall();
+            if (ImGui::BeginPopupModal("Remove the HD cutscenes?", nullptr,
+                                       ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+                ImGui::Dummy(ImVec2(0, 4 * scale));
+                ImGui::TextUnformatted("This deletes mods/hd-cutscenes (5.8 GB). They can be installed again.");
+                ImGui::Dummy(ImVec2(0, 8 * scale));
+                if (ImGui::Button("Remove", ImVec2(160 * scale, 0))) {
+                    hd.modsDir = baseDir + "mods/";
+                    hd.begin(&HdCutsceneJob::uninstall);
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Keep them", ImVec2(160 * scale, 0))) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+        } else {
+            ImGui::BeginDisabled(installed.empty());
+            ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, kAccentHot);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+            if (ImGui::Button(installed.empty() ? "Install the game first##hd" : "Download and install##hd",
+                              ImVec2(w, 0)))
+                startCutsceneInstall();
+            ImGui::PopStyleColor(4);
+            ImGui::EndDisabled();
+        }
+        rowEnd();
+        if (hdInstalled)
+            toggle("Use HD cutscenes", "Play the enhanced movies instead of the originals.", "hd_cutscenes", true);
+    }
+
+    void startCutsceneInstall() {
+        hd.modsDir = baseDir + "mods/";
+        hd.disc = discForInstall();
+        hd.begin(&HdCutsceneJob::install);
     }
 
     void startTextureInstall() {
@@ -1736,10 +2013,11 @@ struct Launcher {
             status = job.running ? "Wait for the install to finish." : "Install the game first: select your disc image.";
             statusUntil = ImGui::GetTime() + 5.0;
         }
-        if (play && tex.busy()) {
+        if (play && (tex.busy() || hd.busy())) {
             play = false;
             page = P_GRAPHICS;
-            status = "Wait for the texture pack to finish, or cancel it.";
+            status = tex.busy() ? "Wait for the texture pack to finish, or cancel it."
+                                : "Wait for the HD cutscenes to finish, or cancel them.";
             statusUntil = ImGui::GetTime() + 5.0;
         }
         ImGui::End();

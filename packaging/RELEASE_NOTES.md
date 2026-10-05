@@ -1,6 +1,12 @@
 A native PC port of Super Mario Sunshine, built from the decompilation, with a launcher and PC enhancements.
 
-### New in this release: online co-op (first stage)
+### New in this release: HD cutscenes
+- **All 21 movies at 3x resolution** (AI-enhanced, 1920 x 960), with their original timing, subtitles and audio. From the original project's HD cutscene release.
+- On the launcher's **Graphics** page, **HD cutscenes → Download and install** downloads the movie patches (about 5.7 GB), builds the movies from your own disc image and checks every one against its published checksum. Nothing else needs installing. A switch then turns them on or off.
+- The install is all-or-nothing: if it fails or you cancel it, you keep whatever you had before.
+- **Brought up to date with the original project**: its audio fixes (excess reverb tails, abrupt sound endings and doubled footstep echoes) and the latest decompilation.
+
+### Online co-op (first stage)
 - A new **Online** page in the launcher: one player chooses **Host**, the others choose **Join** and enter the host's address, and everyone presses Play.
 - Other players appear in your game when you are in the same level and episode, fully animated, with their cap, hands, FLUDD and nozzle, and a **name tag** over their head.
 - Up to **8 players**. It works on a home network straight away. Over the internet, the host forwards UDP port 27016 (it can be changed) on their router.

@@ -187,8 +187,17 @@ extern "C" void sms_mod_add_module(const char* name, sms_mod_entry_t entry)
 // their globals), moved out of the process's own by cmake/eclipse.cmake.
 typedef void (*ctor_t)(void);
 #if defined(__APPLE__)
-extern "C" ctor_t __start_sms_mod_ctors[] __attribute__((weak_import));
-extern "C" ctor_t __stop_sms_mod_ctors[] __attribute__((weak_import));
+// tools/mods/macho_ctors.py moves them to __DATA,__sms_mod_ctors; ld64 bounds
+// any section by these names, and makes an empty one when no mod is linked in.
+extern "C" ctor_t __start_sms_mod_ctors[] __asm("section$start$__DATA$__sms_mod_ctors");
+extern "C" ctor_t __stop_sms_mod_ctors[] __asm("section$end$__DATA$__sms_mod_ctors");
+#elif defined(_WIN32)
+// PE has no __start_/__stop_ symbols. The mods' constructors are renamed to
+// .data$sms_mod_ctors_m, which the linker sorts between these two.
+__attribute__((section(".data$sms_mod_ctors_a"), used)) static ctor_t s_ctors_begin[1] = {nullptr};
+__attribute__((section(".data$sms_mod_ctors_z"), used)) static ctor_t s_ctors_end[1] = {nullptr};
+#define __start_sms_mod_ctors (s_ctors_begin + 1)
+#define __stop_sms_mod_ctors s_ctors_end
 #else
 extern "C" ctor_t __start_sms_mod_ctors[] __attribute__((weak));
 extern "C" ctor_t __stop_sms_mod_ctors[] __attribute__((weak));

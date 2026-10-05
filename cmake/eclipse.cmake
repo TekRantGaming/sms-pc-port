@@ -67,6 +67,15 @@ endif()
 
 include(ExternalProject)
 set(_eclipse_lib "${CMAKE_BINARY_DIR}/eclipse-build/libsms_eclipse.a")
+# The library is its own CMake project: give it the game's objcopy (macOS has
+# only llvm-objcopy, which it would not find by itself) and, on macOS, the
+# game's architecture (x86_64 under Rosetta, not the host's arm64).
+if(APPLE)
+  set(_eclipse_platform_args -DCMAKE_OBJCOPY=${SMS_OBJCOPY} -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
+    -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT} -DPython3_EXECUTABLE=${Python3_EXECUTABLE})
+else()
+  set(_eclipse_platform_args -DCMAKE_OBJCOPY=${CMAKE_OBJCOPY})
+endif()
 ExternalProject_Add(sms_eclipse_build
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/eclipse/lib
   BINARY_DIR ${CMAKE_BINARY_DIR}/eclipse-build
@@ -75,7 +84,7 @@ ExternalProject_Add(sms_eclipse_build
     -DECLIPSE_SRC=${SMS_ECLIPSE_SRC_DIR}/eclipse -DBSE_SRC=${SMS_ECLIPSE_SRC_DIR}/bse
     -DMOVESET_SRC=${SMS_ECLIPSE_SRC_DIR}/moveset
     -DSHI_SRC=${SMS_ECLIPSE_SRC_DIR}/shi -DPORT_MODS=${CMAKE_CURRENT_SOURCE_DIR}/platform/mods
-    -DSMS_ARCH=${SMS_ARCH}
+    -DSMS_ARCH=${SMS_ARCH} ${_eclipse_platform_args}
   BUILD_ALWAYS ON
   INSTALL_COMMAND ""
   BUILD_BYPRODUCTS ${_eclipse_lib})
@@ -110,42 +119,60 @@ add_dependencies(sms sms_eclipse_build)
 # a minute). A failed check is redone on the next build.
 option(SMS_ECLIPSE_ABI_CHECK "Check the mods' result and argument types against the game's after linking" ON)
 if(SMS_ECLIPSE_ABI_CHECK)
+  if(APPLE)
+    # Mach-O executables keep their DWARF in the object files; gather it first.
+    set(_abi_binary ${CMAKE_BINARY_DIR}/sms.dSYM)
+    set(_abi_dsym COMMAND dsymutil $<TARGET_FILE:sms> -o ${_abi_binary})
+  else()
+    set(_abi_binary $<TARGET_FILE:sms>)
+    set(_abi_dsym)
+  endif()
   add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/sms_abi_check.stamp
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py $<TARGET_FILE:sms> ${_eclipse_lib}
+    ${_abi_dsym}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py ${_abi_binary} ${_eclipse_lib}
     COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/sms_abi_check.stamp
     DEPENDS sms ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/abi_check.py
     COMMENT "Checking the mods' result and argument types against the game's" VERBATIM)
   add_custom_target(sms_abi_check ALL DEPENDS ${CMAKE_BINARY_DIR}/sms_abi_check.stamp)
 endif()
 target_compile_definitions(sms PRIVATE SMS_ECLIPSE=1)
-target_link_libraries(sms PRIVATE -Wl,--whole-archive ${_eclipse_lib} -Wl,--no-whole-archive)
+# --defsym=name=target: name is another name for target (ld64: -alias).
+function(sms_eclipse_alias name target)
+  if(APPLE)
+    target_link_options(sms PRIVATE "LINKER:-alias,_${target},_${name}")
+  else()
+    target_link_options(sms PRIVATE "-Wl,--defsym=${_object_prefix}${name}=${_object_prefix}${target}")
+  endif()
+endfunction()
+if(APPLE)
+  target_link_options(sms PRIVATE "LINKER:-force_load,${_eclipse_lib}")
+else()
+  target_link_libraries(sms PRIVATE -Wl,--whole-archive ${_eclipse_lib} -Wl,--no-whole-archive)
+endif()
 set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_eclipse_lib})
 # Names the mods use for things the decomp spells otherwise: retail globals
 # under their map names, and functions whose u32 is unsigned int there and
 # unsigned long here (the same type on the 32-bit port).
-target_link_options(sms PRIVATE
-  -Wl,--defsym=gStageBGM=_ZN10MSMainProc11MSStageInfo8stageBgmE
-  -Wl,--defsym=gAudioVolume=_ZN5MSBgm12smMainVolumeE
-  -Wl,--defsym=waterColor=gModelWaterManagerWaterColor)
+sms_eclipse_alias(gStageBGM _ZN10MSMainProc11MSStageInfo8stageBgmE)
+sms_eclipse_alias(gAudioVolume _ZN5MSBgm12smMainVolumeE)
+sms_eclipse_alias(waterColor gModelWaterManagerWaterColor)
 # TMarDirector::fireStartDemoCamera's callback argument (and the callback's
 # first parameter) is uintptr_t in the decomp and u32 in the mods' headers;
 # the mods pass their own callbacks and 0 through it, and the game only hands
 # the argument back to the callback.
 if(SMS_ARCH STREQUAL "32")
-  target_link_options(sms PRIVATE
-    -Wl,--defsym=_ZN7JKRHeap5allocEjiPS_=_ZN7JKRHeap5allocEmiPS_
-    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag
-    -Wl,--defsym=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFlmmEmPN6JDrama6TActorENS9_6TFlagTItEE=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFljmEjPN6JDrama6TActorENS9_6TFlagTItEE)
+  sms_eclipse_alias(_ZN7JKRHeap5allocEjiPS_ _ZN7JKRHeap5allocEmiPS_)
+  sms_eclipse_alias(_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag _ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag)
+  sms_eclipse_alias(_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFlmmEmPN6JDrama6TActorENS9_6TFlagTItEE _ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEElfbPFljmEjPN6JDrama6TActorENS9_6TFlagTItEE)
 else()
   # On LP64 hosts it is the other way round: the game's u32 is unsigned int,
   # and these declarations (size_t, unsigned long) say unsigned long.
-  target_link_options(sms PRIVATE
-    -Wl,--defsym=_ZN7JKRHeap5allocEmiPS_=_ZN7JKRHeap5allocEjiPS_
-    -Wl,--defsym=_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag=_ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag
-    -Wl,--defsym=_ZN6JStage6TActor11JSGSetShapeEm=_ZN6JStage6TActor11JSGSetShapeEj
-    -Wl,--defsym=_ZN6JStage6TActor15JSGSetAnimationEm=_ZN6JStage6TActor15JSGSetAnimationEj
-    -Wl,--defsym=_ZN6JStage7TSystem16JSGGetSystemDataEm=_ZN6JStage7TSystem16JSGGetSystemDataEj
-    -Wl,--defsym=_ZN6JStage7TSystem16JSGSetSystemDataEmm=_ZN6JStage7TSystem16JSGSetSystemDataEjj
-    -Wl,--defsym=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFijjEjPN6JDrama6TActorENS9_6TFlagTItEE=_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFimjEmPN6JDrama6TActorENS9_6TFlagTItEE)
+  sms_eclipse_alias(_ZN7JKRHeap5allocEmiPS_ _ZN7JKRHeap5allocEjiPS_)
+  sms_eclipse_alias(_ZN13JKRMemArchiveC1EPvm15JKRMemBreakFlag _ZN13JKRMemArchiveC1EPvj15JKRMemBreakFlag)
+  sms_eclipse_alias(_ZN6JStage6TActor11JSGSetShapeEm _ZN6JStage6TActor11JSGSetShapeEj)
+  sms_eclipse_alias(_ZN6JStage6TActor15JSGSetAnimationEm _ZN6JStage6TActor15JSGSetAnimationEj)
+  sms_eclipse_alias(_ZN6JStage7TSystem16JSGGetSystemDataEm _ZN6JStage7TSystem16JSGGetSystemDataEj)
+  sms_eclipse_alias(_ZN6JStage7TSystem16JSGSetSystemDataEmm _ZN6JStage7TSystem16JSGSetSystemDataEjj)
+  sms_eclipse_alias(_ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFijjEjPN6JDrama6TActorENS9_6TFlagTItEE _ZN12TMarDirector19fireStartDemoCameraEPKcPKN9JGeometry5TVec3IfEEifbPFimjEmPN6JDrama6TActorENS9_6TFlagTItEE)
 endif()
 message(STATUS "SMS port: Super Mario Eclipse built in (sources in ${SMS_ECLIPSE_SRC_DIR})")

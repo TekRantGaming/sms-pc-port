@@ -80,13 +80,34 @@ target_compile_options(eclipse_objs PRIVATE ${_opts})
 # each linked into one object whose own definitions are made local; what they
 # use of the engine and the game stays an undefined reference, resolved by
 # name as Kuribo resolves it.
+# The partial links below run the compiler driver as a linker, for this target.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+  set(_ld_arch -arch ${CMAKE_OSX_ARCHITECTURES})
+else()
+  set(_ld_arch -m${SMS_ARCH})
+endif()
+if(WIN32)
+  # lld (MinGW clang's linker in some environments) has no -r; GNU ld does.
+  list(APPEND _ld_arch -fuse-ld=bfd)
+endif()
+
 set(_modules)
 foreach(m moveset eclipse)
   target_compile_options(${m}_objs PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
   set(_o ${CMAKE_CURRENT_BINARY_DIR}/${m}_module.o)
+  if(APPLE)
+    # ld64 -r already turns hidden (private extern) definitions into local ones.
+    set(_localize)
+  elseif(WIN32)
+    # COFF has no visibility: keep no definition global (as hidden ones are
+    # made local on ELF). The modules' references stay undefined.
+    set(_localize COMMAND ${CMAKE_OBJCOPY} --keep-global-symbol=__sms_mod_no_exports ${_o})
+  else()
+    set(_localize COMMAND ${CMAKE_OBJCOPY} --localize-hidden ${_o})
+  endif()
   add_custom_command(OUTPUT ${_o}
-    COMMAND ${CMAKE_CXX_COMPILER} -m${SMS_ARCH} -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
-    COMMAND ${CMAKE_OBJCOPY} --localize-hidden ${_o}
+    COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
+    ${_localize}
     DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> COMMAND_EXPAND_LISTS VERBATIM)
   list(APPEND _modules ${_o})
 endforeach()
@@ -94,11 +115,23 @@ endforeach()
 # Then everything into one object: the projects share many file names
 # (player.cpp, generic.cpp...), which an archive of their objects would not
 # keep apart. This partial link also moves their static constructors out of
-# .ctors (mod_ctors.ld).
+# the ones the process runs at start, to where platform/mods/modhooks.cpp finds
+# them: on ELF the section sms_mod_ctors (mod_ctors.ld), on Mach-O
+# __DATA,__sms_mod_ctors (tools/mods/macho_ctors.py), on PE .data$sms_mod_ctors_m.
 set(_obj ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.o)
+if(APPLE)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  set(_ctors COMMAND ${Python3_EXECUTABLE} ${PORT_MODS}/../../tools/mods/macho_ctors.py ${_obj})
+elseif(WIN32)
+  set(_ctors COMMAND ${CMAKE_OBJCOPY} --rename-section .ctors=.data$sms_mod_ctors_m ${_obj})
+else()
+  set(_ctors)
+  list(APPEND _ld_arch -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld)
+endif()
 add_custom_command(OUTPUT ${_obj}
-  COMMAND ${CMAKE_CXX_COMPILER} -m${SMS_ARCH} -r -nostdlib -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld -o ${_obj}
+  COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_obj}
     $<TARGET_OBJECTS:bse_objs> ${_modules}
+  ${_ctors}
   DEPENDS bse_objs $<TARGET_OBJECTS:bse_objs> ${_modules} ${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld
   COMMAND_EXPAND_LISTS VERBATIM)
 add_library(sms_eclipse STATIC ${_obj})

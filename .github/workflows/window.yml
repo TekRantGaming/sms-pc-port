@@ -23,7 +23,7 @@ jobs:
         run: |
           if [ "$ARCH" = 32 ]; then sudo dpkg --add-architecture i386; fi
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake g++-multilib python3 patch binutils xvfb xauth libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
+          sudo apt-get install -y --no-install-recommends cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
           # The port already supports 32-bit SDL using the host's headers and
           # i386 runtime libraries. Avoid incompatible multiarch GLib dev tools.
           if [ "$ARCH" = 32 ]; then
@@ -40,7 +40,18 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           ctest --test-dir build/window/platform/gx -R '^gx_windowtest$' --output-on-failure
-          xvfb-run -a -s '-screen 0 1280x800x24' env -u SMS_FULLSCREEN build/window/platform/gx/gx_windowsmoke --window
-          xvfb-run -a -s '-screen 0 1280x800x24' env SMS_FULLSCREEN=0 build/window/platform/gx/gx_windowsmoke --window
-          xvfb-run -a -s '-screen 0 1280x800x24' env SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --fullscreen
+          # SDL desktop fullscreen is managed by the desktop window manager.
+          xvfb-run -a -s '-screen 0 1280x800x24' bash -e -c '
+            openbox --sm-disable > build/window/window-manager.log 2>&1 &
+            window_wm_pid=$!
+            trap "kill $window_wm_pid" EXIT
+            for attempt in {1..100}; do
+              if xprop -root _NET_SUPPORTING_WM_CHECK | grep -q "window id #"; then break; fi
+              sleep 0.05
+            done
+            xprop -root _NET_SUPPORTING_WM_CHECK | grep -q "window id #"
+            env -u SMS_FULLSCREEN build/window/platform/gx/gx_windowsmoke --window
+            SMS_FULLSCREEN=0 build/window/platform/gx/gx_windowsmoke --window
+            SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --fullscreen
+          '
           SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --headless

@@ -74,12 +74,6 @@ target_include_directories(eclipse_objs PRIVATE ${PORT_MODS}/eclipse/shim ${PORT
 target_compile_definitions(eclipse_objs PRIVATE ${_defs})
 target_compile_options(eclipse_objs PRIVATE ${_opts})
 
-# Kuribo loads each module on its own, so their private names never meet;
-# linked into one program they would (Eclipse and the moveset both define
-# gSettingsGroup, gSaveBnr...). The modules built on BetterSunshineEngine are
-# each linked into one object whose own definitions are made local; what they
-# use of the engine and the game stays an undefined reference, resolved by
-# name as Kuribo resolves it.
 # The partial links below run the compiler driver as a linker, for this target.
 if(APPLE AND CMAKE_OSX_ARCHITECTURES)
   set(_ld_arch -arch ${CMAKE_OSX_ARCHITECTURES})
@@ -91,6 +85,14 @@ if(WIN32)
   list(APPEND _ld_arch -fuse-ld=bfd)
 endif()
 
+# Kuribo loads each module on its own, so their private names never meet;
+# linked into one program they would (Eclipse and the moveset both define
+# gSettingsGroup, gSaveBnr...). The modules built on BetterSunshineEngine are
+# each linked into one object whose own definitions are made local
+# (tools/mods/localize_module.py); what they use of the engine and the game
+# stays an undefined reference, resolved by name as Kuribo resolves it.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(_tools ${PORT_MODS}/../../tools/mods)
 set(_modules)
 foreach(m moveset eclipse)
   target_compile_options(${m}_objs PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
@@ -98,17 +100,13 @@ foreach(m moveset eclipse)
   if(APPLE)
     # ld64 -r already turns hidden (private extern) definitions into local ones.
     set(_localize)
-  elseif(WIN32)
-    # COFF has no visibility: keep no definition global (as hidden ones are
-    # made local on ELF). The modules' references stay undefined.
-    set(_localize COMMAND ${CMAKE_OBJCOPY} --keep-global-symbol=__sms_mod_no_exports ${_o})
   else()
-    set(_localize COMMAND ${CMAKE_OBJCOPY} --localize-hidden ${_o})
+    set(_localize COMMAND ${Python3_EXECUTABLE} ${_tools}/localize_module.py ${CMAKE_OBJCOPY} ${_o})
   endif()
   add_custom_command(OUTPUT ${_o}
     COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
     ${_localize}
-    DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> COMMAND_EXPAND_LISTS VERBATIM)
+    DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> ${_tools}/localize_module.py COMMAND_EXPAND_LISTS VERBATIM)
   list(APPEND _modules ${_o})
 endforeach()
 
@@ -120,8 +118,7 @@ endforeach()
 # __DATA,__sms_mod_ctors (tools/mods/macho_ctors.py), on PE .data$sms_mod_ctors_m.
 set(_obj ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.o)
 if(APPLE)
-  find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  set(_ctors COMMAND ${Python3_EXECUTABLE} ${PORT_MODS}/../../tools/mods/macho_ctors.py ${_obj})
+  set(_ctors COMMAND ${Python3_EXECUTABLE} ${_tools}/macho_ctors.py ${_obj})
 elseif(WIN32)
   set(_ctors COMMAND ${CMAKE_OBJCOPY} --rename-section .ctors=.data$sms_mod_ctors_m ${_obj})
 else()

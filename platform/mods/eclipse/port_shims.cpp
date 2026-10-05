@@ -26,7 +26,12 @@
 #include <System/GameSequence.hpp>
 #include <System/ScenarioArchiveName.hpp>
 
-#define SHIM(ret, name, sym, ...) extern "C" ret name(__VA_ARGS__) __asm__(sym); ret name(__VA_ARGS__)
+// sym is the mods' C++ name; asm labels are literal, so add the platform's
+// prefix (Mach-O and 32-bit COFF put an underscore before every C name).
+#define SHIM_STR2(x) #x
+#define SHIM_STR(x) SHIM_STR2(x)
+#define SHIM(ret, name, sym, ...) \
+	extern "C" ret name(__VA_ARGS__) __asm__(SHIM_STR(__USER_LABEL_PREFIX__) sym); ret name(__VA_ARGS__)
 
 typedef JGeometry::TVec3<f32> Vec3f;
 

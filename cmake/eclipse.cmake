@@ -72,10 +72,11 @@ set(_eclipse_lib "${CMAKE_BINARY_DIR}/eclipse-build/libsms_eclipse.a")
 # game's architecture (x86_64 under Rosetta, not the host's arm64).
 if(APPLE)
   set(_eclipse_platform_args -DCMAKE_OBJCOPY=${SMS_OBJCOPY} -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
-    -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT} -DPython3_EXECUTABLE=${Python3_EXECUTABLE})
+    -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT})
 else()
   set(_eclipse_platform_args -DCMAKE_OBJCOPY=${CMAKE_OBJCOPY})
 endif()
+list(APPEND _eclipse_platform_args -DPython3_EXECUTABLE=${Python3_EXECUTABLE})
 ExternalProject_Add(sms_eclipse_build
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/platform/mods/eclipse/lib
   BINARY_DIR ${CMAKE_BINARY_DIR}/eclipse-build
@@ -150,6 +151,23 @@ else()
   target_link_libraries(sms PRIVATE -Wl,--whole-archive ${_eclipse_lib} -Wl,--no-whole-archive)
 endif()
 set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_eclipse_lib})
+# Complete-object constructors and destructors the mods call that the game has
+# only as base-object ones: GCC on ELF aliases them itself.
+if(APPLE OR WIN32)
+  set(_structors ${CMAKE_BINARY_DIR}/eclipse_structor_aliases.ld)
+  add_custom_command(OUTPUT ${_structors}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/structor_aliases.py ${CMAKE_NM}
+      $<TARGET_FILE:sms_game> ${_eclipse_lib} ${_structors} $<IF:$<BOOL:${APPLE}>,apple,gnu>
+    DEPENDS sms_game sms_eclipse_build ${CMAKE_CURRENT_SOURCE_DIR}/tools/mods/structor_aliases.py VERBATIM)
+  add_custom_target(sms_eclipse_structors DEPENDS ${_structors})
+  add_dependencies(sms sms_eclipse_structors)
+  set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_structors})
+  if(APPLE)
+    target_link_options(sms PRIVATE "LINKER:-alias_list,${_structors}")
+  else()
+    target_link_options(sms PRIVATE ${_structors})
+  endif()
+endif()
 # Names the mods use for things the decomp spells otherwise: retail globals
 # under their map names, and functions whose u32 is unsigned int there and
 # unsigned long here (the same type on the 32-bit port).

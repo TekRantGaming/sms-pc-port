@@ -4,7 +4,7 @@ name: Eclipse build
 # where platform/mods/modhooks.cpp finds them. No disc image is used.
 on:
   push:
-    branches: [main, 'eclipse-*']
+    branches: [main, eclipse-ci-baseline]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -60,7 +60,7 @@ jobs:
         run: ./build.sh
       - name: Check whether the mods are linked in
         run: |
-          os=$(case "$RUNNER_OS" in Linux) echo linux;; macOS) echo macos;; Windows) echo windows;; esac)
+          if [[ "$RUNNER_OS" == Linux ]]; then os=linux; elif [[ "$RUNNER_OS" == macOS ]]; then os=macos; else os=windows; fi
           exe=build/$os-64$([[ "$SMS_ECLIPSE" != 1 ]] || echo -eclipse)/sms
           [[ "$os" != windows ]] || exe+=.exe
           head -c 32 /dev/zero > invalid.iso

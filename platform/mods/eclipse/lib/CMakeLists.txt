@@ -43,6 +43,11 @@ if(SMS_ARCH STREQUAL "32")
   # SSE float math, as the game is built (x87 would round differently)
   list(APPEND _arch -malign-double -msse2 -mfpmath=sse)
 endif()
+if(WIN32)
+  # GNU ld does not know clang's .llvm_addrsig and maps it at 4 GiB, which
+  # Windows refuses to load.
+  list(APPEND _arch -fno-addrsig)
+endif()
 # -fnew-alignment=4: the game's operator new (JKRHeap) guarantees 4-byte
 # alignment, not the 16 clang would otherwise assume for aligned SSE stores;
 # -fno-aligned-new keeps every allocation on that operator (the game's heaps).

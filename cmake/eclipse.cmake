@@ -151,8 +151,8 @@ else()
   target_link_libraries(sms PRIVATE -Wl,--whole-archive ${_eclipse_lib} -Wl,--no-whole-archive)
 endif()
 set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_eclipse_lib})
-# Complete-object constructors and destructors the mods call that the game has
-# only as base-object ones: GCC on ELF aliases them itself.
+# Constructors and destructors the mods call that the game has only in their
+# other variant (complete- or base-object): GCC on ELF aliases them itself.
 if(APPLE OR WIN32)
   set(_structors ${CMAKE_BINARY_DIR}/eclipse_structor_aliases.ld)
   add_custom_command(OUTPUT ${_structors}

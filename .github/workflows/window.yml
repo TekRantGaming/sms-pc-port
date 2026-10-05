@@ -1,0 +1,43 @@
+name: Game window settings
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ['64', '32']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install SDL and software OpenGL
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake g++-multilib xvfb xauth libsdl2-dev libegl-dev libgl-dev libsdl2-dev:i386 libegl-dev:i386 libgl-dev:i386 libgl1-mesa-dri libgl1-mesa-dri:i386 libegl-mesa0 libegl-mesa0:i386
+      - name: Build the game's window smoke test
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          args=()
+          if [ "$ARCH" = 32 ]; then
+            args+=(-DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32 -DSDL2_DIR=/usr/lib/i386-linux-gnu/cmake/SDL2 -DSMS_GX_EGL_LIB=/usr/lib/i386-linux-gnu/libEGL.so)
+          fi
+          cmake -S platform/gx -B build/window -DCMAKE_BUILD_TYPE=Release -DSMS_PORT_SRC="$PWD/src" "${args[@]}"
+          cmake --build build/window --target gx_windowtest gx_windowsmoke -j2
+      - name: Check window placement, fullscreen, and headless rendering
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          ctest --test-dir build/window -R '^gx_windowtest$' --output-on-failure
+          xvfb-run -a -s '-screen 0 1280x800x24' env -u SMS_FULLSCREEN build/window/gx_windowsmoke --window
+          xvfb-run -a -s '-screen 0 1280x800x24' env SMS_FULLSCREEN=0 build/window/gx_windowsmoke --window
+          xvfb-run -a -s '-screen 0 1280x800x24' env SMS_FULLSCREEN=1 build/window/gx_windowsmoke --fullscreen
+          SMS_FULLSCREEN=1 build/window/gx_windowsmoke --headless

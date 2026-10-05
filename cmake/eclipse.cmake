@@ -150,6 +150,13 @@ if(APPLE)
 else()
   target_link_libraries(sms PRIVATE -Wl,--whole-archive ${_eclipse_lib} -Wl,--no-whole-archive)
 endif()
+if(WIN32)
+  # The mods' headers define some game functions inline (TMario's parameter
+  # constructors...). On ELF and Mach-O those copies are weak and the game's
+  # own definition wins; on PE a COMDAT copy and a plain definition collide.
+  # The game's archive comes first on the link line, so its definition wins.
+  target_link_options(sms PRIVATE -Wl,--allow-multiple-definition)
+endif()
 set_property(TARGET sms APPEND PROPERTY LINK_DEPENDS ${_eclipse_lib})
 # Constructors and destructors the mods call that the game has only in their
 # other variant (complete- or base-object): GCC on ELF aliases them itself.

@@ -13,7 +13,7 @@ class ObjectResponseTest(unittest.TestCase):
             self.skipTest('CMake is required')
         helper = pathlib.Path(__file__).resolve().parents[3] / 'platform/mods/eclipse/lib/object_response.cmake'
         with tempfile.TemporaryDirectory(prefix='sms response files with spaces-') as temporary:
-            root = pathlib.Path(temporary) / ('long source and build paths ' * 3)
+            root = pathlib.Path(temporary) / ('long source and build paths ' * 3).rstrip()
             source, build = root / 'source', root / 'build'
             source.mkdir(parents=True)
             count = 80

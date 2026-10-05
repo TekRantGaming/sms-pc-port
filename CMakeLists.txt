@@ -379,9 +379,8 @@ if(APPLE)
   # Apple ld: -force_load pulls every member (like --whole-archive).
   # force_load does not pull INTERFACE deps, so also link sms_gx normally for SDL2.
   # Darwin requires even weak imports to be resolved unless explicitly allowed.
-  # These five code-mod symbols are intentionally absent from standard Sunshine.
-  foreach(_optional_mod_symbol IN ITEMS ___start_sms_mod_ctors ___stop_sms_mod_ctors
-          _sPlayerAnimeDatas _sPlayerAnimeInfos _sPlayerAnimeInfosSize)
+  # These three code-mod symbols are intentionally absent from standard Sunshine.
+  foreach(_optional_mod_symbol IN ITEMS _sPlayerAnimeDatas _sPlayerAnimeInfos _sPlayerAnimeInfosSize)
     target_link_options(sms PRIVATE "LINKER:-U,${_optional_mod_symbol}")
   endforeach()
   target_link_libraries(sms PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
@@ -407,8 +406,7 @@ if(SMS_ECLIPSE)
 elseif(WIN32)
   # COFF x64 does not resolve these optional weak data imports to null.
   # Only standard Sunshine uses null imports; Eclipse must supply real ones.
-  foreach(_optional_mod_symbol IN ITEMS __start_sms_mod_ctors __stop_sms_mod_ctors
-          sPlayerAnimeDatas sPlayerAnimeInfos sPlayerAnimeInfosSize)
+  foreach(_optional_mod_symbol IN ITEMS sPlayerAnimeDatas sPlayerAnimeInfos sPlayerAnimeInfosSize)
     target_link_options(sms PRIVATE "-Wl,--defsym=${_object_prefix}${_optional_mod_symbol}=0")
   endforeach()
 endif()

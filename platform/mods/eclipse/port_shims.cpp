@@ -7,6 +7,7 @@
 #include <new>
 
 #include <Enemy/Graph.hpp>
+#include <JSystem/JDrama/JDRActor.hpp>
 #include <JSystem/JDrama/JDRNameRef.hpp>
 #include <JSystem/JDrama/JDRNameRefGen.hpp>
 #include <JSystem/JDrama/JDRViewObj.hpp>
@@ -26,7 +27,12 @@
 #include <System/GameSequence.hpp>
 #include <System/ScenarioArchiveName.hpp>
 
-#define SHIM(ret, name, sym, ...) extern "C" ret name(__VA_ARGS__) __asm__(sym); ret name(__VA_ARGS__)
+// sym is the mods' C++ name; asm labels are literal, so add the platform's
+// prefix (Mach-O and 32-bit COFF put an underscore before every C name).
+#define SHIM_STR2(x) #x
+#define SHIM_STR(x) SHIM_STR2(x)
+#define SHIM(ret, name, sym, ...) \
+	extern "C" ret name(__VA_ARGS__) __asm__(SHIM_STR(__USER_LABEL_PREFIX__) sym); ret name(__VA_ARGS__)
 
 typedef JGeometry::TVec3<f32> Vec3f;
 
@@ -55,6 +61,10 @@ SHIM(void, shim_JSUInputStream_ctor, "_ZN14JSUInputStreamC2Ev", JSUInputStream* 
 SHIM(void, shim_TNameRef_ctor, "_ZN6JDrama8TNameRefC2EPKc", JDrama::TNameRef* self, const char* name)
 {
 	new (self) JDrama::TNameRef(name);
+}
+SHIM(void, shim_TActor_ctor, "_ZN6JDrama6TActorC2EPKc", JDrama::TActor* self, const char* name)
+{
+	new (self) JDrama::TActor(name);
 }
 SHIM(void, shim_TViewObj_ctor, "_ZN6JDrama8TViewObjC2EPKc", JDrama::TViewObj* self, const char* name)
 {

@@ -8,12 +8,13 @@
 # With a disc image (the argument, SMS_DISC_IMAGE, or the one image in rom/)
 # it also builds a copy that has the game's files inside and needs no image:
 # sms-standalone (sms-standalone.exe on Windows, SMS.app on macOS).
-# JOBS=n limits parallel compiler jobs. See BUILD.md.
+# JOBS=n limits parallel compiler jobs. SMS_ECLIPSE=1 builds Super Mario
+# Eclipse in, into build/<os>-<arch>-eclipse/ (docs/ECLIPSE.md). See BUILD.md.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
-  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 source tools/common.sh
@@ -23,6 +24,11 @@ sms_legacy_notes
 sms_select_arch build
 bdir=$sms_build_dir
 cmake_args=()
+eclipse=${SMS_ECLIPSE:-0}
+if [[ "$eclipse" == 1 ]]; then
+  bdir+=-eclipse
+  cmake_args+=(-DSMS_ECLIPSE=ON)
+fi
 
 need() {
   local missing=() p
@@ -36,6 +42,7 @@ need() {
 
 setup_linux() {
   need git cmake make patch python3 objcopy g++
+  [[ "$eclipse" != 1 ]] || need clang clang++
   if [[ "$sms_arch" == 32 ]] && ! echo 'int main(){return 0;}' | "${CXX:-g++}" -m32 -x c++ - -o /dev/null 2>/dev/null; then
     sms_die "g++ -m32 does not link: install the 32-bit packages (BUILD.md#linux), or build 64-bit with SMS_ARCH=64 ./build.sh."
   fi
@@ -93,6 +100,7 @@ setup_macos() {
 
 setup_windows() {
   need git cmake ninja patch python
+  [[ "$eclipse" != 1 ]] || need clang clang++
   # FindPython otherwise prefers a registered system installation, even when
   # the portable MSYS2 Python is first on PATH.
   cmake_args+=(-G Ninja -DPython3_EXECUTABLE="$(cygpath -m "$(command -v python)")")
@@ -101,7 +109,7 @@ setup_windows() {
 "setup_$sms_os"
 
 disc="${1:-${SMS_DISC_IMAGE:-}}"
-[[ -n "$disc" ]] || disc=$(sms_find_rom)
+[[ -n "$disc" || "$eclipse" == 1 ]] || disc=$(sms_find_rom)
 if [[ -n "$disc" ]]; then
   [[ -f "$disc" ]] || sms_die "Disc image not found: $disc"
   if [[ "$sms_os" == windows ]]; then

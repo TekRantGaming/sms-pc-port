@@ -1,7 +1,7 @@
 name: Eclipse build
-# Builds Super Mario Eclipse into the 64-bit game on each platform and starts
-# it far enough to see that the mods' constructors were linked in where
-# platform/mods/modhooks.cpp finds them. No disc image is used.
+# Builds the 64-bit game with and without Super Mario Eclipse on each platform
+# and starts it far enough to see whether the mods' constructors were linked in
+# where platform/mods/modhooks.cpp finds them. No disc image is used.
 on:
   push:
     branches: [main, 'eclipse-*']
@@ -14,6 +14,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        eclipse: ['1', '0']
+        os: [ubuntu-24.04, macos-15, windows-2025]
         include:
           - os: ubuntu-24.04
             shell: bash
@@ -26,9 +28,10 @@ jobs:
     defaults:
       run:
         shell: ${{ matrix.shell }}
+    name: ${{ matrix.os }}${{ matrix.eclipse == '1' && ' Eclipse' || ' Sunshine' }}
     env:
       SMS_ARCH: '64'
-      SMS_ECLIPSE: '1'
+      SMS_ECLIPSE: ${{ matrix.eclipse }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,10 +58,10 @@ jobs:
             mingw-w64-x86_64-python mingw-w64-x86_64-SDL2
       - name: Build Eclipse
         run: ./build.sh
-      - name: Check the mods are linked in
+      - name: Check whether the mods are linked in
         run: |
           os=$(case "$RUNNER_OS" in Linux) echo linux;; macOS) echo macos;; Windows) echo windows;; esac)
-          exe=build/$os-64-eclipse/sms
+          exe=build/$os-64$([[ "$SMS_ECLIPSE" != 1 ]] || echo -eclipse)/sms
           [[ "$os" != windows ]] || exe+=.exe
           head -c 32 /dev/zero > invalid.iso
           set +e
@@ -68,5 +71,6 @@ jobs:
           echo "exit status $?"
           set -e
           cat start.log
-          grep -q 'code mods linked in but switched off' start.log
+          if [[ "$SMS_ECLIPSE" == 1 ]]; then grep -q 'code mods linked in but switched off' start.log
+          else ! grep -q 'code mods linked in' start.log; fi
           grep -q 'not a usable GameCube disc image' start.log

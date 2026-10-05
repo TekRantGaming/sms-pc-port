@@ -28,6 +28,7 @@ jobs:
     defaults:
       run:
         shell: ${{ matrix.shell }}
+        working-directory: Eclipse CI with spaces/port
     name: ${{ matrix.os }}${{ matrix.eclipse == '1' && ' Eclipse' || ' Sunshine' }}
     env:
       SMS_ARCH: '64'
@@ -36,6 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+          path: Eclipse CI with spaces/port
       - name: Install Linux tools
         if: runner.os == 'Linux'
         run: |
@@ -56,6 +58,10 @@ jobs:
             git patch mingw-w64-x86_64-gcc mingw-w64-x86_64-clang mingw-w64-x86_64-llvm-tools
             mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-make
             mingw-w64-x86_64-python mingw-w64-x86_64-SDL2
+      - name: Test partial-link response files with long paths
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then python tools/mods/tests/test_object_response.py
+          else python3 tools/mods/tests/test_object_response.py; fi
       - name: Build Eclipse
         run: ./build.sh
       - name: Check whether the mods are linked in

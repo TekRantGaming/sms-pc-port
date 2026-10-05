@@ -74,3 +74,10 @@ jobs:
           if [[ "$SMS_ECLIPSE" == 1 ]]; then grep -q 'code mods linked in but switched off' start.log
           else ! grep -q 'code mods linked in' start.log; fi
           grep -q 'not a usable GameCube disc image' start.log
+      - name: Show the Windows executable's sections
+        if: failure() && runner.os == 'Windows'
+        run: |
+          exe=build/windows-64$([[ "$SMS_ECLIPSE" != 1 ]] || echo -eclipse)/sms.exe
+          ls -l "$exe"
+          objdump -p "$exe" | sed -n '1,60p'
+          objdump -h "$exe"

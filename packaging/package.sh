@@ -17,9 +17,13 @@ Super Mario Sunshine - PC Port ($version)
 THIS PROJECT HAS CLOSED. Its features are going into the official port and
 SMS Launcher by chasem-dev: https://github.com/chasem-dev/sms-launcher
 
-Start sms (sms.exe on Windows): it backs up your memory card, copies it to
-where SMS Launcher looks for it if it was kept elsewhere, then downloads the
-latest SMS Launcher and starts it. Nothing is deleted.
+Start sms (sms.exe on Windows) and choose Get SMS Launcher: it backs up your
+memory card, copies it to where SMS Launcher looks for it if it was kept
+elsewhere, then downloads the latest SMS Launcher and starts it. Nothing is
+deleted.
+
+Not ready to switch? Play on this launcher anyway opens this launcher as
+before, and it plays the game. It asks again each time you start it.
 
 Source: https://github.com/TekRantGaming/sms-pc-port
 Dear ImGui is MIT licensed (LICENSE-imgui.txt). The launcher's background

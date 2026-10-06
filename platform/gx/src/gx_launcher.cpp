@@ -2399,7 +2399,7 @@ struct Launcher {
         const bool updating = ph == UpdateJob::DOWNLOADING || ph == UpdateJob::INSTALLING || ph == UpdateJob::READY;
         const bool showUpdate = updating || (ph == UpdateJob::AVAILABLE && !updateDismissed) ||
                                 (ph == UpdateJob::FAILED && updateTried);
-        const bool showNote = !showUpdate && settings.get("sms_launcher_notice", "") != "seen";
+        const bool showNote = !showUpdate && !noteHidden;
         if (!showUpdate && !showNote) return;
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 0.84f, 0.25f, 0.13f));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f * scale);
@@ -2422,20 +2422,18 @@ struct Launcher {
             else if (ImGui::Button("Open the download page##updf")) SDL_OpenURL(kReleasesPage);
         } else {
             ImGui::PushFont(bold, 0.0f);
-            ImGui::TextUnformatted("The official launcher is SMS Launcher");
+            ImGui::TextUnformatted("Please move to SMS Launcher");
             ImGui::PopFont();
             ImGui::PushStyleColor(ImGuiCol_Text, kDim);
-            ImGui::TextUnformatted("chasem-dev, who made this port, has his own launcher. This one's features are "
-                                   "being contributed to it, and this launcher will be retired once they are there. "
-                                   "Until then it keeps working and keeps updating.");
+            ImGui::TextUnformatted("This project has closed. Its features are going into the official port and SMS "
+                                   "Launcher by chasem-dev, who made the port, and this launcher no longer gets new "
+                                   "features. Moving backs up your saves, puts them where SMS Launcher looks, and "
+                                   "installs it for you.");
             ImGui::PopStyleColor();
             const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-            if (accentButton("Get SMS Launcher##note", ImVec2(half, 0))) SDL_OpenURL(kSmsLauncherPage);
+            if (accentButton("Move to SMS Launcher##note", ImVec2(half, 0))) legacy = false;
             ImGui::SameLine();
-            if (ImGui::Button("Got it##note", ImVec2(-FLT_MIN, 0))) {
-                settings.set("sms_launcher_notice", "seen");
-                settings.save();
-            }
+            if (ImGui::Button("Not now##note", ImVec2(-FLT_MIN, 0))) noteHidden = true;
         }
         ImGui::PopTextWrapPos();
         ImGui::EndChild();
@@ -2460,10 +2458,10 @@ struct Launcher {
         }
         toggle("Check for updates at startup", "Looks for a new release on GitHub each time the launcher opens. "
                "Nothing is downloaded until you choose Update.", "update_check", true);
-        rowBegin("Official launcher", "SMS Launcher, by the port's author, chasem-dev. This launcher's features are "
-                 "being added to it; once they are, it is the one to use.");
-        if (accentButton("Get SMS Launcher##about", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0)))
-            SDL_OpenURL(kSmsLauncherPage);
+        rowBegin("Official launcher", "SMS Launcher, by the port's author, chasem-dev. This project has closed and "
+                 "its features are going there; it backs up and moves your saves, then installs SMS Launcher.");
+        if (accentButton("Move to SMS Launcher##about", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0)))
+            legacy = false;
         rowEnd();
         toggle("Show this menu at startup",
                "When off, the game starts straight away. Hold Shift while starting it to see this menu again.",
@@ -2476,8 +2474,10 @@ struct Launcher {
              "your own disc image. Launcher drawn with Dear ImGui.");
     }
 
-    // --- the one screen left: SMS Launcher is the launcher now
+    // --- the switch to SMS Launcher, shown at every start, or this launcher for the session (legacy:
+    // "Play on this launcher anyway"), which keeps asking players to move
     MoveJob move;
+    bool legacy = false, noteHidden = false;
 
     // The memory card folder this game uses (platform/card/card.cpp): SMS_SAVE_DIR or save_dir (relative
     // to the game folder), else the default that SMS Launcher shares.
@@ -2671,6 +2671,13 @@ struct Launcher {
 #endif
             wrapped(done.c_str(), hex(0xa8eed5), bold, 14 * scale);
             wrapped(("Saved to " + move.file).c_str(), hex(0xd8eef1), body, 13 * scale);
+        }
+        // or keep this launcher: the full menu, playing the game as before
+        ImGui::Dummy(ImVec2(0, 12 * scale));
+        if (smsButton("Play on this launcher anyway", ImVec2(ImGui::GetContentRegionAvail().x, 44 * scale), 1, 15 * scale,
+                      !move.busy())) {
+            legacy     = true;
+            noteHidden = false;  // the menu then asks again, until the next start brings this screen back
         }
         ImGui::PopTextWrapPos();
         ImGui::EndChild();
@@ -2961,7 +2968,7 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
     L.refreshInstalled();
     // `launcher = off` skips the menu, but never when there is no game to play
     const std::string show = L.settings.get("launcher", "on");
-    (void)show;  // the move to SMS Launcher is shown even with the menu turned off
+    (void)show;  // the switch to SMS Launcher is shown at every start, even with the menu turned off
     if (L.installed.empty()) L.page = P_INSTALL;
     L.bindings.load();
 
@@ -3114,7 +3121,7 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        play = L.movedFrame(quit);
+        play = L.legacy ? L.frame(quit) : L.movedFrame(quit);
         ImGui::Render();
         int dw = 0, dh = 0;
         SDL_GL_GetDrawableSize(win, &dw, &dh);

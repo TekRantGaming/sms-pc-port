@@ -44,12 +44,12 @@ foreach(r ${_eclipse_repos})
     message(STATUS "SMS_ECLIPSE: fetching ${_name} ${_rev}")
     file(MAKE_DIRECTORY "${_dir}")
     execute_process(COMMAND ${GIT_EXECUTABLE} init -q "${_dir}")
-    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${_dir}" fetch -q --depth 1 "${_url}" "${_rev}"
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${_dir}" fetch --progress --depth 1 "${_url}" "${_rev}"
       RESULT_VARIABLE _rc)
     if(NOT _rc EQUAL 0)
       message(FATAL_ERROR "SMS_ECLIPSE: could not fetch ${_url} at ${_rev}")
     endif()
-    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${_dir}" -c advice.detachedHead=false checkout -q -f FETCH_HEAD
+    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${_dir}" -c advice.detachedHead=false checkout -q --progress -f FETCH_HEAD
       RESULT_VARIABLE _rc)
     if(NOT _rc EQUAL 0)
       message(FATAL_ERROR "SMS_ECLIPSE: could not check out ${_name}")

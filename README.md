@@ -95,6 +95,12 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `SMS_FULLSCREEN=1` | borderless fullscreen at the desktop's resolution; `exclusive` switches the display to `SMS_FULLSCREEN_MODE=WxH@Hz` (else the desktop's mode). F11 or Alt+Enter toggles fullscreen while playing |
 | `SMS_DISPLAY=n` | the monitor to open on (0 is the primary one; by default, the one under the mouse) |
 | `SMS_VSYNC=1` | wait for the display's refresh; `adaptive` shows a late frame at once instead of waiting a whole refresh |
+| `SMS_MSAA=n` | multisample anti-aliasing with 2, 4 or 8 samples (up to what the GPU supports) |
+| `SMS_FXAA=1` | FXAA on the final picture, smoothing edges MSAA leaves (alpha-tested foliage, fences) |
+| `SMS_SHARPEN=n` | contrast-adaptive sharpening of the final picture, 0 to 100 |
+| `SMS_GAMMA=x` | brightness curve: 1.0 is unchanged, above 1 is brighter (0.3 to 3) |
+| `SMS_ASPECT=stretch` | fill the window instead of keeping the picture's shape; `integer` keeps whole multiples of 640x528 |
+| `SMS_PRESENT_FILTER=sharp` | scale the picture with crisp pixels (`nearest` for none at all; default `bilinear`, which averages when the internal resolution is above the window's) |
 | `SMS_WIDESCREEN=16:9` | widescreen (also `21:9`, `16:10`): a wider view, with the HUD and menus kept 4:3 in the middle |
 | `SMS_FRAME_RATE=30`, `60`, or `120` | gameplay frame rate: 30 (GameCube native), 60 (port default), or 120 (optional); logos, menus and movies stay at 30 |
 | `SMS_WIDESCREEN_HUD=edges` | with widescreen, move the gameplay HUD's counters to the left edge and the water gauge to the right one |

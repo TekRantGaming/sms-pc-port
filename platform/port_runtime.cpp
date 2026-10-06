@@ -278,6 +278,24 @@ void* port_low_alloc(unsigned long size)
 #if UINTPTR_MAX <= 0xFFFFFFFFu
 	return malloc(size);
 #elif defined(_WIN32)
+	// The first call (the boot thread's stack, before any window exists)
+	// reserves a pool below 2 GiB that later stacks are committed from: a large
+	// internal resolution, MSAA and texture packs make the GPU driver claim
+	// much of the low address space once rendering starts.
+	static char* pool;
+	static size_t poolUsed;
+	const size_t kPool = 128ul << 20;
+	if (!pool)
+		for (uintptr_t at = 0x10000000u; at + kPool <= 0x80000000u && !pool; at += 0x100000u)
+			pool = (char*)VirtualAlloc((void*)at, kPool, MEM_RESERVE, PAGE_NOACCESS);
+	const size_t grain = (size + 0xFFFFu) & ~(size_t)0xFFFFu;
+	if (pool && poolUsed + grain <= kPool) {
+		void* p = VirtualAlloc(pool + poolUsed, size, MEM_COMMIT, PAGE_READWRITE);
+		if (p) {
+			poolUsed += grain;
+			return p;
+		}
+	}
 	// Walk hint addresses from 256 MiB up to 2 GiB (64 KiB allocation grain).
 	for (uintptr_t at = 0x10000000u; at + size <= 0x80000000u; at += 0x10000u) {
 		void* p = VirtualAlloc((void*)at, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -440,6 +458,12 @@ static const struct {
 	{ "fullscreen", "SMS_FULLSCREEN" },           // off, on (desktop) or exclusive
 	{ "fullscreen_mode", "SMS_FULLSCREEN_MODE" }, // WxH@Hz, for exclusive
 	{ "display", "SMS_DISPLAY" },                 // monitor, 0 = primary
+	{ "msaa", "SMS_MSAA" },                     // 0, 2, 4 or 8
+	{ "fxaa", "SMS_FXAA" },
+	{ "sharpen", "SMS_SHARPEN" },               // 0..100
+	{ "brightness", "SMS_GAMMA" },              // 1.0 = unchanged
+	{ "aspect", "SMS_ASPECT" },                 // keep, stretch or integer
+	{ "present_filter", "SMS_PRESENT_FILTER" }, // bilinear, sharp or nearest
 	{ "skip_movies", "SMS_SKIP_MOVIES" },
 	{ "audio", "SMS_AUDIO" },
 	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100

@@ -474,6 +474,8 @@ static const struct {
 	{ "net_port", "SMS_NET_PORT" },               // UDP, 27016
 	{ "net_name", "SMS_NET_NAME" },               // shown to other players
 	{ "launcher", "SMS_LAUNCHER" },               // show the launcher at start
+	{ "update_check", "SMS_UPDATE_CHECK" },       // the launcher looks for a new release
+	{ "sms_launcher_notice", "SMS_LAUNCHER_NOTICE" }, // "seen" hides the launcher's note
 };
 
 // The settings file in use: SMS_SETTINGS, ./settings.txt, or two levels up

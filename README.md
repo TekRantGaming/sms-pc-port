@@ -27,6 +27,9 @@
 > [!NOTE]
 > **About AI.** The launcher and the PC-specific features in this fork (the settings menu, graphics options, camera options, installers, online co-op and release packaging) were **written with AI assistance**. The game decompilation itself is **not** AI generated: it is the upstream [Super Mario Sunshine decompilation (chasem-dev/sms-english)](https://github.com/chasem-dev/sms-english), used here through the original [sms-pc-port](https://github.com/chasem-dev/sms-pc-port).
 
+> [!TIP]
+> **The official launcher is [SMS Launcher](https://github.com/chasem-dev/sms-launcher)** by chasem-dev, who made this port. This fork's features are being contributed to his port and his launcher as pull requests, one feature at a time. Once they are all there, this fork's launcher will be retired in favor of his. Until then, this build keeps working and **updates itself**: the launcher checks for new releases when it opens.
+
 ## Highlights
 
 <table>
@@ -178,6 +181,8 @@ Point the launcher at your disc image with **Browse**, or drag the file onto the
 ### About
 - Show the launcher at start, or go straight to the game (hold **Shift** to bring it back)
 - The in-game hotkeys and where your settings live
+- **Updates**: the version you have, Check for updates, and automatic checks at start
+- A link to the official [SMS Launcher](https://github.com/chasem-dev/sms-launcher)
 
 </td>
 <td><img src="docs/images/page-controls.png" alt="Controls page"></td>

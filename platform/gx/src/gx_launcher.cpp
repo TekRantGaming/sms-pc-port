@@ -16,6 +16,7 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -877,6 +878,259 @@ std::string curlPath() {
 #endif
 }
 
+// ------------------------------------------------------------------ updates
+// Checks this fork's latest GitHub release and installs it in place. Windows:
+// the release zip is unpacked beside sms.exe; files in use (sms.exe, its DLLs)
+// are renamed to *.old first, which Windows allows, and removed on the next
+// start. Linux: the AppImage ($APPIMAGE) is replaced. settings.txt,
+// bindings.txt, rom/ and mods/ are never touched.
+#ifndef SMS_PORT_VERSION
+#define SMS_PORT_VERSION "dev"
+#endif
+const char* const kPortVersion = SMS_PORT_VERSION;
+const char* const kUpdateApi = "https://api.github.com/repos/TekRantGaming/sms-pc-port/releases/latest";
+const char* const kReleasesPage = "https://github.com/TekRantGaming/sms-pc-port/releases/latest";
+const char* const kSmsLauncherPage = "https://github.com/chasem-dev/sms-launcher";
+
+// "v1.4.0-3-gabc" -> {1, 4, 0}; empty when it is not a version
+std::vector<int> parseVersion(const std::string& s) {
+    std::vector<int> v;
+    size_t i = s[0] == 'v' || s[0] == 'V' ? 1 : 0;
+    while (i < s.size() && isdigit((unsigned char)s[i])) {
+        int n = 0;
+        while (i < s.size() && isdigit((unsigned char)s[i])) n = n * 10 + (s[i++] - '0');
+        v.push_back(n);
+        if (i < s.size() && s[i] == '.') i++;
+        else break;
+    }
+    return v;
+}
+
+// the string value of "key": in a JSON text, from `from`; npos when absent
+size_t jsonString(const std::string& j, const char* key, std::string& out, size_t from = 0) {
+    const std::string k = std::string("\"") + key + "\"";
+    size_t p = j.find(k, from);
+    if (p == std::string::npos) return p;
+    p = j.find('"', j.find(':', p + k.size()));
+    if (p == std::string::npos) return p;
+    out.clear();
+    for (size_t i = p + 1; i < j.size() && j[i] != '"'; i++) {
+        if (j[i] == '\\' && i + 1 < j.size()) i++;
+        out += j[i];
+    }
+    return p;
+}
+
+struct UpdateJob {
+    enum Phase { IDLE, CHECKING, LATEST, AVAILABLE, DOWNLOADING, INSTALLING, READY, FAILED, CANCELLED };
+    std::thread worker;
+    std::atomic<int> phase{IDLE};
+    std::atomic<bool> cancel{false};
+    std::mutex mu;
+    Process* child = nullptr;  // under mu
+    std::string error, latest, assetUrl, exeDir;
+    long long assetSize = 0;
+
+    bool busy() const { return phase == CHECKING || phase == DOWNLOADING || phase == INSTALLING; }
+    std::string dir() const { return exeDir + ".update/"; }
+    std::string download() const {
+#ifdef _WIN32
+        return dir() + "update.zip";
+#else
+        const char* a = getenv("APPIMAGE");
+        return std::string(a ? a : "") + ".new";
+#endif
+    }
+    float progress() const {
+        return assetSize > 0 ? std::min(1.0f, float(double(std::max(0LL, fileSize(download() + ".part"))) /
+                                                    double(assetSize)))
+                             : 0.0f;
+    }
+    // installing replaces the program itself, which is only possible for the
+    // release packages (not a build from source or the in-tree build folder)
+    static bool canInstall(const std::string& exeDir) {
+#ifdef _WIN32
+        return fileSize(exeDir + "tools\\bsdtar.exe") > 0;
+#else
+        (void)exeDir;
+        const char* a = getenv("APPIMAGE");
+        return a && *a;
+#endif
+    }
+
+    void begin(void (UpdateJob::*fn)()) {
+        if (worker.joinable()) worker.join();
+        cancel = false;
+        error.clear();
+        worker = std::thread(fn, this);
+    }
+    void stop() {
+        cancel = true;
+        std::lock_guard<std::mutex> lk(mu);
+        if (child) child->kill();
+    }
+    ~UpdateJob() {
+        stop();
+        if (worker.joinable()) worker.join();
+    }
+    int run(const std::vector<std::string>& args, std::string* output) {
+        Process p;
+        {
+            std::lock_guard<std::mutex> lk(mu);
+            if (cancel || !p.start(args)) return -1;
+            child = &p;
+        }
+        std::string l, last;
+        while (p.line(l)) {
+            if (output) *output += l + "\n";
+            if (!l.empty()) last = l;
+        }
+        const int rc = p.wait();
+        std::lock_guard<std::mutex> lk(mu);
+        child = nullptr;
+        if (rc != 0 && error.empty()) error = last;
+        return rc;
+    }
+    void fail(const std::string& why) {
+        if (cancel) {
+            phase = CANCELLED;
+            return;
+        }
+        error = why + (error.empty() ? "" : ": " + error);
+        phase = FAILED;
+    }
+
+    void check() {
+        phase = CHECKING;
+        std::string json;
+        if (run({curlPath(), "-sS", "-f", "-L", "--max-time", "15", "-H", "Accept: application/vnd.github+json",
+                 "-H", std::string("User-Agent: sms-pc-port/") + kPortVersion, kUpdateApi},
+                &json) != 0)
+            return fail("Cannot reach GitHub");
+        if (jsonString(json, "tag_name", latest) == std::string::npos) return fail("No release was found");
+#ifdef _WIN32
+        const char* suffix = "-windows-x64.zip";
+#else
+        const char* suffix = "-x86_64.AppImage";
+#endif
+        assetUrl.clear();
+        assetSize = 0;
+        std::string url;
+        for (size_t p = 0; (p = jsonString(json, "browser_download_url", url, p)) != std::string::npos; p++) {
+            if (url.size() < strlen(suffix) || url.compare(url.size() - strlen(suffix), std::string::npos, suffix))
+                continue;
+            assetUrl = url;
+            // "size" comes before "browser_download_url" in each asset
+            const size_t s = json.rfind("\"size\"", p);
+            if (s != std::string::npos) assetSize = atoll(json.c_str() + json.find(':', s) + 1);
+            break;
+        }
+        const std::vector<int> have = parseVersion(kPortVersion), got = parseVersion(latest);
+        // a build that is not a release (dev) never offers updates on its own
+        phase = !have.empty() && got > have ? AVAILABLE : LATEST;
+    }
+
+    void install() {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        if (assetUrl.empty()) return fail("This release has no download for this system");
+        fs::create_directories(dir(), ec);
+        phase = DOWNLOADING;
+        const std::string part = download() + ".part";
+        fs::remove(part, ec);
+        if (run({curlPath(), "-L", "-f", "-sS", "--retry", "3", "-o", part, assetUrl}, nullptr) != 0 ||
+            (assetSize > 0 && fileSize(part) != assetSize)) {
+            fs::remove(part, ec);
+            return fail("The download failed");
+        }
+        phase = INSTALLING;
+#ifdef _WIN32
+        const std::string stage = dir() + "stage";
+        fs::remove_all(stage, ec);
+        fs::create_directories(stage, ec);
+        if (run({exeDir + "tools\\bsdtar.exe", "-xf", part, "-C", stage}, nullptr) != 0)
+            return fail("Cannot unpack the update");
+        fs::remove(part, ec);
+        // the zip holds one folder, SMS-PC-Port-<version>-windows-x64
+        fs::path root = stage;
+        for (auto& e : fs::directory_iterator(stage, ec))
+            if (e.is_directory() && fs::exists(e.path() / "sms.exe")) root = e.path();
+        if (!fs::exists(root / "sms.exe")) return fail("The update has no sms.exe");
+        for (auto it = fs::recursive_directory_iterator(root, ec); it != fs::recursive_directory_iterator();
+             it.increment(ec)) {
+            const fs::path rel = fs::relative(it->path(), root, ec);
+            const fs::path to = fs::path(exeDir) / rel;
+            if (it->is_directory()) {
+                fs::create_directories(to, ec);
+                continue;
+            }
+            const std::string name = rel.generic_string();
+            if ((name == "settings.txt" || name == "bindings.txt") && fs::exists(to)) continue;  // the player's
+            if (fs::exists(to)) {
+                fs::path old = to;
+                old += ".old";
+                fs::remove(old, ec);
+                for (int n = 1; fs::exists(old) && n < 100; n++) {  // an older one still in use
+                    old = to;
+                    old += "." + std::to_string(n) + ".old";
+                    fs::remove(old, ec);
+                }
+                fs::rename(to, old, ec);
+                if (ec) return fail("Cannot replace " + name + ": " + ec.message());
+            }
+            fs::rename(it->path(), to, ec);
+            if (ec) return fail("Cannot install " + name + ": " + ec.message());
+        }
+        fs::remove_all(dir(), ec);
+#else
+        chmod(part.c_str(), 0755);
+        fs::rename(part, getenv("APPIMAGE"), ec);
+        if (ec) return fail("Cannot replace the AppImage: " + ec.message());
+#endif
+        phase = READY;
+    }
+
+    // removes what an earlier update left behind (*.old files in use then)
+    static void cleanup(const std::string& exeDir) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        if (exeDir.empty()) return;
+        fs::remove_all(exeDir + ".update", ec);
+        for (const std::string d : {exeDir, exeDir + "tools"})  // where the packages put files
+            for (auto& e : fs::directory_iterator(d, ec)) {
+                const std::string n = e.path().filename().string();
+                if (n.size() > 4 && n.compare(n.size() - 4, 4, ".old") == 0) fs::remove(e.path(), ec);
+            }
+    }
+};
+
+// starts the (updated) game again, showing the launcher
+bool restartSelf() {
+#ifdef _WIN32
+    wchar_t exe[MAX_PATH * 2];
+    if (!GetModuleFileNameW(NULL, exe, sizeof exe / sizeof exe[0])) return false;
+    wchar_t cmd[MAX_PATH * 2 + 32];
+    _snwprintf(cmd, sizeof cmd / sizeof cmd[0], L"\"%ls\" --launcher", exe);
+    cmd[sizeof cmd / sizeof cmd[0] - 1] = 0;
+    STARTUPINFOW si;
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi;
+    if (!CreateProcessW(exe, cmd, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+#else
+    const char* a = getenv("APPIMAGE");
+    if (!a || !*a) return false;
+    std::string self = a;
+    char forced[] = "--launcher";
+    char* args[] = {&self[0], forced, nullptr};
+    pid_t pid = 0;
+    return posix_spawn(&pid, self.c_str(), nullptr, nullptr, args, environ) == 0;
+#endif
+}
+
 // ------------------------------------------------------------------ HD cutscenes
 // The 3x AI-enhanced movies (docs/HD-CUTSCENES.md): for each of the 21, the
 // SMP1 patch from the catalog's release is downloaded and checked, applied to
@@ -1071,6 +1325,9 @@ struct Launcher {
     std::string pickedFor;   // pickPath when it was last checked
     DiscCheck picked;
     InstallJob job;
+    UpdateJob upd;
+    std::string exeDir;  // where sms.exe (or the AppImage) is
+    bool updateDismissed = false, updateTried = false;
     ImFont* body = nullptr;
     ImFont* bold = nullptr;
     float scale = 1.0f;
@@ -1832,7 +2089,151 @@ struct Launcher {
         sliderInt("Mouse sensitivity", nullptr, "mouse_sensitivity", 100, 10, 500, "%d%%", 5);
     }
 
-    void pageAbout() {
+    // --- updates and the official launcher
+    void startUpdateCheck() {
+        if (!upd.busy()) upd.begin(&UpdateJob::check);
+    }
+
+    bool accentButton(const char* label, ImVec2 size) {
+        ImGui::PushStyleColor(ImGuiCol_Button, kAccent);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kAccentHot);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, kAccentHot);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.08f, 0.12f, 0.22f, 1.0f));
+        const bool r = ImGui::Button(label, size);
+        ImGui::PopStyleColor(4);
+        return r;
+    }
+
+    // the update controls, on the banner and the About page
+    void updateControls(bool& quit, bool banner) {
+        const float w = ImGui::GetContentRegionAvail().x;
+        const float half = (w - ImGui::GetStyle().ItemSpacing.x) / 2;
+        switch (upd.phase.load()) {
+        case UpdateJob::AVAILABLE:
+            if (UpdateJob::canInstall(exeDir)) {
+                if (accentButton("Update now##upd", ImVec2(banner ? half : w * 0.5f, 0))) {
+                    updateTried = true;
+                    upd.begin(&UpdateJob::install);
+                }
+            } else if (accentButton("Open the download page##upd", ImVec2(banner ? half : w * 0.5f, 0))) {
+                SDL_OpenURL(kReleasesPage);
+            }
+            ImGui::SameLine();
+            if (banner) {
+                if (ImGui::Button("Later##upd", ImVec2(-FLT_MIN, 0))) updateDismissed = true;
+            } else if (ImGui::Button("What's new##upd", ImVec2(-FLT_MIN, 0))) {
+                SDL_OpenURL(kReleasesPage);
+            }
+            break;
+        case UpdateJob::DOWNLOADING:
+        case UpdateJob::INSTALLING: {
+            char label[96];
+            if (upd.phase == UpdateJob::INSTALLING) snprintf(label, sizeof label, "Installing...");
+            else snprintf(label, sizeof label, "Downloading %s... %.0f%%", upd.latest.c_str(),
+                          double(upd.progress()) * 100.0);
+            ImGui::ProgressBar(upd.phase == UpdateJob::INSTALLING ? -1.0f * float(ImGui::GetTime()) : upd.progress(),
+                               ImVec2(w * 0.68f, 0), label);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(upd.phase == UpdateJob::INSTALLING);
+            if (ImGui::Button("Cancel##upd", ImVec2(-FLT_MIN, 0))) upd.stop();
+            ImGui::EndDisabled();
+            break;
+        }
+        case UpdateJob::READY:
+            if (accentButton("Restart now##upd", ImVec2(w, 0))) {
+                settings.save();
+                bindings.save();
+                if (restartSelf()) quit = true;
+                else {
+                    status = "Updated. Start the game again to use the new version.";
+                    statusUntil = ImGui::GetTime() + 8.0;
+                }
+            }
+            break;
+        default:
+            if (!banner) {
+                ImGui::BeginDisabled(upd.busy());
+                if (ImGui::Button(upd.phase == UpdateJob::CHECKING ? "Checking...##upd" : "Check for updates##upd",
+                                  ImVec2(w * 0.5f, 0)))
+                    startUpdateCheck();
+                ImGui::EndDisabled();
+            }
+            break;
+        }
+    }
+
+    // a strip above the page: an update, or the note about the official launcher
+    void drawBanner(bool& quit) {
+        const int ph = upd.phase;
+        const bool updating = ph == UpdateJob::DOWNLOADING || ph == UpdateJob::INSTALLING || ph == UpdateJob::READY;
+        const bool showUpdate = updating || (ph == UpdateJob::AVAILABLE && !updateDismissed) ||
+                                (ph == UpdateJob::FAILED && updateTried);
+        const bool showNote = !showUpdate && settings.get("sms_launcher_notice", "") != "seen";
+        if (!showUpdate && !showNote) return;
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0f, 0.84f, 0.25f, 0.13f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f * scale);
+        ImGui::BeginChild("banner", ImVec2(0, 0),
+                          ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PushTextWrapPos(0.0f);
+        if (showUpdate) {
+            ImGui::PushFont(bold, 0.0f);
+            if (ph == UpdateJob::READY) ImGui::Text("Updated to %s", upd.latest.c_str());
+            else if (ph == UpdateJob::FAILED) ImGui::TextUnformatted("The update failed");
+            else ImGui::Text("Update available: %s (you have %s)", upd.latest.c_str(), kPortVersion);
+            ImGui::PopFont();
+            ImGui::PushStyleColor(ImGuiCol_Text, kDim);
+            if (ph == UpdateJob::READY)
+                ImGui::TextUnformatted("Restart to play the new version. Your settings, game and mods are kept.");
+            else if (ph == UpdateJob::FAILED) ImGui::TextUnformatted(upd.error.c_str());
+            else ImGui::TextUnformatted("Your settings, installed game, HD textures and cutscenes are kept.");
+            ImGui::PopStyleColor();
+            if (ph != UpdateJob::FAILED) updateControls(quit, true);
+            else if (ImGui::Button("Open the download page##updf")) SDL_OpenURL(kReleasesPage);
+        } else {
+            ImGui::PushFont(bold, 0.0f);
+            ImGui::TextUnformatted("The official launcher is SMS Launcher");
+            ImGui::PopFont();
+            ImGui::PushStyleColor(ImGuiCol_Text, kDim);
+            ImGui::TextUnformatted("chasem-dev, who made this port, has his own launcher. This one's features are "
+                                   "being contributed to it, and this launcher will be retired once they are there. "
+                                   "Until then it keeps working and keeps updating.");
+            ImGui::PopStyleColor();
+            const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            if (accentButton("Get SMS Launcher##note", ImVec2(half, 0))) SDL_OpenURL(kSmsLauncherPage);
+            ImGui::SameLine();
+            if (ImGui::Button("Got it##note", ImVec2(-FLT_MIN, 0))) {
+                settings.set("sms_launcher_notice", "seen");
+                settings.save();
+            }
+        }
+        ImGui::PopTextWrapPos();
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(0, 6 * scale));
+    }
+
+    void pageAbout(bool& quit) {
+        {
+            char text[160];
+            const int ph = upd.phase;
+            if (ph == UpdateJob::LATEST) snprintf(text, sizeof text, "Version %s. You have the latest version.", kPortVersion);
+            else if (ph == UpdateJob::AVAILABLE) snprintf(text, sizeof text, "Version %s. %s is available.", kPortVersion,
+                                                           upd.latest.c_str());
+            else if (ph == UpdateJob::FAILED) snprintf(text, sizeof text, "Version %s. %s", kPortVersion,
+                                                        upd.error.c_str());
+            else snprintf(text, sizeof text, "Version %s.", kPortVersion);
+            rowBegin("Updates", text);
+            updateControls(quit, false);
+            rowEnd();
+        }
+        toggle("Check for updates at startup", "Looks for a new release on GitHub each time the launcher opens. "
+               "Nothing is downloaded until you choose Update.", "update_check", true);
+        rowBegin("Official launcher", "SMS Launcher, by the port's author, chasem-dev. This launcher's features are "
+                 "being added to it; once they are, it is the one to use.");
+        if (accentButton("Get SMS Launcher##about", ImVec2(ImGui::GetContentRegionAvail().x * 0.5f, 0)))
+            SDL_OpenURL(kSmsLauncherPage);
+        rowEnd();
         toggle("Show this menu at startup",
                "When off, the game starts straight away. Hold Shift while starting it to see this menu again.",
                "launcher", true);
@@ -1936,6 +2337,7 @@ struct Launcher {
         ImGui::SetCursorPos(ImVec2(pad * 2 + sideW, bodyY));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(28 * scale, 22 * scale));
         ImGui::BeginChild("page", ImVec2(W - sideW - pad * 3, bodyH), ImGuiChildFlags_AlwaysUseWindowPadding);
+        drawBanner(quit);
         ImGui::PushFont(bold, ImGui::GetStyle().FontSizeBase * 1.6f);
         ImGui::TextUnformatted(kPageNames[page]);
         ImGui::PopFont();
@@ -1952,7 +2354,7 @@ struct Launcher {
         case P_ONLINE: pageOnline(); break;
         case P_AUDIO: pageAudio(); break;
         case P_CONTROLS: pageControls(); break;
-        default: pageAbout(); break;
+        default: pageAbout(quit); break;
         }
         ImGui::EndChild();
         ImGui::PopStyleVar();
@@ -2140,6 +2542,16 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
 
     L.scanDisplays();
     L.scanMods();
+    if (char* base = SDL_GetBasePath()) {
+        L.exeDir = base;
+        SDL_free(base);
+    }
+    UpdateJob::cleanup(L.exeDir);
+    L.upd.exeDir = L.exeDir;
+    {
+        const std::string check = L.settings.get("update_check", "on");
+        if (check != "off" && check != "0" && check != "no" && check != "false") L.startUpdateCheck();
+    }
 
     bool play = false, quit = false;
     while (!play && !quit) {

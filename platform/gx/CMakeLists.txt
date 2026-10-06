@@ -106,6 +106,17 @@ find_library(SMS_GX_EGL_LIB EGL)
 find_path(SMS_GX_EGL_INCLUDE EGL/egl.h)
 if(TARGET SDL2::SDL2)
     target_compile_definitions(sms_gx PRIVATE SMS_GX_HAVE_SDL2=1)
+    # the launcher's update check compares this with the latest release
+    find_package(Git QUIET)
+    if(GIT_FOUND AND NOT SMS_PORT_VERSION)
+        execute_process(COMMAND ${GIT_EXECUTABLE} describe --tags --always
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                        OUTPUT_VARIABLE SMS_PORT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    endif()
+    if(SMS_PORT_VERSION)
+        set_source_files_properties(src/gx_launcher.cpp PROPERTIES
+                                    COMPILE_DEFINITIONS "SMS_PORT_VERSION=\"${SMS_PORT_VERSION}\"")
+    endif()
     target_link_libraries(sms_gx PUBLIC SDL2::SDL2)
     target_sources(sms_gx PRIVATE ${SMS_GX_IMGUI_SOURCES})
     target_include_directories(sms_gx PRIVATE ${SMS_GX_IMGUI_DIR})

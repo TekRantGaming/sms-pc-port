@@ -1,12 +1,18 @@
 A native PC port of Super Mario Sunshine, built from the decompilation, with a launcher and PC enhancements.
 
-### New in this release: HD cutscenes
-- **All 21 movies at 3x resolution** (AI-enhanced, 1920 x 960), with their original timing, subtitles and audio. From the original project's HD cutscene release.
-- On the launcher's **Graphics** page, **HD cutscenes → Download and install** downloads the movie patches (about 5.7 GB), builds the movies from your own disc image and checks every one against its published checksum. Nothing else needs installing. A switch then turns them on or off.
-- The install is all-or-nothing: if it fails or you cancel it, you keep whatever you had before.
-- **Brought up to date with the original project**: its audio fixes (excess reverb tails, abrupt sound endings and doubled footstep echoes) and the latest decompilation.
+### New in this release: automatic updates
+- **The launcher now checks for updates** each time it opens. When a new release is out, a banner offers **Update now**: it downloads the release, replaces the game files in place and restarts. Your settings, key bindings, installed game, HD textures and HD cutscenes are kept. It can be turned off on the **About** page, which also has **Check for updates**.
+- **SMS Launcher is the official launcher.** chasem-dev, who made this port, has his own launcher, [SMS Launcher](https://github.com/chasem-dev/sms-launcher). This launcher's features are being contributed to it and to his port, one at a time. Once they are all there, this launcher will be retired. Until then it keeps working and keeps updating. The launcher shows a note about it once, and links to it from the About page.
+- **Brought up to date with the original project**, including its desktop fullscreen and camera invert settings. Builds started by SMS Launcher (`SMS_FULLSCREEN`, `SMS_CAMERA_INVERT_X/Y`) work in this one too.
 
-### Online co-op (first stage)
+Updating from 1.3.0 or earlier: download this release once by hand. From then on the launcher updates itself.
+
+### Earlier: HD cutscenes
+- **All 21 movies at 3x resolution** (AI-enhanced, 1920 x 960), with their original timing, subtitles and audio. From the original project's HD cutscene release.
+- On the launcher's **Graphics** page, **HD cutscenes → Download and install** downloads the movie patches (about 5.7 GB), builds the movies from your own disc image and checks every one against its published checksum. A switch then turns them on or off.
+- The install is all-or-nothing: if it fails or you cancel it, you keep whatever you had before.
+
+### Earlier: online co-op (first stage)
 - A new **Online** page in the launcher: one player chooses **Host**, the others choose **Join** and enter the host's address, and everyone presses Play.
 - Other players appear in your game when you are in the same level and episode, fully animated, with their cap, hands, FLUDD and nozzle, and a **name tag** over their head.
 - Up to **8 players**. It works on a home network straight away. Over the internet, the host forwards UDP port 27016 (it can be changed) on their router.

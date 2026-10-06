@@ -276,8 +276,7 @@ def get_eclipse(keep, iso_arg):
             remove(archive)
     say("Installed %s." % os.path.relpath(out, ROOT))
     say("It is the same image Eclipse's own patcher makes, for Dolphin or a console. The port"
-        " cannot run it yet: Eclipse also changes the game's code, which has to be ported first"
-        " (docs/ECLIPSE.md).")
+        " plays it with Eclipse's code built in: SMS_ECLIPSE=1 ./build.sh (docs/ECLIPSE.md).")
 
 
 def main():

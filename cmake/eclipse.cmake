@@ -44,8 +44,19 @@ foreach(r ${_eclipse_repos})
     message(STATUS "SMS_ECLIPSE: fetching ${_name} ${_rev}")
     file(MAKE_DIRECTORY "${_dir}")
     execute_process(COMMAND ${GIT_EXECUTABLE} init -q "${_dir}")
-    execute_process(COMMAND ${GIT_EXECUTABLE} -C "${_dir}" fetch --progress --depth 1 "${_url}" "${_rev}"
-      RESULT_VARIABLE _rc)
+    # A stalled download (under 1 KB/s for a minute) fails instead of waiting
+    # for ever, and is tried again.
+    foreach(_attempt 1 2 3)
+      if(_attempt GREATER 1)
+        message(STATUS "SMS_ECLIPSE: download of ${_name} stalled or failed, trying again (${_attempt} of 3)")
+      endif()
+      execute_process(COMMAND ${GIT_EXECUTABLE} -C "${_dir}" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60
+        fetch --progress --depth 1 "${_url}" "${_rev}"
+        RESULT_VARIABLE _rc)
+      if(_rc EQUAL 0)
+        break()
+      endif()
+    endforeach()
     if(NOT _rc EQUAL 0)
       message(FATAL_ERROR "SMS_ECLIPSE: could not fetch ${_url} at ${_rev}")
     endif()

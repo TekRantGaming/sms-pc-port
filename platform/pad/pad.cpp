@@ -116,6 +116,15 @@ bool g_key[512];
 s16 g_axis[6];
 bool g_cbtn[21];
 bool g_inited;
+// SMS_CAMERA_INVERT_X / SMS_CAMERA_INVERT_Y=1 flip the C-stick, which only
+// turns the camera.
+bool g_invert_cx, g_invert_cy;
+
+bool env_on(const char* name)
+{
+	const char* e = getenv(name);
+	return e && *e && strcmp(e, "0") != 0;
+}
 
 int key_code(const char* name)
 {
@@ -226,6 +235,10 @@ void init()
 		return;
 	g_inited = true;
 	parse_bindings(kDefaultBindings, "defaults");
+	g_invert_cx = env_on("SMS_CAMERA_INVERT_X");
+	g_invert_cy = env_on("SMS_CAMERA_INVERT_Y");
+	if (g_invert_cx || g_invert_cy)
+		port_log("[pad] camera inverted:%s%s\n", g_invert_cx ? " X" : "", g_invert_cy ? " Y" : "");
 	const char* path = getenv("SMS_BINDINGS");
 	if (!path)
 		path = "bindings.txt";
@@ -414,8 +427,10 @@ extern "C" u32 PADRead(PADStatus* status)
 	s.stickY    = (s8)(y ? y : axis8(-g_axis[1], 100));
 	int cx      = held(C_CRIGHT) * 100 - held(C_CLEFT) * 100;
 	int cy      = held(C_CUP) * 100 - held(C_CDOWN) * 100;
-	s.substickX = (s8)(cx ? cx : axis8(g_axis[2], 100));
-	s.substickY = (s8)(cy ? cy : axis8(-g_axis[3], 100));
+	cx          = cx ? cx : axis8(g_axis[2], 100);
+	cy          = cy ? cy : axis8(-g_axis[3], 100);
+	s.substickX = (s8)(g_invert_cx ? -cx : cx);
+	s.substickY = (s8)(g_invert_cy ? -cy : cy);
 	return PAD_CHAN0_BIT;
 }
 

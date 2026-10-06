@@ -1,0 +1,141 @@
+name: Launcher build
+# Builds this commit the way SMS Launcher does for players: with the launcher's
+# private toolsets, on Linux, Windows and Mac. It runs the launcher's own smoke
+# scripts (chasem-dev/sms-launcher, .github/workflows/build-tools-smoke.yml)
+# with the launcher's game pin (src/game-release.json) moved to this commit.
+# No disc image is used. "Launcher build" is the check that pull requests need.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      launcher-ref:
+        description: sms-launcher branch, tag or commit to build with
+        type: string
+        default: main
+permissions:
+  contents: read
+concurrency:
+  group: launcher-build-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+env:
+  LAUNCHER_REF: ${{ inputs.launcher-ref || 'main' }}
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.pin.outputs.commit }}
+      decomp: ${{ steps.pin.outputs.decomp }}
+    steps:
+      # For a pull request this is the merge with its base, as GitHub would merge it.
+      - uses: actions/checkout@v4
+      - id: pin
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "decomp=$(git rev-parse HEAD:decomp)" >> "$GITHUB_OUTPUT"
+  compile-port:
+    needs: pin
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: chasem-dev/sms-launcher
+          ref: ${{ env.LAUNCHER_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Point the launcher at this commit
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.server_url }}/${{ github.repository }}.git
+          COMMIT: ${{ needs.pin.outputs.commit }}
+          DECOMP: ${{ needs.pin.outputs.decomp }}
+        run: |
+          node -e 'const e = process.env; require("fs").writeFileSync("src/game-release.json",
+            JSON.stringify({ version: "ci", repository: e.REPOSITORY, commit: e.COMMIT, decomp: e.DECOMP }, null, 2))'
+          cat src/game-release.json
+      - run: node scripts/smoke-build-tools.js
+  compile-mac-port:
+    needs: pin
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: chasem-dev/sms-launcher
+          ref: ${{ env.LAUNCHER_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Point the launcher at this commit
+        env:
+          REPOSITORY: ${{ github.server_url }}/${{ github.repository }}.git
+          COMMIT: ${{ needs.pin.outputs.commit }}
+          DECOMP: ${{ needs.pin.outputs.decomp }}
+        run: |
+          node -e 'const e = process.env; require("fs").writeFileSync("src/game-release.json",
+            JSON.stringify({ version: "ci", repository: e.REPOSITORY, commit: e.COMMIT, decomp: e.DECOMP }, null, 2))'
+          cat src/game-release.json
+      - name: Enable Intel execution on the Apple Silicon CI runner
+        run: |
+          if [[ "$(sysctl -n hw.optional.arm64)" == 1 ]]; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+      - name: Verify Finder tool detection and compile Sunshine without a ROM
+        run: node scripts/smoke-mac-tools.js
+  compile-eclipse:
+    needs: pin
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: chasem-dev/sms-launcher
+          ref: ${{ env.LAUNCHER_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Point the launcher at this commit
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.server_url }}/${{ github.repository }}.git
+          COMMIT: ${{ needs.pin.outputs.commit }}
+          DECOMP: ${{ needs.pin.outputs.decomp }}
+        run: |
+          node -e 'const e = process.env; require("fs").writeFileSync("src/game-release.json",
+            JSON.stringify({ version: "ci", repository: e.REPOSITORY, commit: e.COMMIT, decomp: e.DECOMP }, null, 2))'
+          cat src/game-release.json
+      - name: Enable Intel execution on the Apple Silicon CI runner
+        if: runner.os == 'macOS'
+        run: sudo softwareupdate --install-rosetta --agree-to-license
+      - name: Compile Eclipse without a ROM
+        run: node scripts/smoke-eclipse.js
+  # One stable check name to require in branch protection, whatever the matrix.
+  launcher-build:
+    name: Launcher build
+    needs: [pin, compile-port, compile-mac-port, compile-eclipse]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do [ "$result" = success ] || exit 1; done

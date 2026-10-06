@@ -19,7 +19,17 @@ list(SORT SMS_PATCHES)
 file(REMOVE_RECURSE ${_scratch})
 file(MAKE_DIRECTORY ${_scratch} ${SMS_PATCHED_INCLUDE_DIRS})
 set(_touched "")
+list(LENGTH SMS_PATCHES _count)
+set(_index 0)
 foreach(p ${SMS_PATCHES})
+  # Each patch is its own process, which antivirus software can make slow
+  # enough that configuring seems stuck: say how far it is (the launcher shows
+  # this as the step's progress).
+  math(EXPR _index "${_index} + 1")
+  math(EXPR _step "${_index} % 10")
+  if(_step EQUAL 1 OR _index EQUAL _count)
+    message(STATUS "SMS port: applying decomp patches (${_index}/${_count})")
+  endif()
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${p})
   file(STRINGS ${p} _hdrs REGEX "^\\+\\+\\+ b/")
   foreach(h ${_hdrs})
@@ -31,10 +41,14 @@ foreach(p ${SMS_PATCHES})
       list(APPEND _touched ${f})
     endif()
   endforeach()
-  execute_process(COMMAND patch -p1 --quiet -d ${_scratch} -i ${p}
+  # --force: patch never stops to ask a question (in a terminal it would wait
+  # for an answer). A patch that hangs (a file held open by antivirus software,
+  # say) fails after the timeout, naming itself, instead of stalling configure.
+  execute_process(COMMAND patch -p1 --quiet --force -d ${_scratch} -i ${p}
+                  TIMEOUT 300
                   RESULT_VARIABLE rc)
   if(NOT rc EQUAL 0)
-    message(FATAL_ERROR "port patch failed to apply: ${p}")
+    message(FATAL_ERROR "port patch failed to apply (${rc}): ${p}")
   endif()
 endforeach()
 

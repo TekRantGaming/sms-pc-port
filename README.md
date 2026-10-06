@@ -84,6 +84,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | --- | --- |
 | `SMS_SKIP_MOVIES=1` | skip the intro and opening movies |
 | `SMS_AUDIO=0` | no sound |
+| `SMS_VOLUME=n` | master volume, 0 to 100 (default 100) |
 | `SMS_SAVE_DIR=dir` | memory card folder |
 | `SMS_BINDINGS=file` | key bindings file (default `bindings.txt` in this folder) |
 | `SMS_DISC_IMAGE=file` | disc image to use when none is passed |

@@ -67,6 +67,7 @@ struct Ai {
 	bool inited;
 	bool running;
 	bool swap;
+	int volume;                // SMS_VOLUME (0..100) as a Q8 output gain; 256 is unity
 	u32 start, length;         // registers
 	u32 latchedStart, latchedLen;
 	AIDCallback cb;
@@ -149,8 +150,8 @@ void sdl_callback(void*, uint8_t* stream, int len)
 				g.head = (g.head + consumed) % cap;
 				g.count -= consumed;
 			}
-			out[i * 2]     = g.lastL;
-			out[i * 2 + 1] = g.lastR;
+			out[i * 2]     = (int16_t)((g.lastL * g.volume) >> 8);
+			out[i * 2 + 1] = (int16_t)((g.lastR * g.volume) >> 8);
 		}
 		low = g.count < fifo_target(speed);
 	}
@@ -239,6 +240,10 @@ void init_output()
 	g.enabled     = !port_no_audio;
 	e             = getenv("SMS_AUDIO_SWAP");
 	g.swap        = !(e && strcmp(e, "0") == 0);
+	e             = getenv("SMS_VOLUME");
+	g.volume      = e && *e ? std::max(0, std::min(100, atoi(e))) * 256 / 100 : 256;
+	if (g.volume != 256)
+		port_log("[audio] master volume %d%%\n", (g.volume * 100 + 128) / 256);
 	g.fifo.assign(32768 * 2, 0);
 	g.head = g.count = 0;
 	if (!g.enabled) {

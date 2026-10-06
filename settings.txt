@@ -36,6 +36,8 @@ frame_rate = 60
 
 # skip_movies = off
 # audio = on
+# Master volume, 0 (silent) to 100 (full).
+# volume = 100
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
 

@@ -117,6 +117,15 @@ if(TARGET SDL2::SDL2)
         set_source_files_properties(src/gx_launcher.cpp PROPERTIES
                                     COMPILE_DEFINITIONS "SMS_PORT_VERSION=\"${SMS_PORT_VERSION}\"")
     endif()
+    # The launcher's background, SMS Launcher's own picture (packaging/launcher-bg.png, MIT,
+    # chasem-dev/sms-launcher), embedded as bytes; rewritten only when it changes.
+    set(_sms_bg ${CMAKE_CURRENT_SOURCE_DIR}/../../packaging/launcher-bg.png)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_sms_bg})
+    file(READ ${_sms_bg} _sms_bg_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _sms_bg_hex "${_sms_bg_hex}")
+    file(WRITE ${CMAKE_BINARY_DIR}/generated/launcher_bg.inc.new "${_sms_bg_hex}\n")
+    configure_file(${CMAKE_BINARY_DIR}/generated/launcher_bg.inc.new ${CMAKE_BINARY_DIR}/generated/launcher_bg.inc COPYONLY)
+    target_include_directories(sms_gx PRIVATE ${CMAKE_BINARY_DIR}/generated)
     target_link_libraries(sms_gx PUBLIC SDL2::SDL2)
     target_sources(sms_gx PRIVATE ${SMS_GX_IMGUI_SOURCES})
     target_include_directories(sms_gx PRIVATE ${SMS_GX_IMGUI_DIR})

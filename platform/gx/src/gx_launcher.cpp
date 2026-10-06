@@ -13,11 +13,19 @@
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "imgui.h"
+#include "imgui_internal.h"  // ShadeVertsLinearColorGradientKeepAlpha
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
 
+// PNG decoding for the background picture (its own static copy; gx_hires.cpp has another)
+#define STBI_ONLY_PNG
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+#include "third_party/stb_image.h"
+
 #include <ctype.h>
 #include <math.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1101,6 +1109,229 @@ struct UpdateJob {
                 const std::string n = e.path().filename().string();
                 if (n.size() > 4 && n.compare(n.size() - 4, 4, ".old") == 0) fs::remove(e.path(), ec);
             }
+    }
+};
+
+// ------------------------------------------------------------------ the move to SMS Launcher
+// This fork is closed: its features went to chasem-dev's port and SMS Launcher,
+// which builds the game from the player's own disc and keeps it up to date.
+// The launcher now only downloads SMS Launcher's latest release from GitHub
+// and starts it (the Windows installer, or the Linux AppImage).
+const char* const kSmsLauncherApi = "https://api.github.com/repos/chasem-dev/sms-launcher/releases/latest";
+const char* const kSmsLauncherReleases = "https://github.com/chasem-dev/sms-launcher/releases/latest";
+
+struct MoveJob {
+    enum Phase { IDLE, SAVES, FINDING, DOWNLOADING, STARTING, DONE, FAILED, CANCELLED };
+    std::thread worker;
+    std::atomic<int> phase{IDLE};
+    std::atomic<bool> cancel{false};
+    std::mutex mu;
+    Process* child = nullptr;  // under mu
+    std::string error, version, assetName, assetUrl, file;
+    long long assetSize = 0;
+    // memory card: where this game kept it (set before begin), and what happened to it
+    std::string cardFrom, cardTo, cardBackup, cardResult;
+
+    bool busy() const { return phase == SAVES || phase == FINDING || phase == DOWNLOADING || phase == STARTING; }
+    float progress() const {
+        return assetSize > 0 ? std::min(1.0f, float(double(std::max(0LL, fileSize(file + ".part"))) / double(assetSize))) : 0.0f;
+    }
+    void begin() {
+        if (worker.joinable()) worker.join();
+        cancel = false;
+        error.clear();
+        worker = std::thread(&MoveJob::run, this);
+    }
+    void stop() {
+        cancel = true;
+        std::lock_guard<std::mutex> lk(mu);
+        if (child) child->kill();
+    }
+    ~MoveJob() {
+        stop();
+        if (worker.joinable()) worker.join();
+    }
+    int exec(const std::vector<std::string>& args, std::string* output) {
+        Process p;
+        {
+            std::lock_guard<std::mutex> lk(mu);
+            if (cancel || !p.start(args)) return -1;
+            child = &p;
+        }
+        std::string l, last;
+        while (p.line(l)) {
+            if (output) *output += l + "\n";
+            if (!l.empty()) last = l;
+        }
+        const int rc = p.wait();
+        std::lock_guard<std::mutex> lk(mu);
+        child = nullptr;
+        if (rc != 0 && error.empty()) error = last;
+        return rc;
+    }
+    void fail(const std::string& why) {
+        if (cancel) {
+            phase = CANCELLED;
+            return;
+        }
+        error = why + (error.empty() ? "" : ": " + error);
+        phase = FAILED;
+    }
+    // where the download goes: the user's Downloads folder, else the temporary one
+    static std::string downloadDir() {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+#ifdef _WIN32
+        const char* home = getenv("USERPROFILE");
+#else
+        const char* home = getenv("HOME");
+#endif
+        if (home && *home && fs::is_directory(fs::path(home) / "Downloads", ec))
+            return (fs::path(home) / "Downloads").string();
+        return fs::temp_directory_path(ec).string();
+    }
+
+    // SMS Launcher's memory card folder (its saves.js saveDirectory, with no save_dir of its own), the
+    // same default this port uses: $XDG_DATA_HOME, %APPDATA% on Windows, else ~/.local/share.
+    static std::string launcherCardDir() {
+        namespace fs = std::filesystem;
+        if (const char* x = getenv("XDG_DATA_HOME")) return (fs::path(x) / "sms-port" / "card-a").string();
+#ifdef _WIN32
+        if (const char* x = getenv("APPDATA")) return (fs::path(x) / "sms-port" / "card-a").string();
+#endif
+        const char* home = getenv("HOME");
+        return (fs::path(home ? home : ".") / ".local" / "share" / "sms-port" / "card-a").string();
+    }
+    static bool isCardFile(const std::string& name) {
+        auto ends = [&](const char* s) { return name.size() > strlen(s) && name.compare(name.size() - strlen(s), std::string::npos, s) == 0; };
+        return name == "index.txt" || ends(".dat") || ends(".stat");
+    }
+    static std::vector<std::string> cardFiles(const std::string& dir) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        std::vector<std::string> out;
+        for (auto& e : fs::directory_iterator(dir, ec))
+            if (e.is_regular_file() && isCardFile(e.path().filename().string())) out.push_back(e.path().filename().string());
+        return out;
+    }
+
+    // Backs the memory card up beside the player's other files, then copies it into SMS Launcher's
+    // card folder when it was kept elsewhere (save_dir). A card already there is never overwritten.
+    bool migrateSaves() {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        cardTo = launcherCardDir();
+        const std::vector<std::string> files = cardFiles(cardFrom);
+        if (files.empty()) {
+            cardResult = "No saves were found to move.";
+            return true;
+        }
+        // a dated backup, every time
+#ifdef _WIN32
+        const char* home = getenv("USERPROFILE");
+#else
+        const char* home = getenv("HOME");
+#endif
+        char stamp[32];
+        const time_t now = time(nullptr);
+        strftime(stamp, sizeof stamp, "%Y-%m-%d %H%M%S", localtime(&now));
+        cardBackup = (fs::path(home && *home ? home : ".") / (std::string("SMS PC Port save backup ") + stamp)).string();
+        fs::create_directories(cardBackup, ec);
+        for (const std::string& f : files) {
+            fs::copy_file(fs::path(cardFrom) / f, fs::path(cardBackup) / f, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                error = ec.message();
+                return false;
+            }
+        }
+        if (fs::equivalent(cardFrom, cardTo, ec)) {
+            cardResult = "Your saves are already in SMS Launcher's memory card folder. A backup copy is in " + cardBackup + ".";
+            return true;
+        }
+        if (!cardFiles(cardTo).empty()) {
+            cardResult = "SMS Launcher's memory card already has saves, so it was left as it is. Your saves from this "
+                         "version are backed up in " + cardBackup + ".";
+            return true;
+        }
+        fs::create_directories(cardTo, ec);
+        for (const std::string& f : files) {
+            fs::copy_file(fs::path(cardFrom) / f, fs::path(cardTo) / f, fs::copy_options::skip_existing, ec);
+            if (ec) {
+                error = ec.message();
+                return false;
+            }
+        }
+        cardResult = "Your saves were copied to SMS Launcher's memory card folder (" + cardTo + "). A backup copy is in " +
+                     cardBackup + ".";
+        return true;
+    }
+
+    void run() {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        phase = SAVES;
+        if (!migrateSaves()) return fail("Your saves could not be backed up, so nothing was changed");
+        phase = FINDING;
+        std::string json;
+        if (exec({curlPath(), "-sS", "-f", "-L", "--max-time", "20", "-H", "Accept: application/vnd.github+json",
+                  "-H", std::string("User-Agent: sms-pc-port/") + kPortVersion, kSmsLauncherApi},
+                 &json) != 0)
+            return fail("Cannot reach GitHub");
+        jsonString(json, "tag_name", version);
+        std::string url;
+        for (size_t p = 0; (p = jsonString(json, "browser_download_url", url, p)) != std::string::npos; p++) {
+            const std::string name = url.substr(url.find_last_of('/') + 1);
+#ifdef _WIN32
+            const bool want = name.rfind("SMS-Launcher-Setup-", 0) == 0 && name.size() > 4 &&
+                              name.compare(name.size() - 4, 4, ".exe") == 0;
+#else
+            const bool want = name.size() > 9 && name.compare(name.size() - 9, 9, ".AppImage") == 0;
+#endif
+            if (!want) continue;
+            assetUrl = url;
+            assetName = name;
+            const size_t s = json.rfind("\"size\"", p);
+            if (s != std::string::npos) assetSize = atoll(json.c_str() + json.find(':', s) + 1);
+            break;
+        }
+        if (assetUrl.empty()) return fail("SMS Launcher's latest release has no download for this system");
+        file = (fs::path(downloadDir()) / assetName).string();
+        if (fileSize(file) != assetSize || assetSize <= 0) {
+            phase = DOWNLOADING;
+            const std::string part = file + ".part";
+            if (exec({curlPath(), "-L", "-f", "-sS", "--retry", "3", "-C", "-", "-o", part, assetUrl}, nullptr) != 0 ||
+                (assetSize > 0 && fileSize(part) != assetSize)) {
+                if (fileSize(part) > assetSize) fs::remove(part, ec);
+                return fail("The download failed");
+            }
+            fs::remove(file, ec);
+            fs::rename(part, file, ec);
+            if (ec) return fail("Cannot save " + file + ": " + ec.message());
+        }
+        phase = STARTING;
+#ifdef _WIN32
+        // the NSIS installer, detached: it outlives this program
+        std::wstring wfile(file.size() + 1, L'\0');
+        wfile.resize(MultiByteToWideChar(CP_UTF8, 0, file.c_str(), -1, &wfile[0], int(wfile.size())) - 1);
+        std::wstring cmd = L"\"" + wfile + L"\"";
+        STARTUPINFOW si;
+        memset(&si, 0, sizeof si);
+        si.cb = sizeof si;
+        PROCESS_INFORMATION pi;
+        if (!CreateProcessW(wfile.c_str(), &cmd[0], nullptr, nullptr, FALSE, DETACHED_PROCESS, nullptr, nullptr, &si,
+                            &pi))
+            return fail("Downloaded to " + file + ", but it could not be started; open it from there");
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+#else
+        chmod(file.c_str(), 0755);
+        std::string self = file;
+        char* args[] = {&self[0], nullptr};
+        pid_t pid = 0;
+        if (posix_spawn(&pid, self.c_str(), nullptr, nullptr, args, environ) != 0)
+            return fail("Downloaded to " + file + ", but it could not be started; run it from there");
+#endif
+        phase = DONE;
     }
 };
 
@@ -2245,6 +2476,274 @@ struct Launcher {
              "your own disc image. Launcher drawn with Dear ImGui.");
     }
 
+    // --- the one screen left: SMS Launcher is the launcher now
+    MoveJob move;
+
+    // The memory card folder this game uses (platform/card/card.cpp): SMS_SAVE_DIR or save_dir (relative
+    // to the game folder), else the default that SMS Launcher shares.
+    std::string cardDir() {
+        namespace fs = std::filesystem;
+        std::string dir = getenv("SMS_SAVE_DIR") ? getenv("SMS_SAVE_DIR") : settings.get("save_dir", "");
+        if (dir.empty()) return MoveJob::launcherCardDir();
+        fs::path p(dir);
+        return (p.is_absolute() ? p : fs::path(baseDir.empty() ? "." : baseDir) / p).string();
+    }
+
+    // SMS Launcher's look (its src/style.css): the beach background under two dark gradients, a
+    // translucent navy top and status bar, a dark setup panel and a teal launch panel with the
+    // big yellow button.
+    unsigned bgTex = 0;
+    int bgW = 0, bgH = 0;
+
+    static ImU32 hex(unsigned rgb, int a = 255) {
+        return IM_COL32((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, a);
+    }
+
+    // A button drawn as SMS Launcher draws them: 0 its yellow Play button (with the darker lip),
+    // 1 the translucent outlined one on dark panels.
+    bool smsButton(const char* label, ImVec2 size, int style, float fontSize, bool enabled = true) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 p = ImGui::GetCursorScreenPos();
+        ImGui::BeginDisabled(!enabled);
+        const bool pressed = ImGui::InvisibleButton(label, size);
+        ImGui::EndDisabled();
+        const bool hot = enabled && ImGui::IsItemHovered(), down = hot && ImGui::IsItemActive();
+        const float r = 11.0f * scale;
+        const ImVec2 q(p.x + size.x, p.y + size.y);
+        if (style == 0) {
+            const float lip = (down ? 1.0f : 4.0f) * scale, dy = down ? 3.0f * scale : 0.0f;
+            dl->AddRectFilled(ImVec2(p.x, p.y + lip + dy), ImVec2(q.x, q.y + lip), hex(0xb98127), r);
+            dl->AddRectFilled(ImVec2(p.x, p.y + dy), ImVec2(q.x, q.y + dy), hot ? hex(0xffda86) : hex(0xffc75a, enabled ? 255 : 190), r);
+        } else {
+            dl->AddRectFilled(p, q, hex(0xffffff, hot ? 0x38 : 0x20), r * 0.75f);
+            dl->AddRect(p, q, hex(0xb5e6ee, 0x8c), r * 0.75f, 0, 1.0f * scale);
+        }
+        const char* end = strstr(label, "##") ? strstr(label, "##") : label + strlen(label);
+        const ImVec2 ts = bold->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label, end);
+        const float dy = style == 0 && down ? 3.0f * scale : 0.0f;
+        dl->AddText(bold, fontSize, ImVec2(p.x + (size.x - ts.x) / 2, p.y + (size.y - ts.y) / 2 + dy),
+                    style == 0 ? hex(0x143749) : hex(0xffffff), label, end);
+        return pressed && enabled;
+    }
+
+    // a word-wrapped line in one colour and size
+    void wrapped(const char* text, ImU32 color, ImFont* font, float size) {
+        ImGui::PushFont(font, size);
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::TextWrapped("%s", text);
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+    }
+
+    bool movedFrame(bool& quit) {
+        const ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->Pos);
+        ImGui::SetNextWindowSize(vp->Size);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, hex(0x0a3045));
+        ImGui::Begin("moved", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollWithMouse);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 o = vp->Pos;
+        const float W = vp->Size.x, H = vp->Size.y, t = float(ImGui::GetTime());
+        const float base = ImGui::GetStyle().FontSizeBase;
+
+        // background: the picture, covering, centred at 40% across; then the two gradients
+        if (bgTex && bgW > 0 && bgH > 0) {
+            const float sa = float(bgW) / float(bgH), da = W / H;
+            ImVec2 uv0(0, 0), uv1(1, 1);
+            if (da > sa) {  // wider than the picture: crop top and bottom
+                const float v = sa / da;
+                uv0.y = (1 - v) * 0.5f;
+                uv1.y = uv0.y + v;
+            } else {
+                const float u = da / sa;
+                uv0.x = (1 - u) * 0.4f;
+                uv1.x = uv0.x + u;
+            }
+            dl->AddImage(ImTextureRef((ImTextureID)(intptr_t)bgTex), o, ImVec2(o.x + W, o.y + H), uv0, uv1);
+        }
+        dl->AddRectFilledMultiColor(o, ImVec2(o.x + W, o.y + H * 0.31f), hex(0x07334b, 0x70), hex(0x07334b, 0x70),
+                                    hex(0x07334b, 0x05), hex(0x07334b, 0x05));
+        dl->AddRectFilledMultiColor(ImVec2(o.x, o.y + H * 0.31f), ImVec2(o.x + W, o.y + H), hex(0x062b42, 0x05),
+                                    hex(0x062b42, 0x05), hex(0x062b42, 0xaa), hex(0x062b42, 0xaa));
+        dl->AddRectFilledMultiColor(o, ImVec2(o.x + W * 0.47f, o.y + H), hex(0x072d45, 0xac), hex(0x072d45, 0x2e),
+                                    hex(0x072d45, 0x2e), hex(0x072d45, 0xac));
+        dl->AddRectFilledMultiColor(ImVec2(o.x + W * 0.47f, o.y), ImVec2(o.x + W * 0.8f, o.y + H), hex(0x072d45, 0x2e),
+                                    hex(0x072d45, 0), hex(0x072d45, 0), hex(0x072d45, 0x2e));
+
+        // top bar
+        const float barH = 58 * scale, statusH = 36 * scale, padX = 28 * scale;
+        dl->AddRectFilled(o, ImVec2(o.x + W, o.y + barH), hex(0x092e45, 0xbb));
+        dl->AddLine(ImVec2(o.x, o.y + barH), ImVec2(o.x + W, o.y + barH), hex(0xffffff, 0x2a));
+        const ImVec2 mark(o.x + 26 * scale, o.y + (barH - 30 * scale) / 2);
+        dl->AddRectFilled(mark, ImVec2(mark.x + 30 * scale, mark.y + 30 * scale), hex(0xffc75a), 9 * scale);
+        const char* star = "\xE2\x9C\xA6";
+        const ImVec2 ss = bold->CalcTextSizeA(20 * scale, FLT_MAX, 0, star);
+        dl->AddText(bold, 20 * scale, ImVec2(mark.x + (30 * scale - ss.x) / 2, mark.y + (30 * scale - ss.y) / 2), hex(0x173d51), star);
+        dl->AddText(bold, 15.5f * scale, ImVec2(mark.x + 40 * scale, o.y + 11 * scale), hex(0xffffff), "SMS PC Port");
+        dl->AddText(body, 12 * scale, ImVec2(mark.x + 40 * scale, o.y + 31 * scale), hex(0xc9e6ec),
+                    "Closed \xC2\xB7 moving to SMS Launcher");
+#ifdef _WIN32
+        const char* platform = "Windows";
+#else
+        const char* platform = "Linux";
+#endif
+        const ImVec2 ps = body->CalcTextSizeA(13 * scale, FLT_MAX, 0, platform);
+        dl->AddText(body, 13 * scale, ImVec2(o.x + W - padX - ps.x, o.y + (barH - ps.y) / 2), hex(0xc9e6ec), platform);
+
+        // status bar
+        const float sy = o.y + H - statusH;
+        dl->AddRectFilled(ImVec2(o.x, sy), ImVec2(o.x + W, o.y + H), hex(0x082d45, 0xc7));
+        dl->AddLine(ImVec2(o.x, sy), ImVec2(o.x + W, sy), hex(0xffffff, 0x30));
+        const int ph = move.phase;
+        dl->AddCircleFilled(ImVec2(o.x + padX + 4 * scale, sy + statusH / 2), 4 * scale,
+                            ph == MoveJob::FAILED ? hex(0xff9a7a) : move.busy() ? hex(0xffca63) : hex(0x58d39d));
+        const char* status = ph == MoveJob::DONE ? "SMS Launcher is ready" : move.busy() ? "Working\xE2\x80\xA6"
+                           : ph == MoveJob::FAILED ? "Something went wrong" : "This launcher is closed";
+        dl->AddText(body, 12 * scale, ImVec2(o.x + padX + 16 * scale, sy + (statusH - 12 * scale) / 2 - 1), hex(0xd2eaf0), status);
+        const char* byo = "Bring your own ROM \xC2\xB7 No game data included";
+        const ImVec2 bs = body->CalcTextSizeA(12 * scale, FLT_MAX, 0, byo);
+        dl->AddText(body, 12 * scale, ImVec2(o.x + W - padX - bs.x, sy + (statusH - bs.y) / 2), hex(0xd2eaf0), byo);
+
+        // intro, over the picture
+        const float top = barH + 24 * scale;
+        const char* eyebrow = "SUPER MARIO SUNSHINE";
+        float ex = o.x + padX;
+        for (const char* c = eyebrow; *c; c++) {  // letter-spaced, as .eyebrow
+            const char s[2] = {*c, 0};
+            dl->AddText(bold, 12 * scale, ImVec2(ex, o.y + top), hex(0xdcf3f7), s);
+            ex += bold->CalcTextSizeA(12 * scale, FLT_MAX, 0, s).x + 1.6f * scale;
+        }
+        const float h1 = std::min(44.0f, std::max(30.0f, W / scale * 0.035f)) * scale;
+        const char* title = "We've moved to SMS Launcher";
+        dl->AddText(bold, h1, ImVec2(o.x + padX + 2 * scale, o.y + top + 22 * scale + 3 * scale), hex(0x082b45, 0x99), title);
+        dl->AddText(bold, h1, ImVec2(o.x + padX, o.y + top + 22 * scale), hex(0xffffff), title);
+        dl->AddText(body, 16 * scale, ImVec2(o.x + padX, o.y + top + 28 * scale + h1), hex(0xffffff),
+                    "One download, then you're playing in the official launcher.");
+
+        // the setup panel, centred
+        const float panelW = std::min(W - padX * 2, 660.0f * scale);
+        const float panelX = (W - panelW) / 2, panelY = top + 66 * scale + h1;
+        ImGui::SetCursorPos(ImVec2(panelX, panelY));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, hex(0x072f49, 0xe8));
+        ImGui::PushStyleColor(ImGuiCol_Border, hex(0xd3f2f5, 0x6e));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 12 * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24 * scale, 21 * scale));
+        ImGui::BeginChild("step", ImVec2(panelW, 0),
+                          ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_Borders);
+        ImGui::PushTextWrapPos(0.0f);
+        wrapped("This version is closed", hex(0xffffff), bold, 24 * scale);
+        ImGui::Dummy(ImVec2(0, 2 * scale));
+        wrapped("Its features are going into the official port and SMS Launcher by chasem-dev, who made the port. "
+                "SMS Launcher sets the game up from your own disc image and keeps it up to date.",
+                hex(0xd8eef1), body, 14 * scale);
+        ImGui::Dummy(ImVec2(0, 10 * scale));
+        // a .setup-file box: what happens to the saves, or where they went
+        {
+            const std::string text = !move.cardResult.empty() && ph != MoveJob::SAVES ? move.cardResult
+                : "Backed up first, then put where SMS Launcher looks for them. Nothing here is deleted.";
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, hex(0xffffff, 0x12));
+            ImGui::PushStyleColor(ImGuiCol_Border, hex(0xd3f2f5, 0x48));
+            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 9 * scale);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12 * scale, 10 * scale));
+            ImGui::BeginChild("saves", ImVec2(0, 0),
+                              ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_Borders);
+            ImGui::PushTextWrapPos(0.0f);
+            wrapped("YOUR SAVES", hex(0xa9d8df), bold, 11 * scale);
+            wrapped(text.c_str(), hex(0xffffff), bold, 14 * scale);
+            ImGui::PopTextWrapPos();
+            ImGui::EndChild();
+            ImGui::PopStyleVar(2);
+            ImGui::PopStyleColor(2);
+        }
+        if (ph == MoveJob::FAILED) {
+            ImGui::Dummy(ImVec2(0, 6 * scale));
+            wrapped(move.error.c_str(), hex(0xffb49a), body, 14 * scale);
+        } else if (ph == MoveJob::DONE) {
+            ImGui::Dummy(ImVec2(0, 6 * scale));
+#ifdef _WIN32
+            const std::string done = "SMS Launcher " + move.version + "'s installer is open. Finish it, then play from SMS Launcher.";
+#else
+            const std::string done = "SMS Launcher " + move.version + " is starting.";
+#endif
+            wrapped(done.c_str(), hex(0xa8eed5), bold, 14 * scale);
+            wrapped(("Saved to " + move.file).c_str(), hex(0xd8eef1), body, 13 * scale);
+        }
+        ImGui::PopTextWrapPos();
+        ImGui::EndChild();
+        ImGui::PopStyleVar(3);
+        ImGui::PopStyleColor(2);
+
+        // the launch panel, at the bottom: the big button, or the progress
+        const float launchW = std::min(W - padX * 2, 620.0f * scale), launchH = 104 * scale + (move.busy() ? 0 : 0);
+        const float lx = o.x + (W - launchW) / 2, ly = sy - 16 * scale - launchH;
+        // a rounded fill shaded across, as its 135-degree gradient
+        const int v0 = dl->VtxBuffer.Size;
+        dl->AddRectFilled(ImVec2(lx, ly), ImVec2(lx + launchW, ly + launchH), hex(0xffffff, 0xf2), 12 * scale);
+        ImGui::ShadeVertsLinearColorGradientKeepAlpha(dl, v0, dl->VtxBuffer.Size, ImVec2(lx, ly),
+                                                      ImVec2(lx + launchW, ly + launchH), hex(0x123e59), hex(0x087e91));
+        dl->AddRect(ImVec2(lx, ly), ImVec2(lx + launchW, ly + launchH), hex(0xa5e0e4, 0x7d), 12 * scale, 0, 1.0f);
+        const float innerX = lx + 19 * scale, innerW = launchW - 38 * scale, btnH = 72 * scale, cog = 72 * scale;
+        ImGui::SetCursorScreenPos(ImVec2(innerX, ly + 16 * scale));
+        if (move.busy()) {
+            char label[160];
+            if (ph == MoveJob::SAVES) snprintf(label, sizeof label, "Backing up your saves\xE2\x80\xA6");
+            else if (ph == MoveJob::FINDING) snprintf(label, sizeof label, "Finding the latest SMS Launcher\xE2\x80\xA6");
+            else if (ph == MoveJob::DOWNLOADING) snprintf(label, sizeof label, "Downloading SMS Launcher %s", move.version.c_str());
+            else snprintf(label, sizeof label, "Starting the installer\xE2\x80\xA6");
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            dl->AddText(bold, 17 * scale, p, hex(0xffffff), label);
+            if (ph == MoveJob::DOWNLOADING) {
+                char pct[16];
+                snprintf(pct, sizeof pct, "%.0f%%", double(move.progress()) * 100.0);
+                const ImVec2 qs = bold->CalcTextSizeA(17 * scale, FLT_MAX, 0, pct);
+                dl->AddText(bold, 17 * scale, ImVec2(p.x + innerW - cog - 12 * scale - qs.x, p.y), hex(0xffffff), pct);
+            }
+            // .progress-track
+            const float ty = p.y + 34 * scale, tw = innerW - cog - 12 * scale;
+            dl->AddRectFilled(ImVec2(p.x, ty), ImVec2(p.x + tw, ty + 8 * scale), hex(0xffffff, 0x40), 4 * scale);
+            if (ph == MoveJob::DOWNLOADING)
+                dl->AddRectFilled(ImVec2(p.x, ty), ImVec2(p.x + tw * move.progress(), ty + 8 * scale), hex(0xffca63), 4 * scale);
+            else {  // indeterminate: a moving segment
+                const float f = fmodf(t * 0.6f, 1.0f), seg = tw * 0.25f, x0 = p.x + (tw + seg) * f - seg;
+                dl->AddRectFilled(ImVec2(std::max(p.x, x0), ty), ImVec2(std::min(p.x + tw, x0 + seg), ty + 8 * scale), hex(0xffca63), 4 * scale);
+            }
+            ImGui::SetCursorScreenPos(ImVec2(innerX + innerW - cog, ly + 16 * scale));
+            if (smsButton("Cancel##move", ImVec2(cog, btnH), 1, 14 * scale,
+                          ph == MoveJob::DOWNLOADING || ph == MoveJob::FINDING))
+                move.stop();
+        } else {
+            const char* label = ph == MoveJob::DONE ? "Close" : ph == MoveJob::FAILED ? "Try again" : "Get SMS Launcher";
+            if (smsButton(label, ImVec2(innerW - cog - 12 * scale, btnH), 0, 26 * scale)) {
+                if (ph == MoveJob::DONE) quit = true;
+                else {
+                    move.cardFrom = cardDir();
+                    move.begin();
+                }
+            }
+            ImGui::SetCursorScreenPos(ImVec2(innerX + innerW - cog, ly + 16 * scale));
+            // like the settings cog beside Play: a square for the release page
+            const ImVec2 cp = ImGui::GetCursorScreenPos();
+            if (smsButton("##page", ImVec2(cog, btnH), 1, 14 * scale)) SDL_OpenURL(kSmsLauncherReleases);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Open SMS Launcher's download page");
+            const ImVec2 c(cp.x + cog / 2, cp.y + btnH / 2);  // an "open in browser" arrow
+            const float a = 10 * scale;
+            dl->AddRect(ImVec2(c.x - a, c.y - a + 3 * scale), ImVec2(c.x + a - 3 * scale, c.y + a), hex(0xffffff), 2 * scale, 0, 2 * scale);
+            dl->AddLine(ImVec2(c.x - 1 * scale, c.y + 1 * scale), ImVec2(c.x + a + 1 * scale, c.y - a - 1 * scale), hex(0xffffff), 2 * scale);
+            dl->AddLine(ImVec2(c.x + a + 1 * scale, c.y - a - 1 * scale), ImVec2(c.x + 3 * scale, c.y - a - 1 * scale), hex(0xffffff), 2 * scale);
+            dl->AddLine(ImVec2(c.x + a + 1 * scale, c.y - a - 1 * scale), ImVec2(c.x + a + 1 * scale, c.y - 3 * scale), hex(0xffffff), 2 * scale);
+        }
+        (void)base;
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !move.busy()) quit = true;
+        ImGui::End();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+        return false;
+    }
+
     // --- chrome
     void drawHeader(ImVec2 p0, ImVec2 p1, float t) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -2462,9 +2961,7 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
     L.refreshInstalled();
     // `launcher = off` skips the menu, but never when there is no game to play
     const std::string show = L.settings.get("launcher", "on");
-    if (!force && !L.installed.empty() && (show == "off" || show == "0" || show == "no" || show == "false") &&
-        !shiftHeld())
-        return 1;
+    (void)show;  // the move to SMS Launcher is shown even with the menu turned off
     if (L.installed.empty()) L.page = P_INSTALL;
     L.bindings.load();
 
@@ -2542,6 +3039,34 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
 
     L.scanDisplays();
     L.scanMods();
+    {  // SMS Launcher's background picture, embedded at build time
+        static const unsigned char kBg[] = {
+#include "launcher_bg.inc"
+        };
+        int n = 0;
+        if (unsigned char* px = stbi_load_from_memory(kBg, int(sizeof kBg), &L.bgW, &L.bgH, &n, 4)) {
+            typedef void(APIENTRY * GenTexFn)(GLsizei, GLuint*);
+            typedef void(APIENTRY * BindTexFn)(GLenum, GLuint);
+            typedef void(APIENTRY * TexImageFn)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+            typedef void(APIENTRY * TexParamFn)(GLenum, GLenum, GLint);
+            const GenTexFn genTex = (GenTexFn)SDL_GL_GetProcAddress("glGenTextures");
+            const BindTexFn bindTex = (BindTexFn)SDL_GL_GetProcAddress("glBindTexture");
+            const TexImageFn texImage = (TexImageFn)SDL_GL_GetProcAddress("glTexImage2D");
+            const TexParamFn texParam = (TexParamFn)SDL_GL_GetProcAddress("glTexParameteri");
+            if (genTex && bindTex && texImage && texParam) {
+                GLuint tex = 0;
+                genTex(1, &tex);
+                bindTex(GL_TEXTURE_2D, tex);
+                texParam(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                texParam(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                texParam(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                texParam(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                texImage(GL_TEXTURE_2D, 0, GL_RGBA, L.bgW, L.bgH, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+                L.bgTex = tex;
+            }
+            stbi_image_free(px);
+        }
+    }
     if (char* base = SDL_GetBasePath()) {
         L.exeDir = base;
         SDL_free(base);
@@ -2589,7 +3114,7 @@ extern "C" int GXPC_RunLauncher(const char* settingsPath, const char* bindingsPa
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        play = L.frame(quit);
+        play = L.movedFrame(quit);
         ImGui::Render();
         int dw = 0, dh = 0;
         SDL_GL_GetDrawableSize(win, &dw, &dh);

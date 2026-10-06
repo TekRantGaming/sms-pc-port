@@ -1,39 +1,22 @@
-A native PC port of Super Mario Sunshine, built from the decompilation, with a launcher and PC enhancements.
+## This project has closed: use SMS Launcher
 
-### New in this release: automatic updates
-- **The launcher now checks for updates** each time it opens. When a new release is out, a banner offers **Update now**: it downloads the release, replaces the game files in place and restarts. Your settings, key bindings, installed game, HD textures and HD cutscenes are kept. It can be turned off on the **About** page, which also has **Check for updates**.
-- **SMS Launcher is the official launcher.** chasem-dev, who made this port, has his own launcher, [SMS Launcher](https://github.com/chasem-dev/sms-launcher). This launcher's features are being contributed to it and to his port, one at a time. Once they are all there, this launcher will be retired. Until then it keeps working and keeps updating. The launcher shows a note about it once, and links to it from the About page.
-- **Brought up to date with the original project**, including its desktop fullscreen and camera invert settings. Builds started by SMS Launcher (`SMS_FULLSCREEN`, `SMS_CAMERA_INVERT_X/Y`) work in this one too.
+The features of this fork are going into the official [sms-pc-port](https://github.com/chasem-dev/sms-pc-port) and **[SMS Launcher](https://github.com/chasem-dev/sms-launcher)** by chasem-dev, who made the port, as pull requests. SMS Launcher is the launcher to use from now on: it sets the game up from your own disc image and keeps it up to date.
 
-Updating from 1.3.0 or earlier: download this release once by hand. From then on the launcher updates itself.
+### What this final version does
+When you start the game, a single screen in SMS Launcher's own style replaces the launcher. **Get SMS Launcher** then:
+1. **Backs up your memory card** to a dated `SMS PC Port save backup` folder in your home folder.
+2. **Moves your saves.** If you kept them somewhere other than the usual folder (`save_dir`), they are copied to where SMS Launcher looks for them (`%APPDATA%\sms-port\card-a` on Windows, `~/.local/share/sms-port/card-a` on Linux). If you never changed it, they are already there. A memory card that SMS Launcher already has is never overwritten.
+3. **Downloads the latest SMS Launcher** from its GitHub releases, with progress and Cancel, to your Downloads folder.
+4. **Starts it**: the installer on Windows, or the AppImage on Linux.
 
-### Earlier: HD cutscenes
-- **All 21 movies at 3x resolution** (AI-enhanced, 1920 x 960), with their original timing, subtitles and audio. From the original project's HD cutscene release.
-- On the launcher's **Graphics** page, **HD cutscenes → Download and install** downloads the movie patches (about 5.7 GB), builds the movies from your own disc image and checks every one against its published checksum. A switch then turns them on or off.
-- The install is all-or-nothing: if it fails or you cancel it, you keep whatever you had before.
+Nothing is deleted: your disc image, mods and old saves stay where they are.
 
-### Earlier: online co-op (first stage)
-- A new **Online** page in the launcher: one player chooses **Host**, the others choose **Join** and enter the host's address, and everyone presses Play.
-- Other players appear in your game when you are in the same level and episode, fully animated, with their cap, hands, FLUDD and nozzle, and a **name tag** over their head.
-- Up to **8 players**. It works on a home network straight away. Over the internet, the host forwards UDP port 27016 (it can be changed) on their router.
-- Everyone needs this version. Each player plays their own game for now: levels, enemies and Shine Sprites are not shared yet. Shared progress is the next stage.
-- The launcher's sidebar now fits all of its pages on shorter screens.
-
-### Earlier: HD texture pack installer
-- **Download and install** on the Graphics page fetches the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (qashto, razius) from its own release, with progress, resume and Cancel. You can then switch it on or off, reinstall it or remove it.
-
-**These downloads contain no game data.** You need your own disc image of Super Mario Sunshine, North America (GMSE01), revision 0 (ISO, GCM, NKit ISO or Dolphin CISO). The launcher's Install page copies it into place.
+### Getting this version
+- **On 1.4.0:** the launcher offers this update when it opens. Choose **Update now**.
+- **On 1.3.0 or older:** download this release once and run it.
 
 ### Downloads
 - **Windows (64-bit):** `SMS-PC-Port-*-windows-x64.zip`. Unzip anywhere and run `sms.exe`.
-- **Linux (64-bit):** `SMS-PC-Port-*-linux-x86_64.AppImage`. Make it executable (`chmod +x`) and run it. Settings, the installed disc image and mods live in `~/.local/share/sms-port`.
+- **Linux (64-bit):** `SMS-PC-Port-*-linux-x86_64.AppImage`. Make it executable (`chmod +x`) and run it.
 
-### Launcher
-- **Install:** browse for or drag in your disc image. It is checked (game, region, revision) and copied into the game folder, or used where it is.
-- **Display:** windowed, borderless or exclusive fullscreen (choose the resolution and refresh rate), monitor, vsync (off, on, adaptive), widescreen up to 32:9 or matched to your monitor, HUD position, aspect (keep, stretch, integer) and scaling filter.
-- **Graphics:** internal resolution 1x to 8x (it recommends one for your monitor), MSAA 2x/4x/8x, FXAA, anisotropic filtering up to 16x, sharpening, brightness and HD texture packs.
-- **Camera:** invert X and Y separately, a free camera that no longer swings back behind Mario (L recentres it), camera speed, and mouse look with sensitivity.
-- **Gameplay, Audio and Controls:** 30 or 60 fps, skip intro movies, mods, performance overlay, master volume and keyboard rebinding. Controllers work automatically.
-
-### In game
-F11 or Alt+Enter toggles fullscreen. F10 releases the mouse when mouse look is on. `` ` `` shows the performance overlay. Esc quits.
+Thank you to everyone who played this fork. See you in SMS Launcher.

@@ -14,27 +14,17 @@ readme() {
 	cat <<EOF
 Super Mario Sunshine - PC Port ($version)
 
-This package contains only the port: no game data. You need your own disc
-image of Super Mario Sunshine, North America (GMSE01), revision 0, as an ISO,
-GCM, NKit ISO or Dolphin CISO.
+THIS PROJECT HAS CLOSED. Its features are going into the official port and
+SMS Launcher by chasem-dev: https://github.com/chasem-dev/sms-launcher
 
-1. Start the game. The launcher opens on its Install page.
-2. Choose Browse... (or drop the image onto the window) and press Install.
-3. Press Play.
-
-The launcher's other pages set the display mode, resolution, anti-aliasing,
-camera (invert, free camera, mouse look), audio and key bindings; they are
-saved in settings.txt and bindings.txt. Hold Shift while starting the game to
-show the launcher when it is turned off.
-
-In game: F11 or Alt+Enter toggles fullscreen, F10 releases the mouse (mouse
-look), \` shows the performance overlay, Esc quits.
-
-HD texture packs made for Dolphin go in mods/textures/ (see the project's
-mods/README.md).
+Start sms (sms.exe on Windows): it backs up your memory card, copies it to
+where SMS Launcher looks for it if it was kept elsewhere, then downloads the
+latest SMS Launcher and starts it. Nothing is deleted.
 
 Source: https://github.com/TekRantGaming/sms-pc-port
-Dear ImGui is MIT licensed (LICENSE-imgui.txt).
+Dear ImGui is MIT licensed (LICENSE-imgui.txt). The launcher's background
+picture is from SMS Launcher by chasem-dev, MIT licensed
+(LICENSE-sms-launcher.txt).
 EOF
 }
 
@@ -78,6 +68,7 @@ MINGW* | MSYS*)
 	git show HEAD:settings.txt > "$out/settings.txt"
 	git show HEAD:bindings.txt > "$out/bindings.txt"
 	cp platform/gx/third_party/imgui/LICENSE.txt "$out/LICENSE-imgui.txt"
+	cp packaging/LICENSE-sms-launcher.txt "$out/LICENSE-sms-launcher.txt"
 	readme > "$out/README.txt"
 	rm -f "dist/$name.zip"
 	(cd dist && 7z a -tzip -mx=9 "$name.zip" "$name" >/dev/null)
@@ -93,6 +84,7 @@ Linux)
 	git show HEAD:settings.txt > "$appdir/usr/share/sms-port/settings.txt"
 	git show HEAD:bindings.txt > "$appdir/usr/share/sms-port/bindings.txt"
 	cp platform/gx/third_party/imgui/LICENSE.txt "$appdir/usr/share/sms-port/LICENSE-imgui.txt"
+	cp packaging/LICENSE-sms-launcher.txt "$appdir/usr/share/sms-port/LICENSE-sms-launcher.txt"
 	readme > "$appdir/usr/share/sms-port/README.txt"
 	tool=build/deps/linuxdeploy-x86_64.AppImage
 	if [ ! -x "$tool" ]; then

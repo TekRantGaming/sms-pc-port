@@ -1,3 +1,8 @@
+> [!CAUTION]
+> **This project has closed.** Its features are being contributed to the official [sms-pc-port](https://github.com/chasem-dev/sms-pc-port) and **[SMS Launcher](https://github.com/chasem-dev/sms-launcher)** by chasem-dev, who made the port. **Use SMS Launcher from now on.**
+>
+> If you have this fork installed, just start it once more. Version 2.0.0 and later back up your memory card, put it where SMS Launcher looks for it, then download and start the latest SMS Launcher for you. Version 1.4.0 updates itself to it; older versions need the [last release](https://github.com/TekRantGaming/sms-pc-port/releases/latest) downloaded once. Nothing is deleted.
+
 <div align="center">
 
 <img src="docs/images/banner.png" alt="Super Mario Sunshine PC Port" width="100%">

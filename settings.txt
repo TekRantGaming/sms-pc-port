@@ -29,6 +29,9 @@ frame_rate = 60
 
 # Internal resolution: 1 is the GameCube's 640x528, 2 twice that, and so on.
 # resolution = 1
+# Anisotropic filtering: keeps textures sharp at glancing angles. 0 (off), 2,
+# 4, 8 or 16, up to what the GPU supports.
+# anisotropic = 0
 # Window size, in multiples of 640x480.
 # window_scale = 1
 # Wait for the display's refresh when presenting.

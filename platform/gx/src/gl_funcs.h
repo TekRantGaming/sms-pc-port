@@ -74,7 +74,9 @@
     X(PFNGLDISABLEVERTEXATTRIBARRAYPROC, glDisableVertexAttribArray)                \
     X(PFNGLGENERATEMIPMAPPROC, glGenerateMipmap)                                    \
     X(PFNGLCOMPRESSEDTEXIMAGE2DPROC, glCompressedTexImage2D)                        \
-    X(PFNGLGETSTRINGIPROC, glGetStringi)
+    X(PFNGLGETSTRINGIPROC, glGetStringi)                                            \
+    X(PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC, glRenderbufferStorageMultisample)    \
+    X(PFNGLUNIFORM1FPROC, glUniform1f) X(PFNGLUNIFORM2FPROC, glUniform2f)
 
 #define SMS_GX_DECLARE(type, name) extern type gx_##name;
 extern "C++" {
@@ -91,6 +93,9 @@ SMS_GX_GL_FUNCS(SMS_GX_ALIAS)
 
 // call sites use the plain GL names
 #define glGetError gx_glGetError
+#define glRenderbufferStorageMultisample gx_glRenderbufferStorageMultisample
+#define glUniform1f gx_glUniform1f
+#define glUniform2f gx_glUniform2f
 #define glGetString gx_glGetString
 #define glGetIntegerv gx_glGetIntegerv
 #define glEnable gx_glEnable

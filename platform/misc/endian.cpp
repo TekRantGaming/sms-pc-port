@@ -119,11 +119,14 @@ int s_nseen;
 
 // platform/endian (the resource converters) is linked when present.
 extern "C" __attribute__((weak)) int port_endian_resource(void* data, uint32_t size, const char* name);
+extern "C" __attribute__((weak)) void GXPC_PrefetchResource(const void* data, uint32_t size, const char* name);
 
 extern "C" void port_res_to_native(void* data, u32 size) { port_res_to_native_named(data, size, NULL); }
 
 extern "C" void port_res_to_native_named(void* data, u32 size, const char* name)
 {
+	if (GXPC_PrefetchResource)
+		GXPC_PrefetchResource(data, size, name);
 	if (port_endian_resource && port_endian_resource(data, size, name) != 0)
 		return; // recognised by platform/endian (PE_FMT_UNKNOWN is 0)
 	u8* d = (u8*)data;

@@ -1,0 +1,22 @@
+Reason: port-only HD texture packs: finish queued resource replacements on the GL thread after stage objects load, before the first gameplay frame
+--- a/src/System/MarDirectorDirect.cpp
++++ b/src/System/MarDirectorDirect.cpp
+@@ -40,6 +40,10 @@
+ 
+ extern OSThread gSetupThread;
+ 
++#ifdef TARGET_PC
++extern "C" void GXPC_PreloadTextures(void) __attribute__((weak));
++#endif
++
+ // TODO: 99.7%, frame 0x158 vs retail 0x198 (TGraphics sits 0x40 higher, a
+ // dead low region) and r29/r30 swapped. Body from upstream (98.5 -> 99.7).
+ int TMarDirector::direct()
+@@ -98,3 +102,7 @@
++#ifdef TARGET_PC
++		if (GXPC_PreloadTextures)
++			GXPC_PreloadTextures();
++#endif
+ 		unk260 = true;
+ 	}
+ 

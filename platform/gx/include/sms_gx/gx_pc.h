@@ -73,6 +73,12 @@ void sms_gx_pump_events(void);
 int GXPC_Init(GXPCGetProcFn getProc, int efbScale);
 void GXPC_Shutdown(void);
 
+/* Before endian conversion, discover HD replacements in BTI, J3D TEX1 and
+ * JPA resources. Thread-safe; hashes synchronously and keeps no game pointers.
+ * PreloadTextures drains those requests on the GL thread before gameplay. */
+void GXPC_PrefetchResource(const void* data, uint32_t size, const char* name);
+void GXPC_PreloadTextures(void);
+
 /* 32-bit "physical" addresses appear inside command streams: display lists
  * built by GD/J3D carry texture, TLUT, vertex-array and EFB-copy addresses.
  * sms_gx maps them as phys = ptr - base.  The default base is 0x80000000,

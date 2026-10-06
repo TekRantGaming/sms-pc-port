@@ -1443,7 +1443,19 @@ int GXPC_Init(GXPCGetProcFn getProc, int efbScale) {
     if (!gl::load(getProc)) return 0;
     resetState();
     rendererInit(efbScale);
+    hiresEnabled();  // immutable index/format support published before loader threads run
     return glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+}
+
+void GXPC_PrefetchResource(const void* data, uint32_t size, const char* name) {
+    hiresPrefetchResource(data, size, name);
+}
+
+void GXPC_PreloadTextures(void) {
+    if (!s_ready) return;
+    flushBatch();
+    glcInvalidate();
+    hiresPreload();
 }
 
 void GXPC_Shutdown(void) {

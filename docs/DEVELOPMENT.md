@@ -76,7 +76,12 @@ Tools that compare with retail read the Dolphin captures from `$DOLPHIN_ORACLE`.
   `all` takes about 23 minutes on four cores with llvmpipe, two runs at a time (`--jobs`).
   A change that is meant to change what the runs show is recorded with `--record` (which refuses when 32 and 64-bit differ) and the new `baseline.txt` committed with it, saying why the frames changed.
 
+The plaza interior regression is `python3 tools/regress/interiors.py --disc /path/to/GMSE01.iso`.
+It uses gdb to place Mario on the real doorway triangles, lets the game perform the warps, and checks two entries and exits each for the boathouse and lighthouse at 30 and 60 fps in both word sizes.
+It checks the active map model, Mario's height and the ground plane, so a return warp that strands Mario in the interior fails even before he walks off its floor.
+
 ## Platform layer
+
 
 | Module | What it does |
 | --- | --- |

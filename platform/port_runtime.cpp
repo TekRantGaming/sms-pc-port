@@ -421,6 +421,7 @@ static const struct {
 	{ "vsync", "SMS_VSYNC" },
 	{ "skip_movies", "SMS_SKIP_MOVIES" },
 	{ "audio", "SMS_AUDIO" },
+	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100
 	{ "overlay", "SMS_OVERLAY" },
 	{ "save_dir", "SMS_SAVE_DIR" },
 	{ "disc_image", "SMS_DISC_IMAGE" },

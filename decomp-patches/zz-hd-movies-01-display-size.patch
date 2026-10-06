@@ -1,21 +1,72 @@
-Reason: port: center HD cutscenes at their original display size and subtitle position
+Reason: port: fit movies to the displayed frame, widened with SMS_WIDESCREEN: HD overrides keep the original footprint at 4:3, and every movie fills the wide frame in its own shape, which sms_gx stretches the movie draw across
 --- a/src/System/MovieDirector.cpp
 +++ b/src/System/MovieDirector.cpp
-@@ -350,6 +350,17 @@
+@@ -184,6 +184,13 @@
+ {
+ }
+ 
++#ifdef TARGET_PC
++// SMS_WIDESCREEN (platform): the displayed width over the GameCube's 4:3, 1
++// when off. Movies fill that frame (rsetup); TTHPRender has sms_gx stretch
++// them.
++extern "C" float port_widescreen;
++#endif
++
+ void* TMovieDirector::setupThreadFunc(void* self)
+ {
+ 	((TMovieDirector*)self)->rsetup();
+@@ -341,6 +348,26 @@
  
  	THPVideoInfo videoInfo;
  	THPPlayerGetVideoInfo(&videoInfo);
 +#ifdef TARGET_PC
-+	// HD overrides retain the original movie's on-screen footprint.
-+	// Only this display copy changes; the player still decodes the HD size.
-+	if (videoInfo.xSize > 640 || videoInfo.ySize > 448) {
-+		double scale = 640.0 / videoInfo.xSize;
-+		if (448.0 / videoInfo.ySize < scale)
-+			scale = 448.0 / videoInfo.ySize;
-+		videoInfo.xSize = (u32)(videoInfo.xSize * scale + 0.5);
++	// Full-frame movies (the originals and HD overrides) fit the displayed
++	// frame, widened by port_widescreen, keeping their shape: without
++	// widescreen an HD movie keeps the original's footprint. TTHPRender has
++	// sms_gx stretch every movie by port_widescreen, so its game-space width
++	// is narrower by that much. Only this display copy changes; the player
++	// still decodes the full size.
++	{
++		double wide = port_widescreen > 1.0f ? port_widescreen : 1.0;
++		double scale = 1.0;
++		if (videoInfo.xSize >= SMSGetGameRenderWidth()
++		    || videoInfo.ySize > SMSGetGameRenderHeight()) {
++			scale = SMSGetGameRenderWidth() * wide / videoInfo.xSize;
++			if ((double)SMSGetGameRenderHeight() / videoInfo.ySize < scale)
++				scale = (double)SMSGetGameRenderHeight() / videoInfo.ySize;
++		}
++		videoInfo.xSize = (u32)(videoInfo.xSize * scale / wide + 0.5);
 +		videoInfo.ySize = (u32)(videoInfo.ySize * scale + 0.5);
 +	}
 +#endif
  
  	thpRender->mPos = JGeometry::TVec2<u32>(
  	    (SMSGetGameRenderWidth() - videoInfo.xSize) / 2,
+--- a/src/System/THPRender.cpp
++++ b/src/System/THPRender.cpp
+@@ -1,5 +1,11 @@
+ #include <System/THPRender.hpp>
+ 
++#ifdef TARGET_PC
++// sms_gx: with widescreen, stretch 2D across the whole frame. MovieDirector
++// sizes the movie for it, so it fills the wide frame in its own shape.
++extern "C" void GXPC_SetStretch2D(int on);
++#endif
++
+ TTHPRender::TTHPRender(const char* name)
+     : JDrama::TViewObj(name)
+ {
+@@ -15,7 +21,13 @@
+ 		SMS_DrawInit();
+ 		GXLoadPosMtxImm(graphics->mViewMtx, GX_PNMTX0);
+ 		GXSetCurrentMtx(GX_PNMTX0);
++#ifdef TARGET_PC
++		GXPC_SetStretch2D(1);
++#endif
+ 		frameNumber = THPPlayerDrawCurrentFrame(0, mPos.x, mPos.y, mSize.x,
+ 		                                        mSize.y);
++#ifdef TARGET_PC
++		GXPC_SetStretch2D(0);
++#endif
+ 	}
+ }

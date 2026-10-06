@@ -3,6 +3,7 @@
 #include "gl_funcs.h"
 #include "gx_glcache.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <algorithm>
 #include <unordered_map>

@@ -295,7 +295,11 @@ def referenced(lib):
     """The symbols the mods' library uses from outside it (nm -u)."""
     nm = shutil.which("nm") or shutil.which("llvm-nm")
     out = subprocess.run([nm, "-u", lib], capture_output=True, text=True).stdout if nm else ""
-    return set(line.split()[-1] for line in out.splitlines() if line.strip() and not line.endswith(":"))
+    names = set(line.split()[-1] for line in out.splitlines() if line.strip() and not line.endswith(":"))
+    # Mach-O (and 32-bit COFF) symbols carry a leading underscore their DWARF linkage names do not.
+    if sys.platform == "darwin" or any(n.startswith("__Z") for n in names):
+        names = set(n[1:] if n.startswith("_") else n for n in names)
+    return names
 
 
 # ---- patch targets ----------------------------------------------------------

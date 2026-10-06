@@ -43,6 +43,17 @@ if(SMS_ARCH STREQUAL "32")
   # SSE float math, as the game is built (x87 would round differently)
   list(APPEND _arch -malign-double -msse2 -mfpmath=sse)
 endif()
+if(WIN32)
+  # GNU ld does not know clang's .llvm_addrsig and maps it at 4 GiB, which
+  # Windows refuses to load.
+  # -mno-ms-bitfields: MinGW lays out bitfields as MSVC does, starting a new
+  # unit whenever the declared type changes, so SunshineHeaderInterface's
+  # bool/u32 flag words (TLiveActor::mStateFlags, TMario's, ...) grow and every
+  # member after them moves (TMapObjBase::mRegisterName 0x30 past the game's
+  # unkF4). The decomp has no such bitfields; GCC's layout is the one
+  # shi-layout.patch was made for, as on Linux and macOS.
+  list(APPEND _arch -fno-addrsig -mno-ms-bitfields)
+endif()
 # -fnew-alignment=4: the game's operator new (JKRHeap) guarantees 4-byte
 # alignment, not the 16 clang would otherwise assume for aligned SSE stores;
 # -fno-aligned-new keeps every allocation on that operator (the game's heaps).
@@ -74,32 +85,75 @@ target_include_directories(eclipse_objs PRIVATE ${PORT_MODS}/eclipse/shim ${PORT
 target_compile_definitions(eclipse_objs PRIVATE ${_defs})
 target_compile_options(eclipse_objs PRIVATE ${_opts})
 
+# The partial links below run the compiler driver as a linker, for this target.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+  set(_ld_arch -arch ${CMAKE_OSX_ARCHITECTURES})
+else()
+  set(_ld_arch -m${SMS_ARCH})
+endif()
+if(WIN32)
+  # lld (MinGW clang's linker in some environments) has no -r; GNU ld does.
+  list(APPEND _ld_arch -fuse-ld=bfd)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/object_response.cmake)
+endif()
+
 # Kuribo loads each module on its own, so their private names never meet;
 # linked into one program they would (Eclipse and the moveset both define
 # gSettingsGroup, gSaveBnr...). The modules built on BetterSunshineEngine are
-# each linked into one object whose own definitions are made local; what they
-# use of the engine and the game stays an undefined reference, resolved by
-# name as Kuribo resolves it.
+# each linked into one object whose own definitions are made local
+# (tools/mods/localize_module.py); what they use of the engine and the game
+# stays an undefined reference, resolved by name as Kuribo resolves it.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(_tools ${PORT_MODS}/../../tools/mods)
 set(_modules)
 foreach(m moveset eclipse)
   target_compile_options(${m}_objs PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
   set(_o ${CMAKE_CURRENT_BINARY_DIR}/${m}_module.o)
+  set(_partial_objects $<TARGET_OBJECTS:${m}_objs>)
+  set(_response_dependency)
+  if(WIN32)
+    set(_response_dependency ${CMAKE_CURRENT_BINARY_DIR}/${m}_module.rsp)
+    sms_object_response(_partial_objects "${_response_dependency}" $<TARGET_OBJECTS:${m}_objs>)
+  endif()
+  if(APPLE)
+    # ld64 -r already turns hidden (private extern) definitions into local ones.
+    set(_localize)
+  else()
+    set(_localize COMMAND ${Python3_EXECUTABLE} ${_tools}/localize_module.py ${CMAKE_OBJCOPY} ${_o})
+  endif()
   add_custom_command(OUTPUT ${_o}
-    COMMAND ${CMAKE_CXX_COMPILER} -m${SMS_ARCH} -r -nostdlib -o ${_o} $<TARGET_OBJECTS:${m}_objs>
-    COMMAND ${CMAKE_OBJCOPY} --localize-hidden ${_o}
-    DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> COMMAND_EXPAND_LISTS VERBATIM)
+    COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_o} ${_partial_objects}
+    ${_localize}
+    DEPENDS ${m}_objs $<TARGET_OBJECTS:${m}_objs> ${_response_dependency} ${_tools}/localize_module.py COMMAND_EXPAND_LISTS VERBATIM)
   list(APPEND _modules ${_o})
 endforeach()
 
 # Then everything into one object: the projects share many file names
 # (player.cpp, generic.cpp...), which an archive of their objects would not
 # keep apart. This partial link also moves their static constructors out of
-# .ctors (mod_ctors.ld).
+# the ones the process runs at start, to where platform/mods/modhooks.cpp finds
+# them: on ELF the section sms_mod_ctors (mod_ctors.ld), on Mach-O
+# __DATA,__sms_mod_ctors (tools/mods/macho_ctors.py), on PE .data$sms_mod_ctors_m.
 set(_obj ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.o)
+set(_partial_objects $<TARGET_OBJECTS:bse_objs> ${_modules})
+set(_response_dependency)
+if(WIN32)
+  set(_response_dependency ${CMAKE_CURRENT_BINARY_DIR}/sms_eclipse_all.rsp)
+  sms_object_response(_partial_objects "${_response_dependency}" $<TARGET_OBJECTS:bse_objs> ${_modules})
+endif()
+if(APPLE)
+  set(_ctors COMMAND ${Python3_EXECUTABLE} ${_tools}/macho_ctors.py ${_obj})
+elseif(WIN32)
+  set(_ctors COMMAND ${CMAKE_OBJCOPY} --rename-section .ctors=.data$sms_mod_ctors_m ${_obj})
+else()
+  set(_ctors)
+  list(APPEND _ld_arch -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld)
+endif()
 add_custom_command(OUTPUT ${_obj}
-  COMMAND ${CMAKE_CXX_COMPILER} -m${SMS_ARCH} -r -nostdlib -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld -o ${_obj}
-    $<TARGET_OBJECTS:bse_objs> ${_modules}
-  DEPENDS bse_objs $<TARGET_OBJECTS:bse_objs> ${_modules} ${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld
+  COMMAND ${CMAKE_CXX_COMPILER} ${_ld_arch} -r -nostdlib -o ${_obj}
+    ${_partial_objects}
+  ${_ctors}
+  DEPENDS bse_objs $<TARGET_OBJECTS:bse_objs> ${_modules} ${_response_dependency} ${CMAKE_CURRENT_SOURCE_DIR}/mod_ctors.ld
   COMMAND_EXPAND_LISTS VERBATIM)
 add_library(sms_eclipse STATIC ${_obj})
 set_target_properties(sms_eclipse PROPERTIES LINKER_LANGUAGE CXX)

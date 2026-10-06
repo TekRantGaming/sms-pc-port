@@ -135,15 +135,17 @@ bool g_key[512];
 s16 g_axis[6];
 bool g_cbtn[21];
 bool g_inited;
-// camera options (see above) and the mouse motion not yet given to the camera
-bool g_invertX, g_invertY;
+// SMS_CAMERA_INVERT_X / SMS_CAMERA_INVERT_Y=1 flip the C-stick, which only
+// turns the camera.
+bool g_invert_cx, g_invert_cy;
+// mouse look (see above): its speed, and the motion not yet given to the camera
 float g_mouseSens = 1.0f;
 int g_mouseDX, g_mouseDY;
 
 bool env_on(const char* name)
 {
-	const char* v = getenv(name);
-	return v && *v && strcmp(v, "0") != 0 && strcmp(v, "off") != 0;
+	const char* e = getenv(name);
+	return e && *e && strcmp(e, "0") != 0;
 }
 float env_percent(const char* name, float lo, float hi)
 {
@@ -270,15 +272,17 @@ void init()
 	if (g_inited)
 		return;
 	g_inited = true;
-	g_invertX           = env_on("SMS_CAMERA_INVERT_X");
-	g_invertY           = env_on("SMS_CAMERA_INVERT_Y");
 	port_free_camera    = env_on("SMS_FREE_CAMERA");
 	port_camera_speed_x = port_camera_speed_y = env_percent("SMS_CAMERA_SPEED", 0.1f, 4.0f);
 	g_mouseSens         = env_percent("SMS_MOUSE_SENSITIVITY", 0.05f, 10.0f);
-	if (g_invertX || g_invertY || port_free_camera || port_camera_speed_x != 1.0f)
-		port_log("[pad] camera: invert X %s, invert Y %s, free camera %s, speed %d%%\n", g_invertX ? "on" : "off",
-		         g_invertY ? "on" : "off", port_free_camera ? "on" : "off", (int)(port_camera_speed_x * 100.0f + 0.5f));
+	if (port_free_camera || port_camera_speed_x != 1.0f)
+		port_log("[pad] camera: free camera %s, speed %d%%\n", port_free_camera ? "on" : "off",
+		         (int)(port_camera_speed_x * 100.0f + 0.5f));
 	parse_bindings(kDefaultBindings, "defaults");
+	g_invert_cx = env_on("SMS_CAMERA_INVERT_X");
+	g_invert_cy = env_on("SMS_CAMERA_INVERT_Y");
+	if (g_invert_cx || g_invert_cy)
+		port_log("[pad] camera inverted:%s%s\n", g_invert_cx ? " X" : "", g_invert_cy ? " Y" : "");
 	const char* path = getenv("SMS_BINDINGS");
 	if (!path)
 		path = "bindings.txt";
@@ -467,12 +471,10 @@ extern "C" u32 PADRead(PADStatus* status)
 	s.stickY    = (s8)(y ? y : axis8(-g_axis[1], 100));
 	int cx      = held(C_CRIGHT) * 100 - held(C_CLEFT) * 100;
 	int cy      = held(C_CUP) * 100 - held(C_CDOWN) * 100;
-	s.substickX = (s8)(cx ? cx : axis8(g_axis[2], 100));
-	s.substickY = (s8)(cy ? cy : axis8(-g_axis[3], 100));
-	if (g_invertX)
-		s.substickX = (s8)(s.substickX == -128 ? 127 : -s.substickX);
-	if (g_invertY)
-		s.substickY = (s8)(s.substickY == -128 ? 127 : -s.substickY);
+	cx          = cx ? cx : axis8(g_axis[2], 100);
+	cy          = cy ? cy : axis8(-g_axis[3], 100);
+	s.substickX = (s8)(g_invert_cx ? -cx : cx);
+	s.substickY = (s8)(g_invert_cy ? -cy : cy);
 	return PAD_CHAN0_BIT;
 }
 
@@ -488,9 +490,9 @@ extern "C" int port_camera_take_mouse(f32* dx, f32* dy)
 	// moving the mouse right turns the view right, as the C-stick pushed left does
 	*dx = -(float)g_mouseDX * k;
 	*dy = -(float)g_mouseDY * k;
-	if (g_invertX)
+	if (g_invert_cx)
 		*dx = -*dx;
-	if (g_invertY)
+	if (g_invert_cy)
 		*dy = -*dy;
 	g_mouseDX = g_mouseDY = 0;
 	return 1;

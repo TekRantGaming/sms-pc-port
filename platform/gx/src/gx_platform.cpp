@@ -203,13 +203,23 @@ bool openWindow(int scale) {
     SDL_SetWindowPosition(s_window,
         desktop.x + (desktop.w - layout.w - borders.left - borders.right) / 2 + borders.left,
         desktop.y + (desktop.h - layout.h - borders.top - borders.bottom) / 2 + borders.top);
-    logmsg("window %dx%d centered on display %d, internal resolution scale %d, OpenGL context ready",
-           layout.w, layout.h, display, scale);
-    const WindowMode mode = parseWindowMode(getenv("SMS_WINDOW_MODE"));
+    // SMS_WINDOW_MODE (windowed, borderless, fullscreen) is set by our launcher;
+    // SMS_FULLSCREEN=1 (the SMS Launcher's switch) means desktop fullscreen,
+    // i.e. borderless, when no window mode is given. Applied after placement so
+    // fullscreen uses the same monitor.
+    const char* modeEnv = getenv("SMS_WINDOW_MODE");
+    WindowMode mode = parseWindowMode(modeEnv);
+    if (!(modeEnv && *modeEnv) && envTrue("SMS_FULLSCREEN"))
+        mode = WM_BORDERLESS;
     if (mode != WM_WINDOWED) {
         s_fullscreenKind = mode;
         setFullscreen(true);
     }
+    if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
+        logmsg("fullscreen on display %d, internal resolution scale %d, OpenGL context ready", display, scale);
+    else
+        logmsg("window %dx%d centered on display %d, internal resolution scale %d, OpenGL context ready",
+               layout.w, layout.h, display, scale);
     s_mouseCamera = envTrue("SMS_MOUSE_CAMERA");
     if (s_mouseCamera) {
         logmsg("mouse look on (F10 releases the mouse)");

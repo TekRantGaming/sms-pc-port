@@ -39,6 +39,25 @@ SMS_DISC_IMAGE="mods/eclipse/Super Mario Eclipse v1.1.0.iso" build-ecl/sms
 Nothing of theirs is kept in this repository.
 Without it, the build is the plain port: every hook below is in the source but finds nothing registered and runs the original code.
 
+`SMS_ECLIPSE=1 ./build.sh` does the same with the platform setup of `./build.sh`, into `build/<os>-<arch>-eclipse/`.
+It needs clang besides the usual tools: on Linux `clang`, on macOS Homebrew's LLVM (as for the plain build), on Windows `mingw-w64-x86_64-clang` in MINGW64.
+The [Eclipse build workflow](../.github/workflows/eclipse.yml) builds it 64-bit on Linux, macOS and Windows and checks that the game finds the mods' constructors (`SMS_CODE_MODS=0` reports `code mods linked in but switched off`).
+
+### Per platform
+
+The mods are built with clang and partially linked into one object ([lib/CMakeLists.txt](../platform/mods/eclipse/lib/CMakeLists.txt)); what that takes differs by object format:
+
+| | ELF (Linux) | Mach-O (macOS) | PE/COFF (Windows) |
+| --- | --- | --- | --- |
+| Each module's own definitions made local | hidden ones, except COMDAT groups ([localize_module.py](../tools/mods/localize_module.py)) | `ld -r` does it | external ones, except COMDAT ([localize_module.py](../tools/mods/localize_module.py)) |
+| Constructors kept from process start | `.ctors` → `sms_mod_ctors` ([mod_ctors.ld](../platform/mods/eclipse/lib/mod_ctors.ld)), bounded by `__start_`/`__stop_` | `__mod_init_func` → `__DATA,__sms_mod_ctors` ([macho_ctors.py](../tools/mods/macho_ctors.py)), bounded by `section$start`/`section$end` | `.ctors` → `.data$sms_mod_ctors_m`, between two sentinels in [modhooks.cpp](../platform/mods/modhooks.cpp) |
+| Names the mods use for game symbols | `--defsym` | `-alias` | `--defsym`, with LLP64's `unsigned long long` names |
+| Constructor/destructor variants the game did not emit | GCC aliases them | [structor_aliases.py](../tools/mods/structor_aliases.py) | [structor_aliases.py](../tools/mods/structor_aliases.py) |
+| The mods' inline copies of game functions | weak: the game's win | weak: the game's win | `--allow-multiple-definition`, the game first |
+
+On Windows the mods are built with `-fno-addrsig`: GNU ld maps clang's `.llvm_addrsig` at 4 GiB, which Windows will not load.
+Windows is LLP64 (`long` is 32-bit); only the link-level names are adapted so far. The 64-bit Windows build has not yet been played through.
+
 ## How the port runs it
 
 - **Patches.** Each `SMS_PATCH_BL`/`SMS_PATCH_B`/`SMS_WRITE_32` registers under its retail address in the port's registry ([modhooks.cpp](../platform/mods/modhooks.cpp)) instead of writing to memory, from the mods' static constructors, which run when the modules load (after `TApplication::initialize` has the heaps and DVD up), as Kuribo runs them.

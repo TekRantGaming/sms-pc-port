@@ -13,6 +13,10 @@
 #include <string.h>
 #include <time.h>
 #include <vector>
+#if !defined(_WIN32) && !defined(__APPLE__)
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #ifdef SMS_GX_HAVE_SDL2
 #include <SDL.h>
@@ -70,14 +74,28 @@ void applyIcon() {
     SDL_FreeSurface(s);
 }
 
+// Why the last openWindow failed: no display to open a window on (SDL's video
+// init failed), or a display whose window or OpenGL context could not be made.
+enum WindowFailure { WF_NONE, WF_NO_DISPLAY, WF_WINDOW };
+WindowFailure s_windowFailure = WF_NONE;
+char s_videoDriver[32];     // the SDL video driver of the last attempt ("x11", "wayland", ...)
+char s_windowError[256];    // and its SDL error
+
 bool openWindow(int scale) {
 #ifdef SDL_HINT_WINDOWS_DPI_SCALING
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
 #endif
+    s_windowFailure = WF_NONE;
+    s_videoDriver[0] = 0;
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
         logmsg("SDL_Init failed: %s", SDL_GetError());
+        snprintf(s_windowError, sizeof s_windowError, "%s", SDL_GetError());
+        s_windowFailure = WF_NO_DISPLAY;
         return false;
     }
+    if (const char* d = SDL_GetCurrentVideoDriver()) snprintf(s_videoDriver, sizeof s_videoDriver, "%s", d);
+    // from here on a display exists: a failure is the window's or the context's
+    s_windowFailure = WF_WINDOW;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -108,7 +126,8 @@ bool openWindow(int scale) {
                                 SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
                                 SDL_WINDOW_HIDDEN);
     if (!s_window) {
-        logmsg("SDL_CreateWindow failed: %s", SDL_GetError());
+        logmsg("SDL_CreateWindow failed (%s): %s", s_videoDriver, SDL_GetError());
+        snprintf(s_windowError, sizeof s_windowError, "%s", SDL_GetError());
         SDL_Quit();
         return false;
     }
@@ -116,7 +135,8 @@ bool openWindow(int scale) {
     applyIcon();
     s_glctx = SDL_GL_CreateContext(s_window);
     if (!s_glctx) {
-        logmsg("OpenGL 3.3 core context failed: %s", SDL_GetError());
+        logmsg("OpenGL 3.3 core context failed (%s): %s", s_videoDriver, SDL_GetError());
+        snprintf(s_windowError, sizeof s_windowError, "OpenGL 3.3: %s", SDL_GetError());
         SDL_DestroyWindow(s_window);
         s_window = nullptr;
         SDL_Quit();
@@ -125,6 +145,7 @@ bool openWindow(int scale) {
     SDL_GL_MakeCurrent(s_window, s_glctx);
     SDL_GL_SetSwapInterval(s_vsync);
     if (!GXPC_Init(sdlGetProc, scale)) {
+        snprintf(s_windowError, sizeof s_windowError, "the renderer could not start on this OpenGL context");
         SDL_GL_DeleteContext(s_glctx);
         SDL_DestroyWindow(s_window);
         s_glctx = nullptr;
@@ -148,11 +169,71 @@ bool openWindow(int scale) {
     if (envTrue("SMS_FULLSCREEN") && SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
         logmsg("fullscreen failed: %s; continuing in a window", SDL_GetError());
     if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
-        logmsg("desktop fullscreen on display %d, internal resolution scale %d, OpenGL context ready", display, scale);
+        logmsg("desktop fullscreen on display %d (%s), internal resolution scale %d, OpenGL context ready", display,
+               s_videoDriver, scale);
     else
-        logmsg("window %dx%d centered on display %d, internal resolution scale %d, OpenGL context ready",
-               layout.w, layout.h, display, scale);
+        logmsg("window %dx%d centered on display %d (%s), internal resolution scale %d, OpenGL context ready",
+               layout.w, layout.h, display, s_videoDriver, scale);
+    s_windowFailure = WF_NONE;
     return true;
+}
+
+#if !defined(_WIN32) && !defined(__APPLE__)
+// A program started without DISPLAY and WAYLAND_DISPLAY (by some desktop
+// launchers, services and sandboxes) still has the user's desktop when its
+// sockets are there: point SDL at them instead of deciding there is no screen.
+void findDesktop() {
+    const char* d = getenv("DISPLAY");
+    const char* w = getenv("WAYLAND_DISPLAY");
+    if ((d && *d) || (w && *w)) return;
+    struct stat st;
+    std::string runtime;
+    if (const char* x = getenv("XDG_RUNTIME_DIR")) runtime = x;
+    if (runtime.empty()) {
+        char buf[64];
+        snprintf(buf, sizeof buf, "/run/user/%u", (unsigned)getuid());
+        runtime = buf;
+        if (stat(runtime.c_str(), &st) == 0) setenv("XDG_RUNTIME_DIR", runtime.c_str(), 1);
+    }
+    if (stat((runtime + "/wayland-0").c_str(), &st) == 0) {
+        setenv("WAYLAND_DISPLAY", "wayland-0", 1);
+        logmsg("WAYLAND_DISPLAY was not set; using the desktop's Wayland socket %s/wayland-0", runtime.c_str());
+    }
+    if (stat("/tmp/.X11-unix/X0", &st) == 0) {
+        setenv("DISPLAY", ":0", 1);
+        logmsg("DISPLAY was not set; using the desktop's X11 display :0");
+    }
+}
+
+// SDL_VIDEODRIVER for SDL2, SDL_VIDEO_DRIVER for SDL3 (and sdl2-compat on it)
+void forceVideoDriver(const char* name) {
+    setenv("SDL_VIDEODRIVER", name, 1);
+    setenv("SDL_VIDEO_DRIVER", name, 1);
+}
+#endif
+
+// openWindow, and when a display's window fails, again on its other backend
+// (Wayland and X11: a desktop session usually has both, and a driver or
+// library problem often affects only one).
+bool openWindowAnyBackend(int scale) {
+#if !defined(_WIN32) && !defined(__APPLE__)
+    findDesktop();
+#endif
+    if (openWindow(scale)) return true;
+#if !defined(_WIN32) && !defined(__APPLE__)
+    if (s_windowFailure != WF_WINDOW) return false;
+    const char* other = !strcmp(s_videoDriver, "wayland") ? "x11" : !strcmp(s_videoDriver, "x11") ? "wayland" : nullptr;
+    if (other && getenv(!strcmp(other, "x11") ? "DISPLAY" : "WAYLAND_DISPLAY")) {
+        const std::string first = s_videoDriver, firstError = s_windowError;
+        logmsg("no window on %s (%s); trying %s", first.c_str(), firstError.c_str(), other);
+        forceVideoDriver(other);
+        if (openWindow(scale)) return true;
+        snprintf(s_windowError, sizeof s_windowError, "%s: %s; %s: %s", first.c_str(), firstError.c_str(), other,
+                 std::string(s_windowError).c_str());
+        s_windowFailure = WF_WINDOW;
+    }
+#endif
+    return false;
 }
 #endif
 
@@ -273,22 +354,31 @@ int GXPC_InitAuto(int efbScale) {
     bool headless;
     if (s_forceHeadless >= 0) headless = s_forceHeadless != 0;
     else if (envTrue("SMS_HEADLESS")) headless = true;
-    else {
-        const char* d = getenv("DISPLAY");
-        const char* w = getenv("WAYLAND_DISPLAY");
-        headless = !(d && *d) && !(w && *w);
-#if defined(_WIN32) || defined(__APPLE__)
-        headless = false;
-#endif
-    }
+    // Otherwise a window: SDL finds out whether there is a display (see
+    // findDesktop for a session that lost DISPLAY / WAYLAND_DISPLAY).
+    else headless = false;
     g_displayCopyHook = onDisplayCopy;
 #ifdef SMS_GX_HAVE_SDL2
     if (!headless) {
-        if (openWindow(efbScale)) {
+        if (openWindowAnyBackend(efbScale)) {
             s_mode = MODE_WINDOW;
             return 1;
         }
-        logmsg("no window available, continuing headless");
+        if (s_windowFailure == WF_WINDOW) {
+            // A display is there but no window could be made. Running on
+            // invisibly (sound, no picture) would leave the player nothing to
+            // close; say why and stop instead. --headless / SMS_HEADLESS=1
+            // still run without a window.
+            char msg[512];
+            snprintf(msg, sizeof msg,
+                     "Super Mario Sunshine could not open its window (%s).\n\nUpdating your graphics drivers, or "
+                     "setting SDL_VIDEODRIVER=x11 or =wayland, may help.",
+                     s_windowError);
+            logmsg("no window could be opened on this display (%s); exiting", s_windowError);
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Super Mario Sunshine", msg, nullptr);
+            exit(1);
+        }
+        logmsg("no display (%s), continuing headless", s_windowError);
     }
 #endif
 #ifdef SMS_GX_HAVE_EGL

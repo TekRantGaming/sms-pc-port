@@ -17,7 +17,14 @@
 
 // --- SDL2 event ABI (SDL_events.h, SDL_scancode.h, SDL_gamecontroller.h) ---
 namespace sdl {
-enum { QUIT = 0x100, KEYDOWN = 0x300, KEYUP = 0x301, CAXIS = 0x650, CBUTTONDOWN = 0x651, CBUTTONUP = 0x652 };
+enum {
+	QUIT = 0x100, KEYDOWN = 0x300, KEYUP = 0x301, MOUSEMOTION = 0x400,
+	CAXIS = 0x650, CBUTTONDOWN = 0x651, CBUTTONUP = 0x652
+};
+struct MouseMotionEvent {
+	u32 type, timestamp, windowID, which, state;
+	s32 x, y, xrel, yrel;
+};
 struct KeyboardEvent {
 	u32 type, timestamp, windowID;
 	u8 state, repeat, pad2, pad3;
@@ -43,6 +50,18 @@ extern "C" {
 __attribute__((weak)) void sms_gx_set_event_callback(void (*cb)(const union SDL_Event* ev));
 __attribute__((weak)) void sms_gx_pump_events(void);
 __attribute__((weak)) int GXPC_IsHeadless(void);
+__attribute__((weak)) int GXPC_MouseCaptured(void);
+}
+
+// PC camera options, read by the camera code (decomp-patches/zzz-pc-camera.patch):
+//   SMS_CAMERA_INVERT_X / _Y   flip the C-stick (and mouse) on that axis
+//   SMS_CAMERA_SPEED=percent   scales manual camera rotation (100 = retail)
+//   SMS_FREE_CAMERA=1          the camera stays where it is put (no auto swing-back)
+//   SMS_MOUSE_SENSITIVITY=%    mouse look speed, when the GX layer captures the mouse
+extern "C" {
+int port_free_camera      = 0;
+f32 port_camera_speed_x   = 1.0f;
+f32 port_camera_speed_y   = 1.0f;
 }
 
 namespace {
@@ -119,11 +138,22 @@ bool g_inited;
 // SMS_CAMERA_INVERT_X / SMS_CAMERA_INVERT_Y=1 flip the C-stick, which only
 // turns the camera.
 bool g_invert_cx, g_invert_cy;
+// mouse look (see above): its speed, and the motion not yet given to the camera
+float g_mouseSens = 1.0f;
+int g_mouseDX, g_mouseDY;
 
 bool env_on(const char* name)
 {
 	const char* e = getenv(name);
 	return e && *e && strcmp(e, "0") != 0;
+}
+float env_percent(const char* name, float lo, float hi)
+{
+	const char* v = getenv(name);
+	if (!v || !*v)
+		return 1.0f;
+	float f = (float)atof(v) / 100.0f;
+	return f < lo ? lo : f > hi ? hi : f;
 }
 
 int key_code(const char* name)
@@ -195,6 +225,14 @@ void on_event(const union SDL_Event* ev)
 				}
 		break;
 	}
+	case sdl::MOUSEMOTION: {
+		const sdl::MouseMotionEvent* m = (const sdl::MouseMotionEvent*)ev;
+		if (GXPC_MouseCaptured && GXPC_MouseCaptured()) {
+			g_mouseDX += m->xrel;
+			g_mouseDY += m->yrel;
+		}
+		break;
+	}
 	case sdl::CAXIS: {
 		const sdl::ControllerAxisEvent* a = (const sdl::ControllerAxisEvent*)ev;
 		if (a->axis < 6)
@@ -234,6 +272,12 @@ void init()
 	if (g_inited)
 		return;
 	g_inited = true;
+	port_free_camera    = env_on("SMS_FREE_CAMERA");
+	port_camera_speed_x = port_camera_speed_y = env_percent("SMS_CAMERA_SPEED", 0.1f, 4.0f);
+	g_mouseSens         = env_percent("SMS_MOUSE_SENSITIVITY", 0.05f, 10.0f);
+	if (port_free_camera || port_camera_speed_x != 1.0f)
+		port_log("[pad] camera: free camera %s, speed %d%%\n", port_free_camera ? "on" : "off",
+		         (int)(port_camera_speed_x * 100.0f + 0.5f));
 	parse_bindings(kDefaultBindings, "defaults");
 	g_invert_cx = env_on("SMS_CAMERA_INVERT_X");
 	g_invert_cy = env_on("SMS_CAMERA_INVERT_Y");
@@ -432,6 +476,26 @@ extern "C" u32 PADRead(PADStatus* status)
 	s.substickX = (s8)(g_invert_cx ? -cx : cx);
 	s.substickY = (s8)(g_invert_cy ? -cy : cy);
 	return PAD_CHAN0_BIT;
+}
+
+// Mouse look: the motion since the last call, in C-stick units (1.0 is full
+// deflection for one frame), with the camera's inversion applied. Returns 0
+// when the mouse has not moved.
+extern "C" int port_camera_take_mouse(f32* dx, f32* dy)
+{
+	*dx = *dy = 0.0f;
+	if (!g_mouseDX && !g_mouseDY)
+		return 0;
+	const float k = 0.02f * g_mouseSens;
+	// moving the mouse right turns the view right, as the C-stick pushed left does
+	*dx = -(float)g_mouseDX * k;
+	*dy = -(float)g_mouseDY * k;
+	if (g_invert_cx)
+		*dx = -*dx;
+	if (g_invert_cy)
+		*dy = -*dy;
+	g_mouseDX = g_mouseDY = 0;
+	return 1;
 }
 
 // PADClamp comes from the decomp (libs/dolphin/src/pad/Padclamp.c, see CMakeLists.txt).

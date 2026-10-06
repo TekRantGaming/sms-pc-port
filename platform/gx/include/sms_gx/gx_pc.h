@@ -43,6 +43,8 @@ uint32_t GXPC_FrameCount(void);              /* display copies so far */
 /* Window (taskbar / Dock) icon: w x h RGBA8 pixels, copied. Applied to the
  * SDL window now, or when it opens; ignored without a window. */
 void GXPC_SetWindowIcon(const uint8_t* rgba, int w, int h);
+/* 1 while the window holds the mouse for mouse look (SMS_MOUSE_CAMERA). */
+int GXPC_MouseCaptured(void);
 /* Widescreen: the displayed width over the GameCube's 4:3 (1 = off). Set
  * before the context exists; the EFB, the display and the window widen, and
  * draws map the game's 640-wide coordinates into it (see gx_render.cpp). The

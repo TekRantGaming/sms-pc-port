@@ -34,5 +34,15 @@ frame_rate = 60
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
 
+# Camera: invert either axis (C-stick, camera keys and mouse), a free camera
+# that stays where you point it (L recentres it), rotation speed in percent,
+# and mouse look (F10 releases the mouse) with its sensitivity in percent.
+# camera_invert_x = off
+# camera_invert_y = off
+# free_camera = off
+# camera_speed = 100
+# mouse_camera = off
+# mouse_sensitivity = 100
+
 # save_dir = /path/to/memory/card/folder
 # disc_image = /path/to/GMSE01.iso

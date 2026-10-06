@@ -424,6 +424,12 @@ static const struct {
 	{ "overlay", "SMS_OVERLAY" },
 	{ "save_dir", "SMS_SAVE_DIR" },
 	{ "disc_image", "SMS_DISC_IMAGE" },
+	{ "camera_invert_x", "SMS_CAMERA_INVERT_X" },
+	{ "camera_invert_y", "SMS_CAMERA_INVERT_Y" },
+	{ "camera_speed", "SMS_CAMERA_SPEED" },           // percent, 100 = the game's own
+	{ "free_camera", "SMS_FREE_CAMERA" },             // no automatic swing back
+	{ "mouse_camera", "SMS_MOUSE_CAMERA" },           // mouse look
+	{ "mouse_sensitivity", "SMS_MOUSE_SENSITIVITY" }, // percent
 };
 
 static void load_settings()

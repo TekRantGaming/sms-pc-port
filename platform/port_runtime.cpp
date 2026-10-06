@@ -436,7 +436,10 @@ static const struct {
 	{ "resolution", "SMS_GX_SCALE" },
 	{ "anisotropic", "SMS_ANISO" }, // 0, 2, 4, 8 or 16
 	{ "window_scale", "SMS_WINDOW_SCALE" },
-	{ "vsync", "SMS_VSYNC" },
+	{ "vsync", "SMS_VSYNC" },                     // on, off or adaptive
+	{ "fullscreen", "SMS_FULLSCREEN" },           // off, on (desktop) or exclusive
+	{ "fullscreen_mode", "SMS_FULLSCREEN_MODE" }, // WxH@Hz, for exclusive
+	{ "display", "SMS_DISPLAY" },                 // monitor, 0 = primary
 	{ "skip_movies", "SMS_SKIP_MOVIES" },
 	{ "audio", "SMS_AUDIO" },
 	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100

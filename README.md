@@ -84,6 +84,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `--headless` (after the image) or `SMS_HEADLESS=1` | no window, for testing (Linux only) |
 | `SMS_OVERLAY=1` | open the debug overlay at start |
 | `SMS_GX_SCALE=n` | render at n times the GameCube's resolution |
+| `SMS_ANISO=n` | anisotropic filtering, 2 to 16 (up to what the GPU supports), for sharper textures at glancing angles |
 | `SMS_WIDESCREEN=16:9` | widescreen (also `21:9`, `16:10`): a wider view, with the HUD and menus kept 4:3 in the middle |
 | `SMS_FRAME_RATE=60` | gameplay at 60 frames per second (the game's own timing, not sped up); logos, menus and movies stay at 30 |
 | `SMS_WIDESCREEN_HUD=edges` | with widescreen, move the gameplay HUD's counters to the left edge and the water gauge to the right one |

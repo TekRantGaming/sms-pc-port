@@ -84,6 +84,9 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `--headless` (after the image) or `SMS_HEADLESS=1` | no window, for testing (Linux only) |
 | `SMS_OVERLAY=1` | open the debug overlay at start |
 | `SMS_GX_SCALE=n` | render at n times the GameCube's resolution |
+| `SMS_FULLSCREEN=1` | borderless fullscreen at the desktop's resolution; `exclusive` switches the display to `SMS_FULLSCREEN_MODE=WxH@Hz` (else the desktop's mode). F11 or Alt+Enter toggles fullscreen while playing |
+| `SMS_DISPLAY=n` | the monitor to open on (0 is the primary one; by default, the one under the mouse) |
+| `SMS_VSYNC=1` | wait for the display's refresh; `adaptive` shows a late frame at once instead of waiting a whole refresh |
 | `SMS_WIDESCREEN=16:9` | widescreen (also `21:9`, `16:10`): a wider view, with the HUD and menus kept 4:3 in the middle |
 | `SMS_FRAME_RATE=60` | gameplay at 60 frames per second (the game's own timing, not sped up); logos, menus and movies stay at 30 |
 | `SMS_WIDESCREEN_HUD=edges` | with widescreen, move the gameplay HUD's counters to the left edge and the water gauge to the right one |

@@ -26,8 +26,16 @@ frame_rate = 60
 # resolution = 1
 # Window size, in multiples of 640x480.
 # window_scale = 1
-# Wait for the display's refresh when presenting.
+# Wait for the display's refresh when presenting: off, on, or adaptive (waits
+# too, but shows a late frame at once instead of holding it a whole refresh).
 # vsync = off
+# Fullscreen: off, on (borderless at the desktop's resolution) or exclusive
+# (the display switches to fullscreen_mode, WxH@Hz, else the desktop's mode).
+# F11 or Alt+Enter switches between the window and fullscreen while playing.
+# fullscreen = off
+# fullscreen_mode = 1920x1080@144
+# Monitor to open on (0 is the primary one); by default, the one under the mouse.
+# display = 0
 
 # skip_movies = off
 # audio = on

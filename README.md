@@ -21,6 +21,12 @@
 
 <br>
 
+> [!WARNING]
+> **This project is still very much in development.** The decompilation the port is built on is not complete, so **you will run into bugs during your playthrough**: graphical glitches, sound problems, crashes, or levels and events that do not behave as they should. Save often, and please report what you find in [Issues](https://github.com/TekRantGaming/sms-pc-port/issues).
+
+> [!NOTE]
+> **About AI.** The launcher and the PC-specific features in this fork (the settings menu, graphics options, camera options, installers, online co-op and release packaging) were **written with AI assistance**. The game decompilation itself is **not** AI generated: it is the upstream [Super Mario Sunshine decompilation (chasem-dev/sms-english)](https://github.com/chasem-dev/sms-english), used here through the original [sms-pc-port](https://github.com/chasem-dev/sms-pc-port).
+
 ## Highlights
 
 <table>

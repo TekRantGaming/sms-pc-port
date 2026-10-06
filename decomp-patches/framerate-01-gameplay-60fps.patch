@@ -1,24 +1,26 @@
 Reason: port: frame_rate = 60 (SMS_FRAME_RATE) runs gameplay at 60 frames per second: one retrace per frame instead of two while TMarDirector runs, and SMSGetVSyncTimesPerSec reports 60 so the game's own timing (animation rates, fades, menus) stays in real time; the root fader takes the rate in force
 --- a/src/System/Application.cpp
 +++ b/src/System/Application.cpp
-@@ -73,6 +73,25 @@
+@@ -73,6 +73,27 @@
  
  extern "C" void ReInitializeGX();
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: frame_rate = 60 runs gameplay at one retrace per frame instead of
 +// two. The game times its animations, fades and menus by
 +// SMSGetVSyncTimesPerSec, so doubling what it returns keeps them in real
 +// time; the pieces that count frames instead are adjusted where they are.
 +// Other directors (logos, menus, movies) stay at 30.
 +extern "C" int port_frame_rate;
-+extern "C" int port_fps60_active;
-+int port_fps60_active;
++#include "port_framerate.h"
 +f32 SMSGetVSyncTimesPerSec();
 +static void portSetGameplayFrameRate(TApplication* app, bool gameplay)
 +{
-+	port_fps60_active   = gameplay && port_frame_rate == 60;
-+	app->mDisplay->unk4C = port_fps60_active ? 1 : 2;
++	port_active_frame_rate = gameplay ? port_frame_rate : 30;
++	port_high_fps_active = port_active_frame_rate > 30;
++	app->mDisplay->unk4C = port_vi_retrace_multiplier() * 60 / port_active_frame_rate;
 +	// the root fader outlives directors; it was made with the boot-time rate
 +	app->mFader->mRate = SMSGetVSyncTimesPerSec();
 +}
@@ -32,8 +34,8 @@ Reason: port: frame_rate = 60 (SMS_FRAME_RATE) runs gameplay at 60 frames per se
  		break;
  	}
 +#ifdef TARGET_PC
-+	if (port_fps60_active)
-+		return result;
++	if (port_high_fps_active)
++		return result * (port_active_frame_rate / 60);
 +#endif
  	return result / 2.0f;
  }

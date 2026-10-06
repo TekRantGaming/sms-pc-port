@@ -1,13 +1,15 @@
 Reason: port: with frame_rate = 60 the leaf boat (TLeafBoat) ripples at its 30 fps interval; the interval is counted on the calc-anim pass, which comes every frame, so it rippled twice as often; the ripple's keep-alive emitters are requested for the same 1/30 s as at 30
 --- a/src/MoveBG/MapObjBianco.cpp
 +++ b/src/MoveBG/MapObjBianco.cpp
-@@ -636,9 +636,40 @@ void TLeafBoat::control()
+@@ -636,9 +636,42 @@ void TLeafBoat::control()
  	mVelocity.z *= mFriction;
  }
  
 +#ifdef TARGET_PC
 +#include <System/MarDirector.hpp>
 +
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: calc() (the calc-anim pass) counts mEffectTimer up to 8 between the
 +// moving leaf boat's ripples. With frame_rate = 60 that pass comes every
 +// frame, twice as often per second as at 30, so it rippled twice as often.
@@ -15,12 +17,12 @@ Reason: port: with frame_rate = 60 the leaf boat (TLeafBoat) ripples at its 30 f
 +// director counts one unk5C per tick, two a frame). Both ripple emitters are
 +// keep-alive requests that TMarioParticleManager kills on the first pass
 +// they are not repeated, so at 30 they live one frame, 1/30 s; on the frame
-+// after a ripple (mEffectTimer == -1, set only at 60) request them again so
++// after a ripple (mEffectTimer < 0, set at higher rates) request them again so
 +// they live as long.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool LeafBoatPortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +
@@ -29,11 +31,11 @@ Reason: port: with frame_rate = 60 the leaf boat (TLeafBoat) ripples at its 30 f
  	if (mWaterPushRate != 0.0f) {
 +#ifdef TARGET_PC
 +		if (!LeafBoatPortCalcStep()) {
-+			if (mEffectTimer == -1) {
++			if (mEffectTimer < 0) {
 +				JGeometry::TVec3<f32> scale(2.0f, 2.0f, 2.0f);
 +				emitAndBindScale(PARTICLE_MS_M_HAMON_B, 3, &mEffectPos, scale);
 +				emitAndBindScale(PARTICLE_MS_M_HAMON_A, 1, &mEffectPos, scale);
-+				mEffectTimer = 0;
++				++mEffectTimer;
 +			}
 +			return;
 +		}
@@ -52,8 +54,8 @@ Reason: port: with frame_rate = 60 the leaf boat (TLeafBoat) ripples at its 30 f
  			}
  			mEffectTimer = 0;
 +#ifdef TARGET_PC
-+			if (port_fps60_active && portRippled)
-+				mEffectTimer = -1;
++			if (port_high_fps_active && portRippled)
++				mEffectTimer = 1 - port_native_frame_divisor();
 +#endif
  		} else {
  			mEffectTimer++;

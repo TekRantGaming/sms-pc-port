@@ -1,20 +1,22 @@
 Reason: port: with frame_rate = 60 flags flutter at their 30 fps speed; the wave angle steps on the calc-anim pass, which comes every frame, so they fluttered twice as fast
 --- a/src/MoveBG/MapObjFlag.cpp
 +++ b/src/MoveBG/MapObjFlag.cpp
-@@ -144,6 +144,19 @@
+@@ -144,6 +144,21 @@
  	}
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: TMapObjFlagManager updates every flag on its calc-anim pass, which
 +// with frame_rate = 60 comes every frame, twice as often per second as at
 +// 30; mWaveAngle steps mFlutterSpeed per update, so the flags fluttered twice
 +// as fast. At 60 step half as far, which keeps the flutter per second and the
 +// motion smooth.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 FlagPortStep(f32 step)
 +{
-+	return port_fps60_active ? 0.5f * step : step;
++	return port_frame_scale() * step;
 +}
 +#endif
 +

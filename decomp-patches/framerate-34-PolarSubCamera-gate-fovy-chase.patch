@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the camera zooms into a plaza gate at its 30 fps speed; the fovy chase runs once per frame and divides by a count that falls per 1/120 s tick, so it closed the fovy gap about twice as fast
 --- a/src/Camera/CameraDemo.cpp
 +++ b/src/Camera/CameraDemo.cpp
-@@ -162,6 +162,21 @@ void CPolarSubCamera::updateDemoCamera_(bool param_1)
+@@ -162,6 +162,23 @@ void CPolarSubCamera::updateDemoCamera_(bool param_1)
  	}
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: updateGateDemoCamera_ runs once per frame (on the last movement
 +// tick) and chases mFovy towards the gate demo's by 1 / v of the gap, where
 +// v is the camera inbetween's remaining count, which falls once per 1/120 s
@@ -13,10 +15,10 @@ Reason: port: with frame_rate = 60 the camera zooms into a plaza gate at its 30 
 +// v falls at the same rate, so the zoom into a plaza gate closed its fovy
 +// gap about twice as fast. At 60 divide by 2 * v, which closes the same part
 +// of the gap per second; the fovy still lands on the target when v runs out.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 CameraDemoPortChaseFrames(int frames)
 +{
-+	return port_fps60_active ? 2.0f * (f32)frames : (f32)frames;
++	return port_native_frame_divisor() * (f32)frames;
 +}
 +#endif
 +

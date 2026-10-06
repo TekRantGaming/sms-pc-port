@@ -1,13 +1,15 @@
 Reason: port: with frame_rate = 60 the bathtub Bullet Bills (TBathtubKiller) blink and smoke at their 30 fps rate; the nose blink and the smoke interval step on the calc-anim pass, which comes every frame, so the nose blinked twice as fast and they smoked twice as often; the puff's keep-alive emitter is requested for the same 1/30 s as at 30
 --- a/src/Enemy/BathtubKiller.cpp
 +++ b/src/Enemy/BathtubKiller.cpp
-@@ -396,6 +396,32 @@ void TBathtubKiller::bind()
+@@ -396,6 +396,34 @@ void TBathtubKiller::bind()
  	mLinearVelocity = nextPos - mPosition;
  }
  
 +#ifdef TARGET_PC
 +#include <System/MarDirector.hpp>
 +
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: the Bullet Bill's calc-anim pass blinks its nose (unk1FC steps
 +// unk1F8 between 0 and 1) and counts unk1D4 up to mSLSmokeInterval between
 +// smoke puffs. With frame_rate = 60 that pass comes every frame, twice as
@@ -17,17 +19,17 @@ Reason: port: with frame_rate = 60 the bathtub Bullet Bills (TBathtubKiller) bli
 +// pass of every other frame at 60 (the director counts one unk5C per tick,
 +// two a frame). The puff is a keep-alive request that TMarioParticleManager
 +// kills on the first pass it is not repeated, so at 30 it lives one frame,
-+// 1/30 s; on the frame after a puff (unk1D4 == -1, set only at 60) request
++// 1/30 s; on the frames after a puff (unk1D4 < 0, set at higher rates) request
 +// it again so it lives as long.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool BathtubKillerPortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +
 +static inline f32 BathtubKillerPortStep(f32 step)
 +{
-+	return port_fps60_active ? 0.5f * step : step;
++	return port_frame_scale() * step;
 +}
 +#endif
 +
@@ -48,15 +50,15 @@ Reason: port: with frame_rate = 60 the bathtub Bullet Bills (TBathtubKiller) bli
  				gpMarioParticleManager->emitAndBindToMtxPtr(
  				    MAP_MAP_MS_KP_KILL_SMOKE, unk220, 1, this);
 +#ifdef TARGET_PC
-+				if (port_fps60_active)
-+					unk1D4 = -1;
++				if (port_high_fps_active)
++					unk1D4 = 1 - port_native_frame_divisor();
 +#endif
 +			}
 +#ifdef TARGET_PC
-+			} else if (unk1D4 == -1) {
++			} else if (unk1D4 < 0) {
 +				gpMarioParticleManager->emitAndBindToMtxPtr(
 +				    MAP_MAP_MS_KP_KILL_SMOKE, unk220, 1, this);
-+				unk1D4 = 0;
++				++unk1D4;
  			}
 +#endif
  			f32 distToMario = getPosition().distance(*gpMarioPos);

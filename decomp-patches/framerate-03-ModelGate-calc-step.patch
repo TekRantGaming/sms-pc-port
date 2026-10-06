@@ -1,13 +1,15 @@
 Reason: port: with frame_rate = 60 the plaza gates' calc-anim swirl state (wind timer, close rate) steps once per 1/30 s as at 30; stepping it every frame cancels the per-tick opening rate, so an already-open gate (every re-entry to Bianco Hills, Ricco Harbor, Gelato Beach, ...) never opens; on the skipped frames the swirl's keep-alive particle requests are still made, since the particle manager kills a type-1 emitter that is not re-requested on its next pass
 --- a/src/MoveBG/ModelGate.cpp
 +++ b/src/MoveBG/ModelGate.cpp
-@@ -29,6 +29,27 @@
+@@ -29,6 +29,29 @@
  #include <MSound/MSSetSound.hpp>
  #include <MSound/MSoundBGM.hpp>
  
 +#ifdef TARGET_PC
 +#include <System/MarDirector.hpp>
 +
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: with frame_rate = 60, TMarDirector::direct still runs CUE_MOVE in
 +// 1/120 s ticks (two a frame instead of four) but CUE_CALC_ANIM comes every
 +// frame, twice as often per second as at 30. Near an open gate, perform's
@@ -19,10 +21,10 @@ Reason: port: with frame_rate = 60 the plaza gates' calc-anim swirl state (wind 
 +// close rates) is gameplay, so step it once per 1/30 s: on the calc pass of
 +// every other frame at 60 (the director counts one unk5C per tick, two a
 +// frame). The animation frame is still set on every pass.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool ModelGatePortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +

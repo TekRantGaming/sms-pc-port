@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the bathtub grips in the Bowser fight break at their 30 fps speed; control() steps the break animation per 1/120 s tick at a rate scaled by SMSGetAnmFrameRate(), which halves at 60 while the tick rate does not, so the break took longer
 --- a/src/MoveBG/MapObjCorona.cpp
 +++ b/src/MoveBG/MapObjCorona.cpp
-@@ -374,6 +374,18 @@ static inline TBathtub* MapObjCoronaBathtub(const TBathtubGrip* p)
+@@ -374,6 +374,20 @@ static inline TBathtub* MapObjCoronaBathtub(const TBathtubGrip* p)
  	return bathtub;
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: control() runs on every 1/120 s movement tick (four a frame at 30,
 +// two at 60) and steps the grip's break animation with calcAnm at
 +// 0.5 * unk250 * SMSGetAnmFrameRate() frames per tick, a per-frame rate. With
@@ -14,7 +16,7 @@ Reason: port: with frame_rate = 60 the bathtub grips in the Bowser fight break a
 +// than at 30. Take the frame step twice at 60: two half-rate steps are the
 +// 30 fps tick's step, and the rate, which the calc-anim pass also uses once
 +// per frame, is left alone.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +#endif
 +
  // TODO: Match the stack frame used by the inlined grip helpers.
@@ -25,7 +27,7 @@ Reason: port: with frame_rate = 60 the bathtub grips in the Bowser fight break a
  		return;
  	}
 +#ifdef TARGET_PC
-+	if (port_fps60_active)
++	for (int portStep = 1; portStep < port_native_frame_divisor(); ++portStep)
 +		mMActor->frameUpdate();
 +#endif
  	mMActor->calcAnm();

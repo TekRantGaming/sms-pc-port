@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop: JAI fades and volume moves, sound-set repeat intervals, dummy-position lifetimes) keeps its 30 fps timing; it counts displayed frames, so every fade, interval and lifetime ran twice as fast; the stage-exit fade, the one gameplay caller that scales its length by the frame rate, is given in 30 fps frames
 --- a/src/MSound/MSound.cpp
 +++ b/src/MSound/MSound.cpp
-@@ -597,8 +597,37 @@
+@@ -597,8 +597,39 @@
  
  void MSound::requestShineAppearFanfare() { }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: TApplication::gameLoop calls mainLoop once per displayed frame, and
 +// its work is counted in those calls: MSSetSound's repeat intervals, JAI's
 +// sequence and SE volume moves and fades (given in frames by the game, e.g.
@@ -16,16 +18,16 @@ Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop
 +// all on the game thread; the audio thread is untouched. (The entrance-demo
 +// counter, unkA4, only feeds MSMainProc::entranceDemoLoop, which is empty
 +// in retail: 4 bytes in the map.)
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool MSoundPortSkipFrame()
 +{
-+	static bool skip;
-+	if (!port_fps60_active) {
-+		skip = false;
++	static int phase;
++	if (!port_high_fps_active) {
++		phase = 0;
 +		return false;
 +	}
-+	bool result = skip;
-+	skip        = !skip;
++	bool result = phase != 0;
++	phase = (phase + 1) % port_native_frame_divisor();
 +	return result;
 +}
 +#endif
@@ -41,20 +43,22 @@ Reason: port: with frame_rate = 60 the game's sound frame work (MSound::mainLoop
  
 --- a/src/System/MarDirectorDirect.cpp
 +++ b/src/System/MarDirectorDirect.cpp
-@@ -41,6 +41,19 @@
+@@ -41,6 +41,21 @@
  
  extern OSThread gSetupThread;
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: MSound::mainLoop does JAI's frame work every other frame at
 +// frame_rate = 60 (see MSound.cpp), so a fade given in frames must be given
 +// in 30 fps frames. The stage-exit fade below is the one gameplay caller
 +// that scales its length by SMSGetVSyncTimesPerSec(); at 60 that asked for
 +// 24 frames of work, 0.8 s. Halve it to keep its 0.4 s.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 MarDirectorPortSoundFrames(f32 frames)
 +{
-+	return port_fps60_active ? 0.5f * frames : frames;
++	return port_frame_scale() * frames;
 +}
 +#endif
 +

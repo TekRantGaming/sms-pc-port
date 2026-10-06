@@ -15,8 +15,9 @@ widescreen = on
 # edges (counters to the left edge, the water gauge to the right one).
 # widescreen_hud = centre
 
-# Frame rate during gameplay: 30 (the game's own) or 60. Logos, menus and
-# movies stay at 30. 60 draws twice as many frames, so it needs a GPU.
+# Frame rate during gameplay: 30 (GameCube native), 60 (port default), or 120.
+# Logos, menus and movies stay at 30. Higher rates need more GPU performance;
+# a 120 Hz or faster display shows the full benefit of 120 fps.
 frame_rate = 60
 
 # Game file mods from mods/<name>/files/ (see mods/README.md), as name or a;b.

@@ -1,19 +1,21 @@
 Reason: port: with frame_rate = 60 grass sways at its 30 fps speed; its phase steps on the calc-anim pass, which comes every frame, so it swayed twice as fast
 --- a/src/MoveBG/MapObjGrass.cpp
 +++ b/src/MoveBG/MapObjGrass.cpp
-@@ -222,6 +222,18 @@ void TMapObjGrassManager::draw() const
+@@ -222,6 +222,20 @@ void TMapObjGrassManager::draw() const
  		unk14[i]->drawFar();
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: the sway phase (unk18) steps mSwingSpeed on the calc-anim pass,
 +// which with frame_rate = 60 comes every frame, twice as often per second as
 +// at 30, so the grass swayed twice as fast. At 60 step half as far, which
 +// keeps the sway per second and the motion smooth.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 GrassPortStep(f32 step)
 +{
-+	return port_fps60_active ? 0.5f * step : step;
++	return port_frame_scale() * step;
 +}
 +#endif
 +

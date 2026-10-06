@@ -1,0 +1,60 @@
+Reason: port: at 120 fps the integer particle simulation loops truncate the 0.5 animation rate to zero; simulate JPA at 60 Hz and draw every frame
+--- a/src/System/EmitterViewObj.cpp
++++ b/src/System/EmitterViewObj.cpp
+@@ -8,6 +8,20 @@
+ #include <System/Application.hpp>
+ #include <Camera/Camera.hpp>
+ 
++#ifdef TARGET_PC
++#include "port_framerate.h"
++
++// JPA uses whole 1/60 s simulation steps. A 120 fps animation rate is 0.5,
++// which the original integer loops truncate to zero. Step on alternate
++// movement ticks, while drawing particles on every displayed frame.
++static inline int portParticleSteps()
++{
++	if (port_active_frame_rate == 120)
++		return (gpMarDirector->unk5C & 1) != 0;
++	return (int)SMSGetAnmFrameRate();
++}
++#endif
++
+ // TODO: place in correct header
+ static const char* dummyMactorStringValue1 = "\0\0\0\0\0\0\0\0\0\0\0";
+ static const char* SMS_NO_MEMORY_MESSAGE   = "メモリが足りません\n";
+@@ -55,7 +69,11 @@
+ void TEmitterViewObj::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & CUE_CALC_ANIM) {
++		#ifdef TARGET_PC
++		for (int i = portParticleSteps(); i > 0; --i)
++#else
+ 		for (int i = SMSGetAnmFrameRate(); i > 0; --i)
++#endif
+ 			unk10->calc();
+ 	}
+ 
+@@ -68,7 +86,11 @@
+ void TEmitterIndirectViewObj::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & CUE_CALC_ANIM) {
++		#ifdef TARGET_PC
++		for (int i = portParticleSteps(); i > 0; --i)
++#else
+ 		for (int i = SMSGetAnmFrameRate(); i > 0; --i)
++#endif
+ 			unk10->calc();
+ 	}
+ 
+@@ -133,7 +155,11 @@
+ void TMarioParticleManager::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
+ 	if (cue & CUE_CALC_ANIM) {
++		#ifdef TARGET_PC
++		for (int i = portParticleSteps(); i > 0; --i)
++#else
+ 		for (int i = SMSGetAnmFrameRate(); i > 0; --i)
++#endif
+ 			unk3B8->calc();
+ 
+ 		for (int i = 486; i < 505; ++i) {

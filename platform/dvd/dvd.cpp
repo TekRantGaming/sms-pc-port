@@ -5,6 +5,7 @@
 #include "port_compat.h"
 #include "port_os.h"
 #include "port_platform.h"
+#include "port_framerate.h"
 #include <dolphin/dvd.h>
 #include <dolphin/os.h>
 #include <dolphin/vi.h>
@@ -581,7 +582,8 @@ double schedule_read(u32 entry, s32 len, s32 offset)
 	if (g_dvd_bps <= 0 && g_dvd_seek_fields <= 0)
 		return now;
 	double start = g_drive_free > now ? g_drive_free : now;
-	g_drive_free = start + g_dvd_seek_fields + (g_dvd_bps > 0 ? len / g_dvd_bps * 59.94 : 0);
+	g_drive_free = start + port_vi_retrace_multiplier()
+	    * (g_dvd_seek_fields + (g_dvd_bps > 0 ? len / g_dvd_bps * 59.94 : 0));
 	return g_drive_free;
 }
 

@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 THinokuri2's broken mask (THino2Mask) falls, spins and fades at its 30 fps speed; its two halves are stepped on the calc-anim pass, which comes every frame, so they fell about four times as far, spun twice as fast and vanished in half the time
 --- a/src/Enemy/hinokuri2.cpp
 +++ b/src/Enemy/hinokuri2.cpp
-@@ -329,6 +329,23 @@ static inline THino2Params* Hino2Params(THinokuri2* self)
+@@ -329,6 +329,25 @@ static inline THino2Params* Hino2Params(THinokuri2* self)
  	return params;
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: once the mask breaks, its two halves fall on the calc-anim pass:
 +// gravity into the velocity, the velocity into the position, and unk8 counts
 +// up to 240 (the life), 60 (the flicker start) and turns the halves one
@@ -15,10 +17,10 @@ Reason: port: with frame_rate = 60 THinokuri2's broken mask (THino2Mask) falls, 
 +// once per 1/30 s: on the calc pass of every other frame at 60 (the director
 +// counts one unk5C per tick, two a frame). The matrices are still set on
 +// every pass.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool Hino2MaskPortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +

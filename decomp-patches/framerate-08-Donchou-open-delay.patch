@@ -1,21 +1,23 @@
 Reason: port: with frame_rate = 60 the casino curtain keeps its 20-count pause (input held) before it opens at the 30 fps length; it counted in calcRootMatrix, on the calc-anim pass every frame, so the pause was half as long
 --- a/src/MoveBG/MapObjSirena.cpp
 +++ b/src/MoveBG/MapObjSirena.cpp
-@@ -953,6 +953,20 @@ static inline TMarDirector* MapObjSirenaDirector()
+@@ -953,6 +953,22 @@ static inline TMarDirector* MapObjSirenaDirector()
  	return d;
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: with frame_rate = 60 calcRootMatrix (called on the calc-anim pass)
 +// runs every frame, twice as often per second as at 30. Once both of its
 +// switches are hit, the curtain holds Mario's input for 20 counts of unk14C
 +// on that pass before it opens; at 60 the pause lasted half as long. Count
 +// it once per 1/30 s: on the calc pass of every other frame at 60 (the
 +// director counts one unk5C per tick, two a frame).
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool DonchouPortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +

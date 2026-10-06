@@ -85,7 +85,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `SMS_OVERLAY=1` | open the debug overlay at start |
 | `SMS_GX_SCALE=n` | render at n times the GameCube's resolution |
 | `SMS_WIDESCREEN=16:9` | widescreen (also `21:9`, `16:10`): a wider view, with the HUD and menus kept 4:3 in the middle |
-| `SMS_FRAME_RATE=60` | gameplay at 60 frames per second (the game's own timing, not sped up); logos, menus and movies stay at 30 |
+| `SMS_FRAME_RATE=30`, `60`, or `120` | gameplay frame rate: 30 (GameCube native), 60 (port default), or 120 (optional); logos, menus and movies stay at 30 |
 | `SMS_WIDESCREEN_HUD=edges` | with widescreen, move the gameplay HUD's counters to the left edge and the water gauge to the right one |
 
 Optional mods, such as HD texture packs, go in [`mods/`](mods/README.md); `python3 tools/mods/get.py textures` downloads and installs the UHD texture pack there.
@@ -95,7 +95,12 @@ Every other switch (debugging, tracing, graphics) is listed in [docs/DEVELOPMENT
 
 ## Frame rate
 
-The game runs at 30 frames a second, and like on the GameCube a frame that takes longer than two retraces (33 ms) waits for the next one, so a slow frame shows as 20 or 15 fps rather than 28.
+Gameplay defaults to 60 frames a second; choose 30 for the GameCube's native rate or 120 for smoother motion in `settings.txt` (`frame_rate = 120`) or with `SMS_FRAME_RATE=120 ./run.sh`.
+The launcher offers these three choices under Settings → Gameplay → Frame rate.
+Game speed stays the same, and logos, menus and movies stay at 30 fps.
+120 fps is available on any display, but needs sufficient CPU/GPU performance; a display running at 120 Hz or faster shows its full benefit.
+With display vsync enabled (`vsync = on` / `SMS_VSYNC=1`), a slower refresh rate can limit presentation, so leave vsync off to avoid that limit.
+Like on the GameCube, missed retraces can reduce the achieved frame rate in steps.
 The debug overlay (backtick) shows where each frame's time goes:
 
 - `game`: the game's own code (and the GX commands it writes).

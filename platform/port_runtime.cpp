@@ -3,6 +3,7 @@
 #include "sms_mod/modhooks.h"
 #include "port_compat.h"
 #include "port_platform.h"
+#include "port_framerate.h"
 #include "port_stub.h"
 #include "port_os.h"
 #include <dolphin/os.h>
@@ -48,10 +49,14 @@ int port_skip_movies = 0;
 extern "C" float port_widescreen;
 float port_widescreen = 1.0f;
 extern "C" __attribute__((weak)) void GXPC_SetWidescreen(float widthOver43);
-// SMS_FRAME_RATE: 30 (the game's own) or 60, for gameplay (the Application
+// SMS_FRAME_RATE: 30 (the game's own), 60 (default), or 120, for gameplay (the Application
 // patch framerate-01 reads it; logos, menus and movies stay at 30).
 extern "C" int port_frame_rate;
-int port_frame_rate = 30;
+int port_frame_rate = 60;
+extern "C" int port_active_frame_rate;
+int port_active_frame_rate = 30;
+extern "C" int port_high_fps_active;
+int port_high_fps_active = 0;
 
 // "16:9", "21:9", "16:10", "on" (16:9), "off"/"0", or a ratio such as 1.85.
 static float parse_widescreen(const char* v)
@@ -414,7 +419,7 @@ static const struct {
 	{ "hd_cutscenes", "SMS_HD_CUTSCENES" }, // follows HD textures; 0 disables
 	{ "widescreen", "SMS_WIDESCREEN" },
 	{ "widescreen_hud", "SMS_WIDESCREEN_HUD" }, // centre or edges
-	{ "frame_rate", "SMS_FRAME_RATE" },         // 30 or 60
+	{ "frame_rate", "SMS_FRAME_RATE" },         // 30, 60 (default), or 120
 	{ "mod", "SMS_MOD" },
 	{ "resolution", "SMS_GX_SCALE" },
 	{ "window_scale", "SMS_WINDOW_SCALE" },
@@ -503,10 +508,11 @@ extern "C" void port_init(int argc, char** argv)
 		GXPC_SetWidescreen(port_widescreen);
 	if (port_widescreen > 1.0f)
 		port_log("[port] widescreen: %.3f times the 4:3 width\n", port_widescreen);
-	if (const char* r = getenv("SMS_FRAME_RATE"))
-		port_frame_rate = atoi(r) == 60 ? 60 : 30;
-	if (port_frame_rate == 60)
-		port_log("[port] frame rate: 60 during gameplay\n");
+	const char* frame_rate = getenv("SMS_FRAME_RATE");
+	port_frame_rate = port_parse_frame_rate(frame_rate);
+	if (frame_rate && strcmp(frame_rate, "30") && strcmp(frame_rate, "60") && strcmp(frame_rate, "120"))
+		port_log("[port] unsupported frame rate '%s'; using 60\n", frame_rate);
+	port_log("[port] frame rate: %d during gameplay\n", port_frame_rate);
 	sms_mod_activate();
 	for (int i = 1; i < argc; i++)
 		if (strcmp(argv[i], "--headless") == 0) {

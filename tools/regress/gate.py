@@ -1,4 +1,4 @@
-# gdb script for tools/regress/regress.py's fps60 check (the plaza gate run).
+# gdb script for tools/regress/regress.py's fps60/fps120 plaza gate checks.
 #
 # Run under gdb on a plaza load at scenario 5 (SMS_WARP=1,5,0): once the gate
 # (TModelGate "Gate") is loaded, it sets the flag that lets it open, and after
@@ -26,7 +26,9 @@ class LoadAfter(gdb.Breakpoint):
     def stop(self):
         try:
             this = gdb.parse_and_eval('this')
-            if this['mName'].string() == 'Gate':
+            # Game object names are Shift-JIS; other gates can have Japanese
+            # names even though the gate we select is ASCII.
+            if this['mName'].string(encoding='cp932', errors='replace') == 'Gate':
                 state['gate'] = int(this)
                 gdb.execute('set var TFlagManager::smInstance->mCardBools[112] = '
                             'TFlagManager::smInstance->mCardBools[112] | 0x30')
@@ -94,8 +96,8 @@ class Perform(gdb.Breakpoint):
                 gdb.execute('set var gpMarioPos->z = %f' % float(ac['z']))
                 gdb.execute('set var gpMarioOriginal->mStatus = MARIO_STATUS_JUMP')
                 state['jump'] = 1
-            if state['frames'] > 400:
-                report('gave up after 400 frames: rate %f wind %d' % (rate, wind))
+            if state['frames'] > 800:
+                report('gave up after 800 frames: rate %f wind %d' % (rate, wind))
                 gdb.execute('kill')
                 return True
         except gdb.error as e:

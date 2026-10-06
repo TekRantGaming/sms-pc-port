@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the fruit boats sail their routes at their 30 fps speed; the route animation is stepped per 1/120 s tick (from the BckTrace nerve) at mSLBckMoveSpeed * SMSGetAnmFrameRate(), a per-frame rate that halves at 60 while the tick rate does not, so they sailed at half speed
 --- a/src/Enemy/fruitsboat.cpp
 +++ b/src/Enemy/fruitsboat.cpp
-@@ -67,6 +67,22 @@ TFruitsBoat::TFruitsBoat(const char* name)
+@@ -67,6 +67,24 @@ TFruitsBoat::TFruitsBoat(const char* name)
  	onLiveFlag(LIVE_FLAG_UNK10);
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: the track animation that carries the boat is stepped by
 +// traceBckTrack from the TNerveFruitsBoatBckTrace nerve, i.e. from the
 +// spine in moveObject, on every 1/120 s movement tick: four a frame at 30,
@@ -13,11 +15,11 @@ Reason: port: with frame_rate = 60 the fruit boats sail their routes at their 30
 +// per-frame rate; with frame_rate = 60 SMSGetAnmFrameRate() halves while
 +// the tick rate does not, so the fruit boats sailed their routes at half
 +// speed. Use the 30 fps value.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 FruitsBoatPortTickAnmRate()
 +{
 +	f32 rate = SMSGetAnmFrameRate();
-+	return port_fps60_active ? 2.0f * rate : rate;
++	return port_native_frame_divisor() * rate;
 +}
 +#endif
 +

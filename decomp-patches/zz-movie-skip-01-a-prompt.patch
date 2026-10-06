@@ -1,0 +1,113 @@
+Reason: port: show "(A) Skip" (the system font's A button glyph) in the bottom-right corner of every movie, and end the movie at once on A, seen before or not
+--- a/src/System/MovieDirector.cpp
++++ b/src/System/MovieDirector.cpp
+@@ -20,6 +20,10 @@
+ #include <GC2D/hx_wiper.h>
+ #include <JSystem/J2D/J2DScreen.hpp>
+ #include <JSystem/J2D/J2DOrthoGraph.hpp>
++#ifdef TARGET_PC
++#include <JSystem/J2D/J2DPrint.hpp>
++#include <JSystem/JUtility/JUTResFont.hpp>
++#endif
+ 
+ // rogue includes needed for matching sinit & bss
+ #include <MSound/MSSetSound.hpp>
+@@ -200,6 +204,64 @@
+ extern "C" float port_widescreen;
+ #endif
+ 
++#ifdef TARGET_PC
++// Port: "(A) Skip" in the bottom-right corner while a movie plays; A ends it
++// at once (direct). '@' is the A button in the system font
++// (standard_fontEx.bfn), drawn green like the button.
++class TMovieSkipPrompt : public JDrama::TViewObj {
++public:
++	TMovieSkipPrompt(const TMovieDirector* director)
++	    : JDrama::TViewObj("MovieSkipPrompt")
++	    , mDirector(director)
++	{
++	}
++
++	virtual void perform(u32 cue, JDrama::TGraphics* graphics);
++
++	static bool shown(const TMovieDirector* director)
++	{
++		return director->unk30.check(0x1) && !director->unk30.check(0x2)
++		       && (director->unk1C == TMovieDirector::STATE_FADE_IN
++		           || director->unk1C == TMovieDirector::STATE_PLAYING);
++	}
++
++	const TMovieDirector* mDirector;
++};
++
++void TMovieSkipPrompt::perform(u32 cue, JDrama::TGraphics* graphics)
++{
++	if (!(cue & CUE_DRAW) || !gpSystemFont || !shown(mDirector))
++		return;
++
++	J2DOrthoGraph graph(graphics->getViewport());
++	graph.setup2D();
++
++	const int size = 22, margin = 18;
++	const JUtility::TColor shadow(0, 0, 0, 170), green(60, 200, 70, 255),
++	    white(255, 255, 255, 255);
++	J2DPrint shadowText(gpSystemFont, 0, -0x80000000, shadow, shadow);
++	J2DPrint buttonText(gpSystemFont, 0, -0x80000000, green, green);
++	J2DPrint labelText(gpSystemFont, 0, -0x80000000, white, white);
++	shadowText.setFontSize(size, size);
++	buttonText.setFontSize(size, size);
++	labelText.setFontSize(size, size);
++
++	// sms_gx centres 2D like this in a widescreen frame, which reaches
++	// past both sides of the 4:3 one by half its extra width: the corner is
++	// that far out.
++	f32 wide  = port_widescreen > 1.0f ? port_widescreen : 1.0f;
++	f32 right = SMSGetGameRenderWidth() * (1.0f + wide) * 0.5f - margin;
++	f32 buttonW = buttonText.getWidth("@");
++	f32 labelW  = labelText.getWidth(" Skip");
++	int x = (int)(right - buttonW - labelW);
++	int y = SMSGetGameRenderHeight() - margin - size;
++
++	shadowText.print(x + 2, y + 2, "@ Skip");
++	buttonText.print(x, y, "@");
++	labelText.print(x + (int)buttonW, y, " Skip");
++}
++#endif
++
+ void* TMovieDirector::setupThreadFunc(void* self)
+ {
+ 	((TMovieDirector*)self)->rsetup();
+@@ -308,6 +370,9 @@
+ 	unk2C = new TMovieRumble(thpRender);
+ 	unk2C->init(movie);
+ 	group2d->getChildren().push_back(unk2C);
++#ifdef TARGET_PC
++	group2d->getChildren().push_back(new TMovieSkipPrompt(this));
++#endif
+ 
+ 	switch (gpApplication.getMovie()) {
+ 	case 16:
+@@ -548,7 +613,23 @@
+ 	}
+ 
+ 	s32 nextState = unk1C;
++#ifdef TARGET_PC
++	// Port: A ends any movie at once, seen or not, under the prompt
++	// (TMovieSkipPrompt). Retail's A, B or START skip fades out over a
++	// second, and only for a movie already seen. What follows is the same as
++	// after the fade: decideNextMode, from black.
++	bool skipped = false;
++	if (TMovieSkipPrompt::shown(this) && getGamePad()->checkFrameMeaning(0x20)) {
++		skipped = true;
++		THPPlayerStop();
++		gpApplication.getFader()->setFadeStatus(
++		    TSMSFader::FADE_STATUS_FULLY_FADED_OUT);
++		desiredAppState = decideNextMode(&nextState);
++	}
++	switch (skipped ? -1 : unk1C) {
++#else
+ 	switch (unk1C) {
++#endif
+ 	case STATE_FADE_IN:
+ 		if (({ typedef __typeof__(TFlagManager::getInstance()->getBool(gpApplication.getMovie()
+ 		                                         + 0x10391)) sms_mod_r_; void* sms_mod_t_ = SMS_MOD_SITE(0x802B5E8C); sms_mod_t_ ? ((__typeof__(sms_mod_as_free(static_cast<sms_mod_r_ (TFlagManager::*)(u32) const>(&TFlagManager::getBool))))sms_mod_t_)(TFlagManager::getInstance(), gpApplication.getMovie()

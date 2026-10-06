@@ -46,7 +46,13 @@ endif()
 if(WIN32)
   # GNU ld does not know clang's .llvm_addrsig and maps it at 4 GiB, which
   # Windows refuses to load.
-  list(APPEND _arch -fno-addrsig)
+  # -mno-ms-bitfields: MinGW lays out bitfields as MSVC does, starting a new
+  # unit whenever the declared type changes, so SunshineHeaderInterface's
+  # bool/u32 flag words (TLiveActor::mStateFlags, TMario's, ...) grow and every
+  # member after them moves (TMapObjBase::mRegisterName 0x30 past the game's
+  # unkF4). The decomp has no such bitfields; GCC's layout is the one
+  # shi-layout.patch was made for, as on Linux and macOS.
+  list(APPEND _arch -fno-addrsig -mno-ms-bitfields)
 endif()
 # -fnew-alignment=4: the game's operator new (JKRHeap) guarantees 4-byte
 # alignment, not the 16 clang would otherwise assume for aligned SSE stores;

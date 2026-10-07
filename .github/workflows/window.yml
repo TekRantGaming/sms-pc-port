@@ -9,6 +9,7 @@ permissions:
 jobs:
   window:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -20,14 +21,28 @@ jobs:
       - name: Install SDL and software OpenGL
         env:
           ARCH: ${{ matrix.arch }}
+        timeout-minutes: 25
         run: |
+          # Some runners can't reach the Azure Ubuntu mirror, and apt's fallback
+          # to archive.ubuntu.com can stall a download without closing it, which
+          # apt's own timeout doesn't catch. Kill it and switch mirrors instead.
+          apt_update() {
+            sudo timeout 120 apt-get update && return
+            for mirror in http://mirrors.edge.kernel.org/ubuntu/ http://mirror.math.princeton.edu/pub/ubuntu/; do
+              echo "apt-get update failed; switching to $mirror"
+              echo "$mirror" | sudo tee /etc/apt/apt-mirrors.txt
+              sudo timeout 120 apt-get update && return
+            done
+            return 1
+          }
+          apt_install() { for n in 1 2 3; do sudo timeout 300 apt-get -o Acquire::Retries=3 install -y --no-install-recommends "$@" && return; echo "apt-get install attempt $n failed"; done; return 1; }
           if [ "$ARCH" = 32 ]; then sudo dpkg --add-architecture i386; fi
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
+          apt_update
+          apt_install cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0 gdb
           # The port already supports 32-bit SDL using the host's headers and
           # i386 runtime libraries. Avoid incompatible multiarch GLib dev tools.
           if [ "$ARCH" = 32 ]; then
-            sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386 libegl1:i386 libgl1:i386 libgl1-mesa-dri:i386 libegl-mesa0:i386
+            apt_install libsdl2-2.0-0:i386 libegl1:i386 libgl1:i386 libgl1-mesa-dri:i386 libegl-mesa0:i386
           fi
       - name: Build the game's window smoke test
         env:
@@ -39,6 +54,25 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
+          # A smoke run that hangs prints every thread's stack and the window
+          # manager's log, then fails, instead of holding the runner. This is a
+          # script, not a function: xvfb-run's sh drops exported bash functions.
+          mkdir -p "$RUNNER_TEMP/bin"
+          cat > "$RUNNER_TEMP/bin/smoke" <<'EOF'
+          #!/bin/bash
+          "$@" & pid=$!
+          for _ in {1..600}; do
+            if ! kill -0 "$pid" 2>/dev/null; then wait "$pid"; exit; fi
+            sleep 0.1
+          done
+          echo "::error::still running after 60s: $*"
+          sudo gdb -q -batch -p "$pid" -ex "thread apply all bt" || true
+          cat build/window/window-manager.log || true
+          kill -9 "$pid"
+          exit 1
+          EOF
+          chmod +x "$RUNNER_TEMP/bin/smoke"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
           ctest --test-dir build/window/platform/gx -R '^gx_windowtest$' --output-on-failure
           # SDL desktop fullscreen is managed by the desktop window manager.
           xvfb-run -a -s '-screen 0 1280x800x24' bash -e -c '
@@ -50,8 +84,8 @@ jobs:
               sleep 0.05
             done
             xprop -root _NET_SUPPORTING_WM_CHECK | grep -q "window id #"
-            env -u SMS_FULLSCREEN build/window/platform/gx/gx_windowsmoke --window
-            SMS_FULLSCREEN=0 build/window/platform/gx/gx_windowsmoke --window
-            SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --fullscreen
+            smoke env -u SMS_FULLSCREEN build/window/platform/gx/gx_windowsmoke --window
+            smoke env SMS_FULLSCREEN=0 build/window/platform/gx/gx_windowsmoke --window
+            smoke env SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --fullscreen
           '
-          SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --headless
+          smoke env SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --headless

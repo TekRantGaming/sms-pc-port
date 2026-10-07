@@ -25,6 +25,7 @@ void logTopCalls(uint32_t frames);
 extern double g_decodeSeconds;
 static GXPCStats s_stats;
 void shaderShutdown();
+void invalidateOverlay();
 
 // SMS_GX_STATS=n: every n display frames, log draws, uploads and the wall time
 // spent inside sms_gx (flushes, texture decode, copies) against the frame time.
@@ -116,6 +117,7 @@ static GLuint s_copyProg, s_copyVao;
 static GLint s_copyUMode, s_copyURect, s_copyUAlphaOne;
 static GLuint s_tmpFbo;
 static GLuint s_overlayTex;
+static int s_overlayW = 0, s_overlayH = 0;
 static GLuint s_overlayProg;
 static GLint s_overlayRect, s_overlayWindow;
 static GXPCStats s_lastFrameStats;
@@ -1739,6 +1741,8 @@ void GXPC_Shutdown(void) {
     if (s_overlayTex) glDeleteTextures(1, &s_overlayTex);
     if (s_overlayProg) glDeleteProgram(s_overlayProg);
     s_overlayTex = s_overlayProg = 0;
+    s_overlayW = s_overlayH = 0;
+    invalidateOverlay();
     for (auto& kv : s_xfbs) glDeleteTextures(1, &kv.second.tex);
     s_xfbs.clear();
     s_ready = false;
@@ -2022,7 +2026,8 @@ void GXPC_SetDetailedTimers(int on) { g_gxStats = on || statsEnv(); }
 void GXPC_SetIdleClock(double (*idleSeconds)(void)) { s_idleClock = idleSeconds; }
 
 void GXPC_DrawOverlay(const uint8_t* rgba, int w, int h, int x, int y, int scale, int winW, int winH) {
-    if (!s_ready || !rgba || w <= 0 || h <= 0) return;
+    if (!s_ready || w <= 0 || h <= 0) return;
+    if (!rgba && (!s_overlayTex || w != s_overlayW || h != s_overlayH)) return;
     flushBatch();
     glcInvalidate();
     // glBlitFramebuffer ignores alpha, so draw the panel with source-alpha blending.
@@ -2077,11 +2082,23 @@ void main() { o_color = texture(u_color, v_uv); }
     glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &eqAlpha);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    if (!s_overlayTex) glGenTextures(1, &s_overlayTex);
-    glBindTexture(GL_TEXTURE_2D, s_overlayTex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    if (!s_overlayTex) {
+        glGenTextures(1, &s_overlayTex);
+        glBindTexture(GL_TEXTURE_2D, s_overlayTex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, s_overlayTex);
+    }
+    if (rgba) {
+        if (w != s_overlayW || h != s_overlayH) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+            s_overlayW = w;
+            s_overlayH = h;
+        } else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        }
+    }
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);

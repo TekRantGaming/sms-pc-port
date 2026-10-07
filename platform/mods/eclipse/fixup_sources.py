@@ -353,6 +353,14 @@ BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDAT
 ] + FRAME_RATE_FIXES
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
 SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
+    # The SDK's OSMessage is a void *, as the port's OS keeps it; declared u32,
+    # it was half the size in the 64-bit build. BSE's music streamer queues 16
+    # of them in a u32 array, which the port wrote 8 bytes apiece, over the
+    # streamer's file handle after it (a crash stopping the music on a stage
+    # change), and OSReceiveMessage wrote 8 bytes into a 4-byte local. An
+    # integer the size of a pointer keeps the mods' integer messages.
+    ("include/Dolphin/OS.h", r"\btypedef u32 OSMessage;", "typedef __UINTPTR_TYPE__ OSMessage;",
+     "OSMessage is pointer-sized"),
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.

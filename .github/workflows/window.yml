@@ -20,18 +20,28 @@ jobs:
       - name: Install SDL and software OpenGL
         env:
           ARCH: ${{ matrix.arch }}
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: |
-          # The Azure Ubuntu mirror sometimes stalls a connection without
-          # closing it, which apt's own timeout doesn't catch. Kill and retry.
-          apt() { for n in 1 2 3; do sudo timeout 240 apt-get -o Acquire::Retries=3 "$@" && return; echo "apt-get $1 attempt $n failed"; done; return 1; }
+          # Some runners can't reach the Azure Ubuntu mirror, and apt's fallback
+          # to archive.ubuntu.com can stall a download without closing it, which
+          # apt's own timeout doesn't catch. Kill it and switch mirrors instead.
+          apt_update() {
+            sudo timeout 120 apt-get update && return
+            for mirror in http://mirrors.edge.kernel.org/ubuntu/ http://mirror.math.princeton.edu/pub/ubuntu/; do
+              echo "apt-get update failed; switching to $mirror"
+              echo "$mirror" | sudo tee /etc/apt/apt-mirrors.txt
+              sudo timeout 120 apt-get update && return
+            done
+            return 1
+          }
+          apt_install() { for n in 1 2 3; do sudo timeout 300 apt-get -o Acquire::Retries=3 install -y --no-install-recommends "$@" && return; echo "apt-get install attempt $n failed"; done; return 1; }
           if [ "$ARCH" = 32 ]; then sudo dpkg --add-architecture i386; fi
-          apt update
-          apt install -y --no-install-recommends cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
+          apt_update
+          apt_install cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
           # The port already supports 32-bit SDL using the host's headers and
           # i386 runtime libraries. Avoid incompatible multiarch GLib dev tools.
           if [ "$ARCH" = 32 ]; then
-            apt install -y --no-install-recommends libsdl2-2.0-0:i386 libegl1:i386 libgl1:i386 libgl1-mesa-dri:i386 libegl-mesa0:i386
+            apt_install libsdl2-2.0-0:i386 libegl1:i386 libgl1:i386 libgl1-mesa-dri:i386 libegl-mesa0:i386
           fi
       - name: Build the game's window smoke test
         env:

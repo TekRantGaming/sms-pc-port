@@ -1,0 +1,14 @@
+Reason: fpu: TBiancoGateKeeper::launchNamekuri throws ten goop blobs in a ring, at 36 degrees apart, with (s16)(182.04445f * 36.0f * i). From the sixth blob the angle is 32768 or more, which does not fit an s16. The console converts it with fctiwz and keeps the low halfword, so it wraps to the other half of the circle. In C++ that conversion is undefined, and GCC 16 (the launcher's compiler on Linux and Windows) takes the angle as 0..32767 and sign-extends it, so blobs 6 to 10 index the sine and cosine tables before their start. Only the Gelato Beach (Mamma) gatekeeper launches blobs, after its first defeat, and the game crashed there (issue #28). Convert through a 32-bit int, which wraps as the console does.
+--- a/src/Enemy/gatekeeper.cpp
++++ b/src/Enemy/gatekeeper.cpp
+@@ -508,7 +508,9 @@
+ 			JGeometry::TVec3<f32> rot = mRotation;
+ 			JGeometry::TVec3<f32> scale;
+ 			scale.set(1.0f, 1.0f, 1.0f);
+-			s16 angle = (s16)(182.04445f * (36.0f * (f32)i));
++			// port: 180 degrees and up do not fit an s16; wrap through a
++			// 32-bit int as the console's fctiwz does.
++			s16 angle = (s16)(int)(182.04445f * (36.0f * (f32)i));
+ 			JGeometry::TVec3<f32> vel;
+ 			vel.x = 4.0f * JMASSin(angle);
+ 			vel.y = 12.0f;

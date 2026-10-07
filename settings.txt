@@ -65,6 +65,9 @@ frame_rate = 60
 # audio = on
 # Master volume, 0 (silent) to 100 (full).
 # volume = 100
+# How far the L_SOFT / R_SOFT bindings press L or R, in percent (5 to 95), as a
+# light trigger press without the click.
+# soft_trigger = 40
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
 

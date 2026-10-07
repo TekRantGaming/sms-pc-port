@@ -72,15 +72,20 @@ enum Control {
 	C_DUP, C_DDOWN, C_DLEFT, C_DRIGHT,
 	C_UP, C_DOWN, C_LEFT, C_RIGHT,
 	C_CUP, C_CDOWN, C_CLEFT, C_CRIGHT,
-	C_HALF, C_QUIT, C_COUNT
+	C_HALF, C_QUIT, C_LSOFT, C_RSOFT, C_COUNT
 };
 const char* const kControlNames[C_COUNT] = {
 	"A", "B", "X", "Y", "Z", "L", "R", "START",
 	"DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT",
 	"STICK_UP", "STICK_DOWN", "STICK_LEFT", "STICK_RIGHT",
 	"CSTICK_UP", "CSTICK_DOWN", "CSTICK_LEFT", "CSTICK_RIGHT",
-	"HALF_TILT", "QUIT",
+	"HALF_TILT", "QUIT", "L_SOFT", "R_SOFT",
 };
+// L_SOFT / R_SOFT press L or R part of the way, analog only (no digital click):
+// a light press, as on a GameCube trigger before it clicks. How far, 0..255,
+// from SMS_SOFT_TRIGGER (percent, default 40). Unbound unless bindings.txt
+// gives them keys or buttons.
+int g_softTrigger = 102;
 
 struct KeyName {
 	const char* name;
@@ -350,6 +355,13 @@ void init()
 	port_free_camera    = env_on("SMS_FREE_CAMERA");
 	port_camera_speed_x = port_camera_speed_y = env_percent("SMS_CAMERA_SPEED", 0.1f, 4.0f);
 	g_mouseSens         = env_percent("SMS_MOUSE_SENSITIVITY", 0.05f, 10.0f);
+	if (const char* e = getenv("SMS_SOFT_TRIGGER"))
+		if (*e) {
+			// stays below the click (250), or it would no longer be a soft press
+			const int pct = atoi(e) < 5 ? 5 : atoi(e) > 95 ? 95 : atoi(e);
+			g_softTrigger = pct * 255 / 100;
+			port_log("[pad] soft L/R press: %d%%\n", pct);
+		}
 	if (port_free_camera || port_camera_speed_x != 1.0f)
 		port_log("[pad] camera: free camera %s, speed %d%%\n", port_free_camera ? "on" : "off",
 		         (int)(port_camera_speed_x * 100.0f + 0.5f));
@@ -520,6 +532,10 @@ extern "C" u32 PADRead(PADStatus* status)
 	// (analog 255 plus the digital click).
 	int tl = analog_trigger(C_L);
 	int tr = analog_trigger(C_R);
+	if (held(C_LSOFT))
+		tl = std::max(tl, g_softTrigger);
+	if (held(C_RSOFT))
+		tr = std::max(tr, g_softTrigger);
 	if (tl >= 250)
 		b |= PAD_TRIGGER_L;
 	if (tr >= 250)

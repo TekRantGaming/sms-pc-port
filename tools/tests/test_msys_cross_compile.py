@@ -48,8 +48,11 @@ class CrossCompileTest(unittest.TestCase):
             response = pathlib.Path(folder) / 'args with spaces.rsp'
             response.write_text('"C:/work/main.cpp" -o "C:/work/main.obj"')
             converted = response.with_name(response.name + '.msys')
+            expected_path = converted.as_posix()
+            if converted.drive:
+                expected_path = '/' + converted.drive[0].lower() + expected_path[2:]
             def run(command):
-                self.assertEqual(command, ['gcc', '-c', '@' + str(converted)])
+                self.assertEqual(command, ['gcc', '-c', '@' + expected_path])
                 self.assertEqual(converted.read_text(), '"/c/work/main.cpp" -o "/c/work/main.obj"')
                 return mock.Mock(returncode=0)
             with mock.patch.object(cross.sys, 'argv', ['cross.py', '--cache', 'cache', 'gcc', '-c', '@' + str(response)]), \

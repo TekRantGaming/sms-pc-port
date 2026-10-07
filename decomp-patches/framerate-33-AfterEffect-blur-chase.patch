@@ -1,13 +1,15 @@
 Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, fed by TModelGate::screenBlur) fades in and out at its 30 fps speed; both chase their targets by a fixed part of the gap once per drawn frame, so the blur came and went twice as fast
 --- a/src/MarioUtil/ScreenUtil.cpp
 +++ b/src/MarioUtil/ScreenUtil.cpp
-@@ -89,6 +89,24 @@
+@@ -89,6 +89,26 @@
  	unk15 = 0;
  }
  
 +#ifdef TARGET_PC
 +#include <math.h>
 +
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: perform (on CUE_SET_PROJECTION, once per drawn frame) chases the
 +// blur's alphas, offsets and scales towards their targets by unk48 (0.05) of
 +// the gap a call. With frame_rate = 60 that comes twice as often per second
@@ -16,10 +18,10 @@ Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, f
 +// second and keeps the motion smooth. (The dash-blur countdown in
 +// calcDashBlurValue is only reached through TMario::thinkDashEffect, which
 +// is empty in retail, so it is left alone.)
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 AfterEffectPortChase(f32 rate)
 +{
-+	return port_fps60_active ? 1.0f - std::sqrtf(1.0f - rate) : rate;
++	return port_frame_chase(rate);
 +}
 +#endif
 +
@@ -51,11 +53,13 @@ Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, f
  	GXSetVtxDesc(GX_VA_POS, GX_DIRECT);
 --- a/src/MoveBG/ModelGate.cpp
 +++ b/src/MoveBG/ModelGate.cpp
-@@ -244,6 +244,18 @@
+@@ -244,6 +244,20 @@
  	effect->unk5C        = dir;
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: screenBlur runs on CUE_CALC_VIEW, once per drawn frame, and chases
 +// mBlurAlpha towards its target by mBlurAlphaRate of the gap a call; with
 +// frame_rate = 60 that is twice as often per second as at 30. At 60 chase by
@@ -63,7 +67,7 @@ Reason: port: with frame_rate = 60 the plaza gates' radial blur (TAfterEffect, f
 +// second (TAfterEffect's own chase is adjusted the same way).
 +static inline f32 ModelGatePortChase(f32 rate)
 +{
-+	return port_fps60_active ? 1.0f - std::sqrtf(1.0f - rate) : rate;
++	return port_frame_chase(rate);
 +}
 +#endif
 +

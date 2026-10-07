@@ -3,7 +3,7 @@
 
 usage: tools/regress/regress.py [--check | --record] [options] CHECK...
 
-CHECK is a group (title, plaza, fps60, eclipse, vanilla, all) or one run
+CHECK is a group (title, plaza, fps60, fps120, eclipse, vanilla, all) or one run
 (--list shows them). Every run is made in each word size (--arch) with the
 deterministic clock (SMS_VI_DETERMINISTIC), no settings file, no texture packs,
 skipped movies and an empty memory card (the Eclipse runs: the card saved by
@@ -76,6 +76,8 @@ RUNS = {
                    desc='plaza gate under gdb at 30 fps: Mario captured, setNextStage'),
     'gate60': dict(game='vanilla', kind='gate', fps=60, timeout=1500,
                    desc='the same at SMS_FRAME_RATE=60: captured after 100 frames, same setNextStage'),
+    'gate120': dict(game='vanilla', kind='gate', fps=120, timeout=1800,
+                    desc='SMS_FRAME_RATE=120: captured within one frame of native elapsed time, same setNextStage'),
     'ecl-firstboot': dict(game='eclipse', kind='shots', env={'SMS_AUTOPRESS': 'B@650+10'},
                           shots=[600, 1200, 1500], timeout=900, cards=True,
                           desc="Eclipse first boot: BSE's settings screen, saved; its card seeds the other Eclipse runs"),
@@ -105,9 +107,10 @@ GROUPS = {
     'title': ['title'],
     'plaza': ['plaza', 'plaza-audio'],
     'fps60': ['gate30', 'gate60'],
+    'fps120': ['gate30', 'gate60', 'gate120'],
     'eclipse': ['ecl-firstboot', 'ecl-tutorial', 'ecl-luigi', 'ecl-piantissimo', 'ecl-petey', 'ecl-zhine'],
 }
-GROUPS['vanilla'] = GROUPS['title'] + GROUPS['plaza'] + GROUPS['fps60']
+GROUPS['vanilla'] = GROUPS['title'] + GROUPS['plaza'] + GROUPS['fps120']
 GROUPS['all'] = GROUPS['vanilla'] + GROUPS['eclipse']
 
 ECLIPSE_DISC = os.path.join(ROOT, 'mods', 'eclipse', 'Super Mario Eclipse v1.1.0.iso')
@@ -161,6 +164,7 @@ def base_env(save_dir, shot_dir=None):
     env.update({
         'SMS_SETTINGS': os.path.join(HERE, 'empty-settings.txt'),
         'SMS_TEXTURE_PACKS': '0',
+        'SMS_FRAME_RATE': '30', # retail capture/audio baselines; gate runs override this
         'SMS_HEADLESS': '1',
         'SMS_AUDIO': '0',
         'SMS_SKIP_MOVIES': '1',
@@ -467,20 +471,25 @@ def main():
                 failures.append(label)
                 say('FAIL %s: %s' % (label, r.error))
                 continue
-            if spec['kind'] == 'gate' and spec['fps'] == 60:
+            if spec['kind'] == 'gate' and spec['fps'] > 30:
                 m = re.match(r'frame=(\d+)$', r.items['warpIn'])
-                if m.group(1) != '100':
+                expected = 50 * spec['fps'] // 30
+                # At 120 the placement can fall between native counter
+                # steps, introducing one 1/120 s frame of phase difference.
+                tolerance = 1 if spec['fps'] == 120 else 0
+                if abs(int(m.group(1)) - expected) > tolerance:
                     failures.append(label)
-                    say('FAIL %s: Mario captured at frame %s, not 100' % (label, m.group(1)))
-            other = results.get(('gate30', a)) if name == 'gate60' else None
+                    say('FAIL %s: Mario captured at frame %s, not %d' % (label, m.group(1), expected))
+            other = results.get(('gate30', a)) if name in ('gate60', 'gate120') else None
             if other and not other.error:
-                # The same stage and actor, at the same moment: 60 fps frames
-                # are half as long.
+                # The same stage and actor, at the same moment. Higher fps
+                # frames divide the native frame duration by fps / 30.
                 ns60 = re.sub(r',frames=\d+$', '', r.items['setNextStage'])
                 ns30 = re.sub(r',frames=\d+$', '', other.items['setNextStage'])
                 f60 = int(r.items['warpIn'].split('=')[1])
                 f30 = int(other.items['warpIn'].split('=')[1])
-                if ns60 != ns30 or f60 != 2 * f30:
+                tolerance = 1 if spec['fps'] == 120 else 0
+                if ns60 != ns30 or abs(f60 - (spec['fps'] // 30) * f30) > tolerance:
                     failures.append(label + ' vs 30 fps')
                     say('FAIL %s: setNextStage %s after capture at frame %d; at 30 fps %s at frame %d' % (
                         label, ns60, f60, ns30, f30))

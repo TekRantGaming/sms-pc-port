@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the Gelato Beach mirror hint (balloon 0x2E after 900 counts standing on a mirror) keeps its 30 s delay; it counted on the calc-anim pass, every frame, so at 60 it came after 15 s
 --- a/src/Enemy/chuuhana.cpp
 +++ b/src/Enemy/chuuhana.cpp
-@@ -117,6 +117,21 @@ static inline TGCConsole2* ChuuHanaGetConsole()
+@@ -117,6 +117,23 @@ static inline TGCConsole2* ChuuHanaGetConsole()
  	return console;
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: with frame_rate = 60 the calc-anim pass (CUE_CALC_ANIM) comes every
 +// frame, twice as often per second as at 30, while the movement pass keeps
 +// its 1/120 s ticks. unk60 counts the time Mario has stood on one of the
@@ -13,10 +15,10 @@ Reason: port: with frame_rate = 60 the Gelato Beach mirror hint (balloon 0x2E af
 +// 30), so at 60 the hint came after 15 s. Count it once per 1/30 s: on the
 +// calc pass of every other frame at 60 (the director counts one unk5C per
 +// tick, two a frame).
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool ChuuHanaManagerPortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +

@@ -1,21 +1,23 @@
 Reason: port: with frame_rate = 60, the stage-entry close wipe keeps its one-second lead over the end of the intro camera (getWipeCloseTime divides by SMSGetVSyncTimesPerSec, which doubles, but the wipe itself runs in real time)
 --- a/src/GC2D/ConsoleStr.cpp
 +++ b/src/GC2D/ConsoleStr.cpp
-@@ -39,7 +39,22 @@
+@@ -39,7 +39,24 @@
  {
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: the stage-entry close wipe starts this many seconds before the intro
 +// camera ends (TMarDirector compares it against the camera's remaining time).
 +// The console runs in real time at either frame rate, so with frame_rate = 60
 +// the lead stays what it is at 30.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +f32 TConsoleStr::getWipeCloseTime()
 +{
 +	f32 rate = SMSGetVSyncTimesPerSec();
-+	if (port_fps60_active)
-+		rate *= 0.5f;
++	if (port_high_fps_active)
++		rate *= port_frame_scale();
 +	return 30.0f / rate;
 +}
 +#else

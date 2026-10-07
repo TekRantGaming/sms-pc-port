@@ -1,8 +1,9 @@
-// VI: a host timer raises the vertical-retrace interrupt at 59.94 Hz. Frame
+// VI: a host timer raises retraces at 59.94 Hz (119.88 for 120 fps). Frame
 // buffers are recorded for the GX/present layer; nothing is scanned out here.
 #include "port_compat.h"
 #include "port_os.h"
 #include "port_platform.h"
+#include "port_framerate.h"
 #include <dolphin/os.h>
 #include <dolphin/vi.h>
 #include <pthread.h>
@@ -31,6 +32,7 @@ extern "C" __attribute__((weak)) void port_audio_on_retrace(void);
 namespace {
 std::atomic<u32> g_pending(0);
 u32 g_retrace_count;
+int g_retrace_multiplier = 1;
 OSThreadQueue g_retrace_queue;
 VIRetraceCallback g_pre, g_post;
 void* g_next_fb;
@@ -53,16 +55,21 @@ std::string g_shot_dir;
 pthread_t g_gx_thread;
 
 // The clock for SMS_SHOTS / SMS_AUTOPRESS "fields". By default it is game
-// time: two fields per display copy (the game renders at 30 Hz), so captures
+// time: two fields per copy at 30 fps, one at 60, and half at 120, so captures
 // line up with retail even when host rendering runs slower than real time.
-// SMS_FIELD_CLOCK=retrace uses raw VI retraces (wall-clock) instead.
+// SMS_FIELD_CLOCK=retrace uses elapsed native fields (wall-clock) instead.
 bool g_clock_retrace;
 u32 g_field_base; // SMS_VI_FIELD_BASE
+u32 g_last_frame;
+u64 g_game_half_fields;
 u32 game_field()
 {
 	if (g_clock_retrace || g_det || !GXPC_FrameCount)
-		return g_retrace_count; // the deterministic clock is game time already
-	return g_field_base + GXPC_FrameCount() * 2;
+		return g_retrace_count / g_retrace_multiplier;
+	u32 frame = GXPC_FrameCount();
+	g_game_half_fields += (u64)(frame - g_last_frame) * (120 / port_active_frame_rate);
+	g_last_frame = frame;
+	return g_field_base + (u32)(g_game_half_fields / 2);
 }
 
 void shots_init()
@@ -115,8 +122,8 @@ extern "C" int GXPC_GetSpeed(void) __attribute__((weak));
 
 void* timer_thread(void*)
 {
-	// SMS_VI_HZ=<rate> overrides the 59.94 Hz retrace (benchmarking).
-	long period_ns = 16683350; // 1001/60 Hz
+	// SMS_VI_HZ=<rate> overrides the actual retrace rate (benchmarking).
+	long period_ns = 16683350 / g_retrace_multiplier; // 59.94 or 119.88 Hz
 	if (const char* hz = getenv("SMS_VI_HZ"))
 		if (atof(hz) > 0)
 			period_ns = (long)(1e9 / atof(hz));
@@ -146,10 +153,13 @@ void retrace_irq()
 	while (n--) {
 		g_retrace_count++;
 		g_det_time_calls = 0;
-		if (port_trace_on_retrace)
-			port_trace_on_retrace(g_retrace_count);
-		if (port_audio_on_retrace)
-			port_audio_on_retrace();
+		// Audio DMA and trace numbering retain the native 59.94 Hz clock.
+		if (g_retrace_count % g_retrace_multiplier == 0) {
+			if (port_trace_on_retrace)
+				port_trace_on_retrace(g_retrace_count / g_retrace_multiplier);
+			if (port_audio_on_retrace)
+				port_audio_on_retrace();
+		}
 		port_pad_autopress_field(game_field());
 		if (g_pre)
 			g_pre(g_retrace_count);
@@ -165,6 +175,7 @@ void retrace_irq()
 
 extern "C" void port_vi_init(void)
 {
+	g_retrace_multiplier = port_vi_retrace_multiplier();
 	OSInitThreadQueue(&g_retrace_queue);
 	shots_init();
 	if (GXPC_SetIdleClock)
@@ -175,7 +186,7 @@ extern "C" void port_vi_init(void)
 	// apploader, DOL load) and to pick the field parity of game frames.
 	if (const char* b = getenv("SMS_VI_FIELD_BASE")) {
 		g_field_base    = (u32)strtoul(b, NULL, 0);
-		g_retrace_count = g_field_base;
+		g_retrace_count = g_field_base * g_retrace_multiplier;
 	}
 	const char* d = getenv("SMS_VI_DETERMINISTIC");
 	g_det         = d && *d && strcmp(d, "0") != 0;
@@ -205,15 +216,16 @@ extern "C" int port_vi_deterministic(void) { return g_det; }
 extern "C" s64 port_vi_virtual_ticks(void)
 {
 	s64 step = (s64)(g_det_time_calls++) * 64;
-	if (step >= kTicksPerField) {
-		step = kTicksPerField - 1;
+	s64 ticks_per_retrace = kTicksPerField / g_retrace_multiplier;
+	if (step >= ticks_per_retrace) {
+		step = ticks_per_retrace - 1;
 		// A thread spinning on the clock (TMarDirector::thpInit waits half a
 		// second in an OSGetTick/OSYieldThread loop) would never let the game
 		// idle: once the field's time is used up, the next retrace is due.
 		if (g_pending.load() == 0)
 			g_pending.fetch_add(1);
 	}
-	return (s64)g_retrace_count * kTicksPerField + step;
+	return (s64)g_retrace_count * kTicksPerField / g_retrace_multiplier + step;
 }
 
 extern "C" void VIInit(void) {}

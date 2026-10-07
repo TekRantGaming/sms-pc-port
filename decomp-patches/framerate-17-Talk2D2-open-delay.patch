@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the talk window waits its 30 fps delay before opening; the 20-count wait and the page-erase fade step on the calc-anim pass, which comes every frame, so every talk window opened after 0.33 s instead of 0.67 s
 --- a/src/GC2D/Talk2D2.cpp
 +++ b/src/GC2D/Talk2D2.cpp
-@@ -1137,6 +1137,21 @@ static inline void Talk2D2CalcAnim(TTalk2D2* p)
+@@ -1137,6 +1137,23 @@ static inline void Talk2D2CalcAnim(TTalk2D2* p)
  	}
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: with frame_rate = 60 the talk window's calc-anim pass comes every
 +// frame, twice as often per second as at 30, while its CUE_MOVE pass keeps
 +// its 1/120 s ticks. The calc pass counts mWaitTimer (20) down before the
@@ -13,10 +15,10 @@ Reason: port: with frame_rate = 60 the talk window waits its 30 fps delay before
 +// opened after 0.33 s instead of 0.67 s. Step it once per 1/30 s: on the
 +// calc pass of every other frame at 60 (the director counts one unk5C per
 +// tick, two a frame).
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool Talk2D2PortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +

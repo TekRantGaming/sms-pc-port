@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the Pinna Park Ferris wheel turns at its 30 fps speed; control() advances it per 1/120 s tick by SMSGetAnmFrameRate() / 4, a per-frame rate that halves at 60 while the tick rate does not, so the per-tick half of its turning halved and the wheel and its gondolas turned at three quarters of their speed
 --- a/src/MoveBG/MapObjPinna.cpp
 +++ b/src/MoveBG/MapObjPinna.cpp
-@@ -77,12 +77,39 @@ static inline void MapObjPinnaAdvance(TMapObjBase* p, f32 rate)
+@@ -77,12 +77,41 @@ static inline void MapObjPinnaAdvance(TMapObjBase* p, f32 rate)
  	MapObjPinnaFrameCtrl(p)->setFrame(rate + MapObjPinnaFrameCtrl(p)->getFrame());
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: TFerrisWheel::control runs on every 1/120 s movement tick (four a
 +// frame at 30, two at 60) and turns the wheel by mAnmRate animation frames
 +// per tick. Its idle rate is SMSGetAnmFrameRate() / 4, i.e. one frame's
@@ -14,11 +16,11 @@ Reason: port: with frame_rate = 60 the Pinna Park Ferris wheel turns at its 30 f
 +// so this half of the turning (the calc pass steps the same BCK once a frame)
 +// halved: the wheel and the gondolas Mario rides turned at 3/4 speed, and the
 +// post-manta slow-down stopped at half the idle rate. Use the 30 fps value.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 FerrisWheelPortTickAnmRate()
 +{
 +	f32 rate = SMSGetAnmFrameRate();
-+	return port_fps60_active ? 2.0f * rate : rate;
++	return port_native_frame_divisor() * rate;
 +}
 +#endif
 +

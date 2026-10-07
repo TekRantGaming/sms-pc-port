@@ -1,18 +1,20 @@
 Reason: port: with frame_rate = 60 map objects driven by move data (TurnLift, yTurnLift, zTurnDisk) turn at their 30 fps speed; TMapObjBase::control steps the move animation per 1/120 s tick at SMSGetAnmFrameRate(), a per-frame rate that halves at 60 while the tick rate does not, so they turned at half speed
 --- a/src/MoveBG/MapObjBase.cpp
 +++ b/src/MoveBG/MapObjBase.cpp
-@@ -361,6 +361,17 @@ static inline MSound* MOBSound()
+@@ -361,6 +361,19 @@ static inline MSound* MOBSound()
  	return sound;
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: see initBckMoveData (MapObjInit.cpp): control() steps this frame
 +// control once per 1/120 s tick, so it wants the 30 fps per-frame rate.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 MapObjBasePortTickAnmRate()
 +{
 +	f32 rate = SMSGetAnmFrameRate();
-+	return port_fps60_active ? 2.0f * rate : rate;
++	return port_native_frame_divisor() * rate;
 +}
 +#endif
 +
@@ -33,22 +35,24 @@ Reason: port: with frame_rate = 60 map objects driven by move data (TurnLift, yT
  	startAnim(0);
 --- a/src/MoveBG/MapObjInit.cpp
 +++ b/src/MoveBG/MapObjInit.cpp
-@@ -11024,6 +11024,21 @@ void TMapObjBase::initObjCollisionData()
+@@ -11024,6 +11024,23 @@ void TMapObjBase::initObjCollisionData()
  		onHitFlag(HIT_FLAG_CANNOT_GET_HIT);
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: a map object with move data (mMapObjData->mMove: the TurnLift,
 +// yTurnLift and zTurnDisk platforms) follows that animation in
 +// TMapObjBase::control, which steps move->unk8 on every 1/120 s movement
 +// tick: four a frame at 30, two at 60. Its rate, SMSGetAnmFrameRate(), is a
 +// per-frame rate; with frame_rate = 60 it halves while the tick rate does
 +// not, so these platforms moved at half speed. Use the 30 fps value.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 MapObjInitPortTickAnmRate()
 +{
 +	f32 rate = SMSGetAnmFrameRate();
-+	return port_fps60_active ? 2.0f * rate : rate;
++	return port_native_frame_divisor() * rate;
 +}
 +#endif
 +

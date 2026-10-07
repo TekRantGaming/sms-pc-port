@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 joint coins (coins carried round by a joint animation) move at their 30 fps speed; control() steps that animation per 1/120 s tick at SMSGetAnmFrameRate() * 0.25, a per-frame rate that halves at 60 while the tick rate does not, so they moved at half to three fifths of their speed
 --- a/src/MoveBG/MapObjEx.cpp
 +++ b/src/MoveBG/MapObjEx.cpp
-@@ -53,14 +53,36 @@ TMapObjNail::TMapObjNail(const char* name)
+@@ -53,14 +53,38 @@ TMapObjNail::TMapObjNail(const char* name)
  {
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: control() runs on every 1/120 s movement tick (four a frame at 30,
 +// two at 60) and steps both joint animations that carry the coins, at
 +// SMSGetAnmFrameRate() * 0.25 frames per tick (set in loadAfter), i.e. one
@@ -16,14 +18,14 @@ Reason: port: with frame_rate = 60 joint coins (coins carried round by a joint a
 +// pass also steps mMActor). Take the step twice at 60: two half-rate steps
 +// are the 30 fps tick's step, and the rate itself, which the calc-anim pass
 +// may also use once per frame, is left alone.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +#endif
 +
  void TJointCoin::control()
  {
  	unk138->frameUpdate();
 +#ifdef TARGET_PC
-+	if (port_fps60_active)
++	for (int portStep = 1; portStep < port_native_frame_divisor(); ++portStep)
 +		unk138->frameUpdate();
 +#endif
  	unk138->calc();
@@ -32,7 +34,7 @@ Reason: port: with frame_rate = 60 joint coins (coins carried round by a joint a
  	getModel()->setBaseTRMtx(mtx);
  	mMActor->frameUpdate();
 +#ifdef TARGET_PC
-+	if (port_fps60_active)
++	for (int portStep = 1; portStep < port_native_frame_divisor(); ++portStep)
 +		mMActor->frameUpdate();
 +#endif
  	mMActor->calc();

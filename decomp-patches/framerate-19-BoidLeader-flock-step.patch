@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 the boid flocks (fish, birds, butterflies, bees) fly at their 30 fps speed; the flock steps its speeds, turns and goal on the calc-anim pass with unscaled amounts, and that pass comes every frame, so every flock flew twice as fast
 --- a/src/Animal/boid.cpp
 +++ b/src/Animal/boid.cpp
-@@ -3,6 +3,27 @@
+@@ -3,6 +3,30 @@
  #include <MarioUtil/RandomUtil.hpp>
  #include <dolphin/mtx.h>
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: TBoidLeader::perform steps the flock (fish, birds, butterflies, the
 +// bee swarm) on the calc-anim pass, which with frame_rate = 60 comes every
 +// frame, twice as often per second as at 30, with unscaled per-call steps:
@@ -14,15 +16,16 @@ Reason: port: with frame_rate = 60 the boid flocks (fish, birds, butterflies, be
 +// 0.9 * mBaseSpeed. So every flock flew twice as fast. At 60 take half of
 +// each step (the square root of the relaxation), which keeps the speeds and
 +// turn rates per second and the motion smooth.
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline f32 BoidPortStep(f32 step)
 +{
-+	return port_fps60_active ? 0.5f * step : step;
++	return port_frame_scale() * step;
 +}
 +
 +static inline f32 BoidPortPitchDecay()
 +{
-+	return port_fps60_active ? 0.9899495f : 0.98f; // sqrt(0.98)
++	return port_active_frame_rate == 120 ? std::sqrtf(0.9899495f)
++	    : port_high_fps_active ? 0.9899495f : 0.98f; // sqrt(0.98)
 +}
 +#endif
 +

@@ -1,11 +1,13 @@
 Reason: port: with frame_rate = 60 Gooper Blooper's wash runs on for its 30 fps time after the spray stops; the run-on count is taken on the calc-anim pass, which comes every frame, so the wash stopped in half the time
 --- a/src/Enemy/bossgesso.cpp
 +++ b/src/Enemy/bossgesso.cpp
-@@ -1623,6 +1623,21 @@ void TBossGesso::performInContainer(u32 cue, JDrama::TGraphics* graphics)
+@@ -1623,6 +1623,23 @@ void TBossGesso::performInContainer(u32 cue, JDrama::TGraphics* graphics)
  	mTentacles[0]->testPerform(cue, graphics);
  }
  
 +#ifdef TARGET_PC
++// At 120 fps the shared timing helpers use quarter-frame steps and
++// four frames per native count; the 60 fps case below uses half steps.
 +// Port: while Gooper Blooper is sprayed, a nerve keeps unk194 at 5, and the
 +// calc-anim pass requests the keep-alive wash emitter and counts unk194 down,
 +// so the wash runs on for five passes after the spray stops. With
@@ -13,10 +15,10 @@ Reason: port: with frame_rate = 60 Gooper Blooper's wash runs on for its 30 fps 
 +// at 30, so the wash stopped in half the time. Keep requesting it on every
 +// pass but count down once per 1/30 s: on the calc pass of every other frame
 +// at 60 (the director counts one unk5C per tick, two a frame).
-+extern "C" int port_fps60_active;
++#include "port_framerate.h"
 +static inline bool BossGessoPortCalcStep()
 +{
-+	return !port_fps60_active || (gpMarDirector->unk5C & 2) != 0;
++	return port_native_frame_step(gpMarDirector->unk5C);
 +}
 +#endif
 +

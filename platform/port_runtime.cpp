@@ -27,6 +27,16 @@
 #endif
 #endif
 
+#ifdef _WIN32
+// Laptops with two GPUs (NVIDIA Optimus, AMD PowerXpress) run a program on the
+// integrated one unless the executable exports these: without them the game
+// renders on the slower GPU even when a dedicated one is there.
+extern "C" {
+__attribute__((dllexport)) unsigned long NvOptimusEnablement = 1;
+__attribute__((dllexport)) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 // Game source named by a bare argument or SMS_DISC_ROOT (a disc image or an
 // extracted files/ folder); SMS_DISC_IMAGE overrides it. With none of them,
 // the image bundled into the executable (tools/bundle_disc.py) is used, else

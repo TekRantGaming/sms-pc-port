@@ -1,0 +1,24 @@
+Reason: port: SMS_HEAT_HAZE=0 (heat_haze = off) turns off the heat-wave shimmer (TShimmer, the screen distortion in sunny areas); platform sets port_heat_haze
+--- a/src/Map/Shimmer.cpp
++++ b/src/Map/Shimmer.cpp
+@@ -21,12 +21,20 @@
+ #include <MSound/MSSetSound.hpp>
+ #include <MSound/MSoundBGM.hpp>
+
++#ifdef TARGET_PC
++extern "C" int port_heat_haze; // SMS_HEAT_HAZE (platform): 0 hides the shimmer
++#endif
++
+ void TShimmer::near() { mPosition.set(0.0f, 0.0f, 9600.0f); }
+
+ void TShimmer::far() { mPosition.set(0.0f, 0.0f, 0.0f); }
+
+ void TShimmer::perform(u32 cue, JDrama::TGraphics* graphics)
+ {
++#ifdef TARGET_PC
++	if (!port_heat_haze)
++		return;
++#endif
+ 	if (gpMarioOriginal->checkFlag(MARIO_FLAG_FLUDD_EMITTING))
+ 		return;
+

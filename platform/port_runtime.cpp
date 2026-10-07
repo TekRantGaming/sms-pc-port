@@ -54,6 +54,9 @@ int port_disc_explicit = 0;
 // SMS_SKIP_MOVIES=1 reports every THP movie as finished at once (patch 0016).
 extern "C" int port_skip_movies;
 int port_skip_movies = 0;
+// SMS_HEAT_HAZE=0 turns off the heat-wave shimmer (patch zzz-heat-haze-01).
+extern "C" int port_heat_haze;
+int port_heat_haze = 1;
 // SMS_WIDESCREEN: the displayed width over the GameCube's 4:3 (1 when off);
 // the game camera (widescreen-01 patch) and sms_gx widen by it.
 extern "C" float port_widescreen;
@@ -465,6 +468,7 @@ static const struct {
 	{ "aspect", "SMS_ASPECT" },                 // keep, stretch or integer
 	{ "present_filter", "SMS_PRESENT_FILTER" }, // bilinear, sharp or nearest
 	{ "skip_movies", "SMS_SKIP_MOVIES" },
+	{ "heat_haze", "SMS_HEAT_HAZE" }, // the heat-wave shimmer, on by default
 	{ "audio", "SMS_AUDIO" },
 	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100
 	{ "overlay", "SMS_OVERLAY" },
@@ -550,6 +554,10 @@ extern "C" void port_init(int argc, char** argv)
 	pick_glx_vendor();
 	if (const char* m = getenv("SMS_SKIP_MOVIES"))
 		port_skip_movies = *m && strcmp(m, "0") != 0;
+	if (const char* h = getenv("SMS_HEAT_HAZE"))
+		port_heat_haze = !*h || strcmp(h, "0") != 0;
+	if (!port_heat_haze)
+		port_log("[port] heat-wave shimmer off\n");
 	port_widescreen = parse_widescreen(getenv("SMS_WIDESCREEN"));
 	if (GXPC_SetWidescreen)
 		GXPC_SetWidescreen(port_widescreen);

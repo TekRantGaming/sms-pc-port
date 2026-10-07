@@ -36,10 +36,20 @@ jobs:
           echo "decomp=$(git rev-parse HEAD:decomp)" >> "$GITHUB_OUTPUT"
   compile-port:
     needs: pin
+    name: compile-port (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        include:
+          - os: ubuntu-24.04
+            target: ubuntu-24.04
+            arches: '64,32'
+          - os: windows-2025
+            target: windows-2025, 64-bit
+            arches: '64'
+          - os: windows-2025
+            target: windows-2025, 32-bit
+            arches: '32'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
@@ -62,6 +72,8 @@ jobs:
             JSON.stringify({ version: "ci", repository: e.REPOSITORY, commit: e.COMMIT, decomp: e.DECOMP }, null, 2))'
           cat src/game-release.json
       - run: node scripts/smoke-build-tools.js
+        env:
+          SMS_SMOKE_ARCHES: ${{ matrix.arches }}
   compile-mac-port:
     needs: pin
     strategy:

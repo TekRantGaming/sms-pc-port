@@ -65,6 +65,204 @@ f32 port_camera_speed_x   = 1.0f;
 f32 port_camera_speed_y   = 1.0f;
 }
 
+#ifdef _WIN32
+// --- Native GameCube adapter (Nintendo / Mayflash in Wii U mode, 057e:0337) ----
+// In that mode the adapter is a WinUSB device (driver installed by Zadig or
+// Dolphin), which SDL cannot read without libusb. A thread polls it through
+// winusb.dll / setupapi.dll, loaded at run time so nothing extra is linked.
+// The first connected port feeds controller 1 alongside the keyboard and SDL pad.
+#include <windows.h>
+namespace gcad {
+typedef void* HDEVINFO_;
+struct SpDevinfoData { DWORD cbSize; GUID ClassGuid; DWORD DevInst; ULONG_PTR Reserved; };
+struct SpDeviceInterfaceData { DWORD cbSize; GUID InterfaceClassGuid; DWORD Flags; ULONG_PTR Reserved; };
+struct SpDeviceInterfaceDetailW { DWORD cbSize; WCHAR DevicePath[1]; };
+
+typedef HDEVINFO_ (WINAPI *PGetClassDevs)(const GUID*, PCWSTR, HWND, DWORD);
+typedef BOOL (WINAPI *PEnumDeviceInfo)(HDEVINFO_, DWORD, SpDevinfoData*);
+typedef BOOL (WINAPI *PGetInstanceId)(HDEVINFO_, SpDevinfoData*, PWSTR, DWORD, PDWORD);
+typedef HKEY (WINAPI *POpenDevRegKey)(HDEVINFO_, SpDevinfoData*, DWORD, DWORD, DWORD, REGSAM);
+typedef BOOL (WINAPI *PEnumInterfaces)(HDEVINFO_, SpDevinfoData*, const GUID*, DWORD, SpDeviceInterfaceData*);
+typedef BOOL (WINAPI *PGetDetail)(HDEVINFO_, SpDeviceInterfaceData*, SpDeviceInterfaceDetailW*, DWORD, PDWORD, SpDevinfoData*);
+typedef BOOL (WINAPI *PDestroyList)(HDEVINFO_);
+typedef BOOL (WINAPI *PWuInit)(HANDLE, void**);
+typedef BOOL (WINAPI *PWuFree)(void*);
+typedef BOOL (WINAPI *PWuWrite)(void*, UCHAR, PUCHAR, ULONG, PULONG, void*);
+typedef BOOL (WINAPI *PWuRead)(void*, UCHAR, PUCHAR, ULONG, PULONG, void*);
+typedef BOOL (WINAPI *PWuPolicy)(void*, UCHAR, ULONG, ULONG, PVOID);
+
+PGetClassDevs pGetClassDevs; PEnumDeviceInfo pEnumDeviceInfo; PGetInstanceId pGetInstanceId;
+POpenDevRegKey pOpenDevRegKey; PEnumInterfaces pEnumInterfaces; PGetDetail pGetDetail; PDestroyList pDestroyList;
+PWuInit pWuInit; PWuFree pWuFree; PWuWrite pWuWrite; PWuRead pWuRead; PWuPolicy pWuPolicy;
+
+// latest report of the first connected port (written by the thread, read by PADRead)
+struct State {
+	volatile LONG present;
+	volatile LONG b1, b2, lx, ly, cx, cy, lt, rt; // raw bytes minus the power-on origin
+};
+State g_state;
+
+bool load()
+{
+	HMODULE sa = LoadLibraryA("setupapi.dll");
+	HMODULE wu = LoadLibraryA("winusb.dll");
+	if (!sa || !wu)
+		return false;
+	pGetClassDevs   = (PGetClassDevs)GetProcAddress(sa, "SetupDiGetClassDevsW");
+	pEnumDeviceInfo = (PEnumDeviceInfo)GetProcAddress(sa, "SetupDiEnumDeviceInfo");
+	pGetInstanceId  = (PGetInstanceId)GetProcAddress(sa, "SetupDiGetDeviceInstanceIdW");
+	pOpenDevRegKey  = (POpenDevRegKey)GetProcAddress(sa, "SetupDiOpenDevRegKey");
+	pEnumInterfaces = (PEnumInterfaces)GetProcAddress(sa, "SetupDiEnumDeviceInterfaces");
+	pGetDetail      = (PGetDetail)GetProcAddress(sa, "SetupDiGetDeviceInterfaceDetailW");
+	pDestroyList    = (PDestroyList)GetProcAddress(sa, "SetupDiDestroyDeviceInfoList");
+	pWuInit         = (PWuInit)GetProcAddress(wu, "WinUsb_Initialize");
+	pWuFree         = (PWuFree)GetProcAddress(wu, "WinUsb_Free");
+	pWuWrite        = (PWuWrite)GetProcAddress(wu, "WinUsb_WritePipe");
+	pWuRead         = (PWuRead)GetProcAddress(wu, "WinUsb_ReadPipe");
+	pWuPolicy       = (PWuPolicy)GetProcAddress(wu, "WinUsb_SetPipePolicy");
+	return pGetClassDevs && pEnumDeviceInfo && pGetInstanceId && pOpenDevRegKey && pEnumInterfaces && pGetDetail &&
+	       pDestroyList && pWuInit && pWuFree && pWuWrite && pWuRead && pWuPolicy;
+}
+
+// USB ids of GameCube adapters that speak the Nintendo protocol: the official
+// adapter (WUP-028) and the clones that copy it, e.g. Mayflash in Wii U mode.
+// SMS_GC_ADAPTER=VVVV:PPPP (hex) adds another. Adapters in HID/PC mode show up
+// as ordinary joysticks and go through SDL instead.
+bool is_adapter(const WCHAR* id)
+{
+	static const struct { unsigned vid, pid; } known[] = { { 0x057E, 0x0337 } };
+	WCHAR want[64];
+	for (size_t i = 0; i < sizeof known / sizeof known[0]; i++) {
+		swprintf(want, 64, L"USB\\VID_%04X&PID_%04X", known[i].vid, known[i].pid);
+		if (_wcsnicmp(id, want, wcslen(want)) == 0)
+			return true;
+	}
+	unsigned v, p;
+	const char* e = getenv("SMS_GC_ADAPTER");
+	if (e && sscanf(e, "%x:%x", &v, &p) == 2) {
+		swprintf(want, 64, L"USB\\VID_%04X&PID_%04X", v & 0xFFFF, p & 0xFFFF);
+		return _wcsnicmp(id, want, wcslen(want)) == 0;
+	}
+	return false;
+}
+
+// Device path of the adapter's WinUSB interface, or an empty string.
+bool find_path(WCHAR* out, size_t cap)
+{
+	HDEVINFO_ set = pGetClassDevs(NULL, L"USB", NULL, 0x2 | 0x4 /* DIGCF_PRESENT | DIGCF_ALLCLASSES */);
+	if (set == (HDEVINFO_)INVALID_HANDLE_VALUE)
+		return false;
+	bool found = false;
+	SpDevinfoData dev;
+	for (DWORD i = 0; !found; i++) {
+		dev.cbSize = sizeof dev;
+		if (!pEnumDeviceInfo(set, i, &dev))
+			break;
+		WCHAR id[200];
+		if (!pGetInstanceId(set, &dev, id, 200, NULL) || !is_adapter(id))
+			continue;
+		HKEY key = pOpenDevRegKey(set, &dev, 1 /* DICS_FLAG_GLOBAL */, 0, 1 /* DIREG_DEV */, KEY_READ);
+		if (key == (HKEY)INVALID_HANDLE_VALUE)
+			continue;
+		WCHAR guids[200] = {};
+		DWORD sz         = sizeof guids - 4;
+		LSTATUS st       = RegQueryValueExW(key, L"DeviceInterfaceGUIDs", NULL, NULL, (LPBYTE)guids, &sz);
+		RegCloseKey(key);
+		if (st != ERROR_SUCCESS || !guids[0])
+			continue;
+		// Device path = \\?\ + instance id with separators turned into '#' + '#' + interface GUID
+		// (the first "{...}" of DeviceInterfaceGUIDs).
+		for (WCHAR* c = id; *c; c++)
+			if (*c == L'\\' || *c == L'/')
+				*c = L'#';
+		swprintf(out, cap, L"\\\\?\\%ls#%ls", id, guids);
+		found = true;
+	}
+	pDestroyList(set);
+	return found;
+}
+
+DWORD WINAPI poll_thread(void*)
+{
+	for (;;) {
+		WCHAR path[512];
+		if (!find_path(path, 512)) {
+			Sleep(1000);
+			continue;
+		}
+		HANDLE h = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		                       OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+		void* wu = NULL;
+		if (h == INVALID_HANDLE_VALUE || !pWuInit(h, &wu)) {
+			if (h != INVALID_HANDLE_VALUE)
+				CloseHandle(h);
+			Sleep(1000);
+			continue;
+		}
+		port_log("[pad] GameCube adapter opened (WinUSB)\n");
+		ULONG timeout = 100;
+		pWuPolicy(wu, 0x81, 0x03 /* PIPE_TRANSFER_TIMEOUT */, sizeof timeout, &timeout);
+		UCHAR init = 0x13;
+		ULONG n    = 0;
+		pWuWrite(wu, 0x02, &init, 1, &n, NULL);
+		int origin[4]  = { 128, 128, 128, 128 };
+		bool haveOrigin = false;
+		int slot        = -1; // the port feeding controller 1
+		for (;;) {
+			UCHAR rep[37];
+			n = 0;
+			if (!pWuRead(wu, 0x81, rep, sizeof rep, &n, NULL)) {
+				if (GetLastError() == ERROR_SEM_TIMEOUT)
+					continue;
+				break; // unplugged
+			}
+			if (n < 37 || rep[0] != 0x21)
+				continue;
+			if (slot < 0 || !(rep[1 + slot * 9] & 0x30)) {
+				slot = -1;
+				for (int p = 0; p < 4; p++)
+					if (rep[1 + p * 9] & 0x30) { // wired or WaveBird
+						slot = p;
+						break;
+					}
+				haveOrigin = false;
+			}
+			if (slot < 0) {
+				InterlockedExchange(&g_state.present, 0);
+				continue;
+			}
+			const UCHAR* c = rep + 1 + slot * 9;
+			if (!haveOrigin) { // sticks as found on connect are centre, as on hardware
+				for (int k = 0; k < 4; k++)
+					origin[k] = c[3 + k];
+				haveOrigin = true;
+			}
+			InterlockedExchange(&g_state.b1, c[1]);
+			InterlockedExchange(&g_state.b2, c[2]);
+			InterlockedExchange(&g_state.lx, (LONG)c[3] - origin[0]);
+			InterlockedExchange(&g_state.ly, (LONG)c[4] - origin[1]);
+			InterlockedExchange(&g_state.cx, (LONG)c[5] - origin[2]);
+			InterlockedExchange(&g_state.cy, (LONG)c[6] - origin[3]);
+			InterlockedExchange(&g_state.lt, c[7]);
+			InterlockedExchange(&g_state.rt, c[8]);
+			InterlockedExchange(&g_state.present, 1);
+		}
+		InterlockedExchange(&g_state.present, 0);
+		pWuFree(wu);
+		CloseHandle(h);
+		port_log("[pad] GameCube adapter disconnected\n");
+	}
+}
+
+void start()
+{
+	if (getenv("SMS_NO_GC_ADAPTER") || !load())
+		return;
+	CreateThread(NULL, 0, poll_thread, NULL, 0, NULL);
+}
+} // namespace gcad
+#endif
+
 namespace {
 
 enum Control {
@@ -388,6 +586,9 @@ void init()
 		parse_bindings(text, path);
 		port_log("[pad] loaded key bindings from %s\n", path);
 	}
+#ifdef _WIN32
+	gcad::start();
+#endif
 	if (sms_gx_set_event_callback)
 		sms_gx_set_event_callback(on_event);
 	else
@@ -540,6 +741,36 @@ extern "C" u32 PADRead(PADStatus* status)
 		b |= PAD_TRIGGER_L;
 	if (tr >= 250)
 		b |= PAD_TRIGGER_R;
+#ifdef _WIN32
+	// Native GameCube adapter report (see gcad above): buttons, sticks, triggers.
+	int gcx = 0, gcy = 0, gccx = 0, gccy = 0;
+	if (gcad::g_state.present) {
+		int b1 = gcad::g_state.b1, b2 = gcad::g_state.b2;
+		if (b1 & 0x01) b |= PAD_BUTTON_A;
+		if (b1 & 0x02) b |= PAD_BUTTON_B;
+		if (b1 & 0x04) b |= PAD_BUTTON_X;
+		if (b1 & 0x08) b |= PAD_BUTTON_Y;
+		if (b1 & 0x10) b |= PAD_BUTTON_LEFT;
+		if (b1 & 0x20) b |= PAD_BUTTON_RIGHT;
+		if (b1 & 0x40) b |= PAD_BUTTON_DOWN;
+		if (b1 & 0x80) b |= PAD_BUTTON_UP;
+		if (b2 & 0x01) b |= PAD_BUTTON_START;
+		if (b2 & 0x02) b |= PAD_TRIGGER_Z;
+		if (b2 & 0x04) b |= PAD_TRIGGER_R;
+		if (b2 & 0x08) b |= PAD_TRIGGER_L;
+		int al = gcad::g_state.lt, ar = gcad::g_state.rt; // origin-corrected below by a fixed rest margin
+		al = al > 30 ? (al - 30) * 255 / 225 : 0;
+		ar = ar > 30 ? (ar - 30) * 255 / 225 : 0;
+		if (al > tl) tl = al;
+		if (ar > tr) tr = ar;
+		if (b2 & 0x08) tl = 255;
+		if (b2 & 0x04) tr = 255;
+		gcx  = gcad::g_state.lx;
+		gcy  = gcad::g_state.ly;
+		gccx = gcad::g_state.cx;
+		gccy = gcad::g_state.cy;
+	}
+#endif
 	s.triggerLeft  = (u8)tl;
 	s.triggerRight = (u8)tr;
 	s.analogA      = (b & PAD_BUTTON_A) ? 255 : 0;
@@ -556,12 +787,18 @@ extern "C" u32 PADRead(PADStatus* status)
 		x = x * 7 / 10;
 		y = y * 7 / 10;
 	}
-	s.stickX    = (s8)(x ? x : axis8(g_axis[0], 100));
-	s.stickY    = (s8)(y ? y : axis8(-g_axis[1], 100));
-	int cx      = held(C_CRIGHT) * 100 - held(C_CLEFT) * 100;
-	int cy      = held(C_CUP) * 100 - held(C_CDOWN) * 100;
-	cx          = cx ? cx : axis8(g_axis[2], 100);
-	cy          = cy ? cy : axis8(-g_axis[3], 100);
+	int sx = axis8(g_axis[0], 100), sy = axis8(-g_axis[1], 100);
+	int cx = held(C_CRIGHT) * 100 - held(C_CLEFT) * 100;
+	int cy = held(C_CUP) * 100 - held(C_CDOWN) * 100;
+	int pcx = axis8(g_axis[2], 100), pcy = axis8(-g_axis[3], 100);
+#ifdef _WIN32
+	if (gcx || gcy) { sx = gcx; sy = gcy; }
+	if (gccx || gccy) { pcx = gccx; pcy = gccy; }
+#endif
+	s.stickX    = (s8)(x ? x : sx);
+	s.stickY    = (s8)(y ? y : sy);
+	cx          = cx ? cx : pcx;
+	cy          = cy ? cy : pcy;
 	s.substickX = (s8)(g_invert_cx ? -cx : cx);
 	s.substickY = (s8)(g_invert_cy ? -cy : cy);
 	return PAD_CHAN0_BIT;

@@ -133,6 +133,12 @@ bool openWindow(int scale) {
 #endif
     s_windowFailure = WF_NONE;
     s_videoDriver[0] = 0;
+    // Native GameCube adapters (Nintendo / Mayflash in Wii U mode, 057e:0337):
+    // SDL's HIDAPI driver turns each plugged port into a mapped game controller.
+    // Set before SDL_Init; an SDL_JOYSTICK_HIDAPI_GAMECUBE environment value wins.
+    SDL_SetHint("SDL_JOYSTICK_HIDAPI", "1");
+    SDL_SetHint("SDL_JOYSTICK_HIDAPI_GAMECUBE", "1");
+    SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
         logmsg("SDL_Init failed: %s", SDL_GetError());
         snprintf(s_windowError, sizeof s_windowError, "%s", SDL_GetError());

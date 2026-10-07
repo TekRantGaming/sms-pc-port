@@ -343,6 +343,18 @@ BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDAT
      r'extern "C" void sms_mod_code_write(uint32_t, uint32_t, int);\n'
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
+    # shadowMarioInitHandler stands in for TEMario::loadAfter's
+    # SMS_isMultiPlayerMap call and loads Shadow Mario with PowerPC assembly
+    # from the TEMario in r31 (its mEnemyMario, retail offset 0x150); the
+    # shim's SMS_ASM_BLOCK is empty, so the player was never set and every
+    # stage with Shadow Mario crashed loading (Red Lily). The hook passes the
+    # TEMario, and port_shims.cpp reads the member.
+    ("src/player.cpp", r'SMS_ASM_BLOCK\("lwz %0, 0x150 \(31\)" : "=r"\(player\)\);',
+     'void *emario;\n    SMS_FROM_GPR(31, emario);\n    player = (TMario *)sms_mod_emario_mario(emario);',
+     "Shadow Mario's player comes from the TEMario"),
+    ("src/player.cpp", r"\n(static bool shadowMarioInitHandler\(\) \{)",
+     '\nextern "C" void *sms_mod_emario_mario(void *emario);\n\n\\1',
+     "Shadow Mario's player comes from the TEMario"),
     # Console::log and its kin pass their va_list to OSReport as a single
     # argument (as on the console, where the values are garbage too); the
     # port's sms_mod_vreport (sdk_extras.cpp) formats with it.

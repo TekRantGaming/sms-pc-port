@@ -469,9 +469,23 @@ elseif(SMS_BUNDLE_DISC)
               ${CMAKE_CURRENT_SOURCE_DIR}/tools/bundle_disc.py "${SMS_BUNDLE_DISC}"
       COMMENT "Extracting the sms.exe icon"
       VERBATIM)
+    set(_res ${CMAKE_BINARY_DIR}/sms_icon.res.obj)
     file(CONFIGURE OUTPUT ${_rc} CONTENT "1 ICON \"${_ico}\"\n")
-    set_source_files_properties(${_rc} PROPERTIES OBJECT_DEPENDS ${_ico})
-    target_sources(sms PRIVATE ${_rc})
+    # Not a source of sms: windres runs gcc to preprocess the .rc, and cannot
+    # when a path has a space in it (C:\Users\First Last\...). Through popen,
+    # cmd.exe drops the quotes around gcc's path; with --use-temp-file windres
+    # runs gcc itself but splits quoted -I"..." options at their spaces, and
+    # misreads a command that ends in a quoted .rc path. So windres runs here,
+    # with --use-temp-file, without sms's include directories, and from the
+    # build directory so the .rc path has no spaces.
+    add_custom_command(OUTPUT ${_res}
+      COMMAND ${CMAKE_RC_COMPILER} --use-temp-file -O coff -i sms_icon.rc -o ${_res}
+      DEPENDS ${_rc} ${_ico}
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+      COMMENT "Compiling the sms.exe icon resource"
+      VERBATIM)
+    set_source_files_properties(${_res} PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    target_sources(sms PRIVATE ${_res})
   endif()
   set(_standalone ${CMAKE_BINARY_DIR}/sms-standalone${CMAKE_EXECUTABLE_SUFFIX})
   add_custom_command(OUTPUT ${_standalone}

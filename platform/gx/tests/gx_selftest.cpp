@@ -14,6 +14,7 @@
 #include <dolphin/mtx.h>
 
 #include "sms_gx/gx_pc.h"
+#include "gl_funcs.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -34,6 +35,20 @@ void OSPanic(const char* file, int line, const char* msg, ...) {
 void DCFlushRange(void* p, u32 n) { GXPC_InvalidateRange(p, uint32_t(n)); }
 
 static int s_fail = 0, s_pass = 0;
+
+static int s_overlayAllocations = 0, s_overlayUploads = 0;
+static PFNGLTEXIMAGE2DPROC s_realImage;
+static PFNGLTEXSUBIMAGE2DPROC s_realSubImage;
+static void APIENTRY countOverlayImage(GLenum target, GLint level, GLint format, GLsizei w, GLsizei h,
+                                      GLint border, GLenum pixelFormat, GLenum type, const void* pixels) {
+    s_overlayAllocations++;
+    s_realImage(target, level, format, w, h, border, pixelFormat, type, pixels);
+}
+static void APIENTRY countOverlaySubImage(GLenum target, GLint level, GLint x, GLint y, GLsizei w, GLsizei h,
+                                         GLenum format, GLenum type, const void* pixels) {
+    s_overlayUploads++;
+    s_realSubImage(target, level, x, y, w, h, format, type, pixels);
+}
 
 static bool near(int a, int b, int tol) { return a >= b - tol && a <= b + tol; }
 
@@ -517,6 +532,58 @@ int main(int argc, char** argv) {
         GXPeekZ(440, 140, &depth);
         expect("copy-clear enabled depth", depth == 0xFFFFFF);
         GXSetColorUpdate(GX_TRUE);
+    }
+
+    // The performance overlay must reuse its texture between text updates,
+    // update matching storage in place, and leave game rendering intact.
+    {
+        using namespace gx::gl;
+        auto image = gx_glTexImage2D;
+        auto subImage = gx_glTexSubImage2D;
+        int& allocations = s_overlayAllocations;
+        int& uploads = s_overlayUploads;
+        s_realImage = image;
+        s_realSubImage = subImage;
+        gx_glTexImage2D = countOverlayImage;
+        gx_glTexSubImage2D = countOverlaySubImage;
+        while (glGetError() != GL_NO_ERROR) {}  // isolate overlay errors
+        const u8 panel[16] = {255, 255, 255, 255};
+        GXPC_DrawOverlay(panel, 2, 2, 0, 0, 1, 640, 480);
+        expect("overlay allocates initial texture", allocations == 1 && uploads == 0);
+        for (int i = 0; i < 10; i++) GXPC_DrawOverlay(nullptr, 2, 2, 0, 0, 1, 640, 480);
+        expect("cached overlay draws without uploads", allocations == 1 && uploads == 0);
+        GXPC_DrawOverlay(panel, 2, 2, 0, 0, 1, 640, 480);
+        expect("overlay refresh reuses texture storage", allocations == 1 && uploads == 1);
+        GXPC_DrawOverlay(panel, 1, 2, 0, 0, 1, 640, 480);
+        expect("overlay resize reallocates storage", allocations == 2 && uploads == 1);
+        if (!GXPC_OverlayVisible()) GXPC_OverlayToggle();
+        GXPC_OverlayDraw(640, 480);
+        int refreshed = allocations + uploads;
+        GXPC_OverlayDraw(640, 480);
+        expect("performance panel caches its bitmap", allocations + uploads == refreshed);
+        GXPC_CycleSpeed();
+        GXPC_OverlayDraw(640, 480);
+        expect("speed change refreshes overlay immediately", allocations + uploads == ++refreshed);
+        GXPC_OverlayDraw(800, 600);
+        expect("window resize refreshes overlay immediately", allocations + uploads == ++refreshed);
+        GXPC_OverlayToggle();
+        GXPC_OverlayDraw(800, 600);
+        expect("hidden overlay does not upload", allocations + uploads == refreshed);
+        GXPC_OverlayToggle();
+        GXPC_OverlayDraw(800, 600);
+        expect("reopening overlay refreshes immediately", allocations + uploads == ++refreshed);
+        GXPC_OverlayToggle();
+        for (int i = 0; i < 3; i++) GXPC_CycleSpeed();  // restore x1
+        // Surfaceless EGL has no default framebuffer for the window panel.
+        GLenum error = glGetError();
+        expect("overlay GL status", error == GL_NO_ERROR ||
+               (GXPC_IsHeadless() && error == GL_INVALID_FRAMEBUFFER_OPERATION));
+        gx_glTexImage2D = image;
+        gx_glTexSubImage2D = subImage;
+        colorSetup();
+        colorQuad(10, 10, 60, 60, 255, 0, 0, 255);
+        expectPixel("game draw after cached overlay", 30, 30, 255, 0, 0);
+        expect("overlay leaves no GL errors", glGetError() == GL_NO_ERROR);
     }
 
     GXPCStats st;

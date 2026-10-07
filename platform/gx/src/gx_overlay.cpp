@@ -19,6 +19,7 @@
 namespace {
 
 bool s_visible = false;
+bool s_panelDirty = true;
 const int kSpeeds[] = {1, 2, 4, 10};
 std::atomic<int> s_speedIndex(0);
 
@@ -112,10 +113,18 @@ void drawText(std::vector<uint8_t>& px, int w, int h, int x, int y, const char* 
 
 }  // namespace
 
+namespace gx {
+void invalidateOverlay() {
+    s_panelDirty = true;
+    s_renderer.clear();
+}
+}
+
 extern "C" {
 
 void GXPC_OverlayToggle(void) {
     s_visible = !s_visible;
+    s_panelDirty = true;
     GXPC_SetDetailedTimers(s_visible);
 }
 int GXPC_OverlayVisible(void) { return s_visible; }
@@ -140,54 +149,73 @@ void GXPC_OverlayDraw(int winW, int winH) {
         if (s_renderer.size() > 44) s_renderer.resize(44);
         if (soft) s_renderer += "\nSOFTWARE RENDERING (no GPU driver): see README";
     }
-    GXPCStats st;
-    GXPC_GetLastFrameStats(&st);
-    double up = s_clock.last - s_clock.start;
+    // Keep drawing the cached panel every frame, but only rasterise and upload
+    // at 4 Hz. Rebuilding it at the game's frame rate can miss a retrace and
+    // makes the performance display itself distort the measurement.
+    static double lastUpdate = 0;
+    static int lastWinW = 0, lastWinH = 0, lastSpeed = 0;
+    static int w = 0, h = 0;
+    bool update = s_panelDirty || s_clock.last - lastUpdate >= 0.25 ||
+                  winW != lastWinW || winH != lastWinH || GXPC_GetSpeed() != lastSpeed;
+    const uint8_t* upload = nullptr;
+    static std::vector<uint8_t> px;
+    if (update) {
+        GXPCStats st;
+        GXPC_GetLastFrameStats(&st);
+        double up = s_clock.last - s_clock.start;
 
-    char text[2048];
-    snprintf(text, sizeof text,
-             "FPS %.1f   frame %.1f ms avg, %.1f ms worst   speed x%d\n"
-             "ms/frame: game %.1f  GX %.1f  present %.1f  swap %.1f  idle %.1f\n"
-             "GX: vertices %.1f  batches %.1f  textures %.1f  copies %.1f  peeks %.1f\n"
-             "    waiting for the GPU %.1f\n"
-             "draws %u   vertices %u   EFB copies %u\n"
-             "texture uploads %u   shader compiles %u\n"
-             "frames %u   up %d:%02d\n"
-             "window %dx%d\n"
-             "GL %s\n"
-             "\n"
-             "KEYS (defaults, see bindings.txt)\n"
-             "Stick: arrows or WASD (hold LCtrl for half)\n"
-             "C-stick: I J K L\n"
-             "A: Space or X     B: Shift or C\n"
-             "X: V     Y: F     Z: Z\n"
-             "L: Q     R: E     Start: Enter\n"
-             "D-pad: 1 2 3 4\n"
-             "`: this overlay     F7: speed x1/x2/x4/x10\n"
-             "Esc: quit",
-             s_clock.fps, s_clock.avgMs, s_clock.maxMs, GXPC_GetSpeed(), s_clock.gameMs, s_clock.per.gx,
-             s_clock.per.present, s_clock.per.swap, s_clock.per.idle, s_clock.per.vertices, s_clock.per.draws,
-             s_clock.per.textures, s_clock.per.copies, s_clock.per.peeks, s_clock.per.gpuWait, st.draws, st.vertices, st.efbCopies,
-             st.textureUploads, st.shaderCompiles, s_clock.total, int(up) / 60, int(up) % 60, winW, winH,
-             s_renderer.c_str());
+        char text[2048];
+        snprintf(text, sizeof text,
+                 "FPS %.1f   frame %.1f ms avg, %.1f ms worst   speed x%d\n"
+                 "ms/frame: game %.1f  GX %.1f  present %.1f  swap %.1f  idle %.1f\n"
+                 "GX: vertices %.1f  batches %.1f  textures %.1f  copies %.1f  peeks %.1f\n"
+                 "    waiting for the GPU %.1f\n"
+                 "draws %u   vertices %u   EFB copies %u\n"
+                 "texture uploads %u   shader compiles %u\n"
+                 "frames %u   up %d:%02d\n"
+                 "window %dx%d\n"
+                 "GL %s\n"
+                 "\n"
+                 "KEYS (defaults, see bindings.txt)\n"
+                 "Stick: arrows or WASD (hold LCtrl for half)\n"
+                 "C-stick: I J K L\n"
+                 "A: Space or X     B: Shift or C\n"
+                 "X: V     Y: F     Z: Z\n"
+                 "L: Q     R: E     Start: Enter\n"
+                 "D-pad: 1 2 3 4\n"
+                 "`: this overlay     F7: speed x1/x2/x4/x10\n"
+                 "Esc: quit",
+                 s_clock.fps, s_clock.avgMs, s_clock.maxMs, GXPC_GetSpeed(), s_clock.gameMs, s_clock.per.gx,
+                 s_clock.per.present, s_clock.per.swap, s_clock.per.idle, s_clock.per.vertices, s_clock.per.draws,
+                 s_clock.per.textures, s_clock.per.copies, s_clock.per.peeks, s_clock.per.gpuWait, st.draws, st.vertices, st.efbCopies,
+                 st.textureUploads, st.shaderCompiles, s_clock.total, int(up) / 60, int(up) % 60, winW, winH,
+                 s_renderer.c_str());
 
-    const int pad = 4;
-    int w = stb_easy_font_width(text) + pad * 2;
-    int h = stb_easy_font_height(text) + pad * 2;
-    std::vector<uint8_t> px(size_t(w) * h * 4);
-    const uint8_t bg[4] = {16, 16, 24, 128};
-    const uint8_t fg[4] = {255, 255, 255, 255};
-    const uint8_t hi[4] = {255, 220, 64, 255};
-    fillRect(px, w, h, 0, 0, w, h, bg);
-    // first line (the frame rate) highlighted, the rest plain
-    const char* nl = strchr(text, '\n');
-    std::string first(text, nl ? size_t(nl - text) : strlen(text));
-    drawText(px, w, h, pad, pad, first.c_str(), hi);
-    if (nl) drawText(px, w, h, pad, pad + 12, nl + 1, fg);
+        const int pad = 4;
+        w = stb_easy_font_width(text) + pad * 2;
+        h = stb_easy_font_height(text) + pad * 2;
+        px.resize(size_t(w) * h * 4);
+        const uint8_t bg[4] = {16, 16, 24, 128};
+        const uint8_t fg[4] = {255, 255, 255, 255};
+        const uint8_t hi[4] = {255, 220, 64, 255};
+        fillRect(px, w, h, 0, 0, w, h, bg);
+        // first line (the frame rate) highlighted, the rest plain
+        const char* nl = strchr(text, '\n');
+        std::string first(text, nl ? size_t(nl - text) : strlen(text));
+        drawText(px, w, h, pad, pad, first.c_str(), hi);
+        if (nl) drawText(px, w, h, pad, pad + 12, nl + 1, fg);
+
+        upload = px.data();
+        lastUpdate = s_clock.last;
+        lastWinW = winW;
+        lastWinH = winH;
+        lastSpeed = GXPC_GetSpeed();
+        s_panelDirty = false;
+    }
 
     int scale = winH >= 720 ? 3 : 2;
     while (scale > 1 && (w * scale > winW || h * scale > winH)) scale--;
-    GXPC_DrawOverlay(px.data(), w, h, 8, 8, scale, winW, winH);
+    GXPC_DrawOverlay(upload, w, h, 8, 8, scale, winW, winH);
 }
 
 }  // extern "C"

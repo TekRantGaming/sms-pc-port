@@ -83,6 +83,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | Option | Effect |
 | --- | --- |
 | `SMS_SKIP_MOVIES=1` | skip the intro and opening movies |
+| `SMS_HEAT_HAZE=0` | turn off the heat-wave shimmer that distorts the picture in sunny areas |
 | `SMS_AUDIO=0` | no sound |
 | `SMS_VOLUME=n` | master volume, 0 to 100 (default 100) |
 | `SMS_SAVE_DIR=dir` | memory card folder |

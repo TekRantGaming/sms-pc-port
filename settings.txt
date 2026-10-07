@@ -60,6 +60,8 @@ frame_rate = 60
 # present_filter = bilinear
 
 # skip_movies = off
+# The heat-wave shimmer that distorts the picture in sunny areas.
+# heat_haze = on
 # audio = on
 # Master volume, 0 (silent) to 100 (full).
 # volume = 100

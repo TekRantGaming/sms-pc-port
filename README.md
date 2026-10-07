@@ -83,6 +83,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | Option | Effect |
 | --- | --- |
 | `SMS_SKIP_MOVIES=1` | skip the intro and opening movies |
+| `SMS_HEAT_HAZE=0` | turn off the heat-wave shimmer that distorts the picture in sunny areas |
 | `SMS_AUDIO=0` | no sound |
 | `SMS_VOLUME=n` | master volume, 0 to 100 (default 100) |
 | `SMS_SAVE_DIR=dir` | memory card folder |
@@ -152,6 +153,8 @@ GameCube adapters work too. On Windows, an adapter in Wii U mode (Nintendo WUP-0
 | Quit | Esc |
 
 To change them, edit [`bindings.txt`](bindings.txt) (`CONTROL = KEY KEY ...`, one control per line; a line replaces that control's defaults), or point `SMS_BINDINGS` at another file.
+
+Controller buttons can be remapped the same way, by name: `PAD_A`, `PAD_B`, `PAD_X`, `PAD_Y`, `PAD_LB`, `PAD_RB`, `PAD_LT`, `PAD_RT`, `PAD_START`, `PAD_BACK`, `PAD_DPUP` … (the full list is in `bindings.txt`). A line's keys and buttons each replace only their own kind, so `A = PAD_Y` moves A to the controller's Y button and keeps Space and X; `Z = PAD_RT` puts Z on the right trigger. L and R stay analog when bound to a trigger.
 
 `SMS_CAMERA_INVERT_X=1` and `SMS_CAMERA_INVERT_Y=1` invert the C-stick's camera control left/right and up/down, for keys and controllers alike (recorded `.dtm` movies are played as recorded).
 The launcher sets them from **Settings → Gameplay → Invert camera X / Y** (X on, Y off by default), effective on the next game launch.

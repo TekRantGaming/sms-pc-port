@@ -6,6 +6,15 @@
 # Keys: letters, digits, ENTER ESC SPACE TAB BACKSPACE UP DOWN LEFT RIGHT
 #       LSHIFT RSHIFT LCTRL RCTRL LALT RALT KP_0..KP_9 KP_ENTER F1..F4
 #       COMMA PERIOD SLASH SEMICOLON ... or #<SDL scancode>
+# Controller buttons (named for an Xbox pad; SDL maps others to the same
+# places): PAD_A PAD_B PAD_X PAD_Y PAD_LB PAD_RB PAD_LT PAD_RT PAD_START
+#       PAD_BACK PAD_GUIDE PAD_LSTICK PAD_RSTICK PAD_DPUP PAD_DPDOWN
+#       PAD_DPLEFT PAD_DPRIGHT PAD_MISC PAD_PADDLE1..4 PAD_TOUCHPAD
+# A line may list keys, controller buttons or both: its keys replace the
+# control's keys and its buttons replace its controller buttons, so
+# "A = PAD_Y" keeps Space and X. The controller defaults: A B X Y = PAD_A
+# PAD_B PAD_X PAD_Y, Z = PAD_RB, L R = PAD_LT PAD_RT (analog), START =
+# PAD_START, DPAD_* = PAD_DP*. The sticks always move the sticks.
 # Loaded from ./bindings.txt (run.sh starts the game in this folder; or
 # ../../bindings.txt when started from build/<os>-<arch>/),
 # or from the path in SMS_BINDINGS. These are the built-in defaults:

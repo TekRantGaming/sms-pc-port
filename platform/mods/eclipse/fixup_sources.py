@@ -259,6 +259,22 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DE
      "aggregates go by address through (...)"),
     RAWADDR_FIX,
 
+    # Eclipse's ModuleInfo (main.cpp) links its settings group to the module,
+    # but the group is defined in settings.cpp, whose constructor ran after
+    # main.cpp's here and cleared the link. The group then took the game's
+    # name, "Super Mario Sunshine", in the settings menu and as the name of its
+    # card file, which is Eclipse's game save: the game found a one-sector file
+    # there and could not save. Made on first use, in initModule, the
+    # ModuleInfo comes after the group, and the file is super_mario_eclipse
+    # (platform/card/card.cpp moves the old one).
+    ("src/main.cpp", r"static BetterSMS::ModuleInfo sModuleInfo\((\"Super Mario Eclipse\", \d+, \d+, &gSettingsGroup)\);",
+     r"static BetterSMS::ModuleInfo &moduleInfo() {\n    static BetterSMS::ModuleInfo info(\1);\n    return info;\n}",
+     "Eclipse's settings group knows its module"),
+    ("src/main.cpp", r"(static void initModule\(\) \{\n)", r"\1    moduleInfo();\n",
+     "Eclipse's settings group knows its module"),
+    ("src/main.cpp", r"BetterSMS::registerModule\(sModuleInfo\);", r"BetterSMS::registerModule(moduleInfo());",
+     "Eclipse's settings group knows its module"),
+
     # SunshineHeaderInterface named obj_hit_info's third field (May 2026);
     # Eclipse still initialises it by its old placeholder name.
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",

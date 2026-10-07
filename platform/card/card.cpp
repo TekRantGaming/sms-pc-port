@@ -8,7 +8,8 @@
 //
 // As on hardware, a file belongs to the game that made it: its CARDStat keeps
 // the game code and maker of the running disc (DVDGetCurrentDiskID), and a
-// game only sees its own files. Super Mario Eclipse (GMSE04) therefore keeps
+// game only sees its own files, by name or by number (CARD_RESULT_NOPERM, as
+// the SDK's __CARDAccess). Super Mario Eclipse (GMSE04) therefore keeps
 // saves apart from Super Mario Sunshine's (GMSE01) on the same card. Files of
 // GMSE01 keep their plain names on disk; another game's are stored with its ID
 // first (GMSE04_<name>). index.txt lists those on-disk names.
@@ -168,6 +169,8 @@ void save(int no)
 	write_file(b + ".stat", &f.stat, sizeof f.stat);
 }
 
+void migrate_eclipse_settings();
+
 void load()
 {
 	if (g_loaded)
@@ -212,6 +215,7 @@ void load()
 			write_file(base + ".dat", f.data.data(), f.data.size());
 		}
 	}
+	migrate_eclipse_settings();
 }
 
 void save_index()
@@ -222,6 +226,38 @@ void save_index()
 	while (t.size() > 1 && t[t.size() - 1] == '\n' && t[t.size() - 2] == '\n')
 		t.erase(t.size() - 1);
 	write_file(card_dir() + "/index.txt", t.data(), t.size());
+}
+
+// Super Mario Eclipse's settings, which BetterSunshineEngine names after the
+// module, were saved by earlier builds as "super_mario_sunshine" (its settings
+// group had lost its module), the name of Eclipse's game save: the game then
+// found a one-sector file there and could not save ("The device in Slot A is
+// not supported"). The game's save is never one sector (0xE000 bytes), so such
+// a file is the settings; it moves to "super_mario_eclipse", where they are now.
+void migrate_eclipse_settings()
+{
+	const char* from = "super_mario_sunshine";
+	const char* to   = "super_mario_eclipse";
+	for (int i = 0; i < kMaxFiles; i++) {
+		CardFile& f = g_files[i];
+		if (!f.used || f.name != from || memcmp(f.stat.gameName, "GMSE", 4) || memcmp(f.stat.company, "04", 2)
+		    || f.stat.length != (u32)kSectorSize)
+			continue;
+		for (int j = 0; j < kMaxFiles; j++)
+			if (g_files[j].used && g_files[j].name == to && !memcmp(g_files[j].stat.gameName, "GMSE", 4)
+			    && !memcmp(g_files[j].stat.company, "04", 2))
+				return;
+		const std::string old_base = card_dir() + "/" + disk_name(f);
+		f.name = to;
+		memset(f.stat.fileName, 0, sizeof f.stat.fileName);
+		strncpy(f.stat.fileName, to, CARD_FILENAME_MAX);
+		save(i);
+		save_index();
+		remove((old_base + ".dat").c_str());
+		remove((old_base + ".stat").c_str());
+		port_log("[card] moved Super Mario Eclipse's settings from %s to %s, so its game can save\n", from, to);
+		return;
+	}
 }
 
 // The running game's file of that name (another game's files are not its own).
@@ -334,6 +370,8 @@ extern "C" s32 CARDFastOpen(s32 chan, s32 fileNo, CARDFileInfo* fi)
 		return CARD_RESULT_NOCARD;
 	if (fileNo < 0 || fileNo >= kMaxFiles || !g_files[fileNo].used)
 		return CARD_RESULT_NOFILE;
+	if (!is_current_game(g_files[fileNo].stat))
+		return CARD_RESULT_NOPERM;
 	fi->chan   = chan;
 	fi->fileNo = fileNo;
 	fi->offset = 0;
@@ -409,6 +447,8 @@ extern "C" s32 CARDGetStatus(s32 chan, s32 fileNo, CARDStat* stat)
 		return CARD_RESULT_NOCARD;
 	if (fileNo < 0 || fileNo >= kMaxFiles || !g_files[fileNo].used)
 		return CARD_RESULT_NOFILE;
+	if (!is_current_game(g_files[fileNo].stat))
+		return CARD_RESULT_NOPERM;
 	*stat = g_files[fileNo].stat;
 	return CARD_RESULT_READY;
 }
@@ -418,6 +458,8 @@ extern "C" long CARDSetStatus(long chan, long fileNo, CARDStat* stat)
 		return CARD_RESULT_NOCARD;
 	if (fileNo < 0 || fileNo >= kMaxFiles || !g_files[fileNo].used)
 		return CARD_RESULT_NOFILE;
+	if (!is_current_game(g_files[fileNo].stat))
+		return CARD_RESULT_NOPERM;
 	CardFile& f = g_files[fileNo];
 	// Only the icon/banner/comment fields are settable, as on hardware.
 	f.stat.bannerFormat = stat->bannerFormat;
@@ -434,6 +476,8 @@ extern "C" long CARDFastDelete(long chan, long fileNo)
 		return CARD_RESULT_NOCARD;
 	if (fileNo < 0 || fileNo >= kMaxFiles || !g_files[fileNo].used)
 		return CARD_RESULT_NOFILE;
+	if (!is_current_game(g_files[fileNo].stat))
+		return CARD_RESULT_NOPERM;
 	std::string b = card_dir() + "/" + disk_name(g_files[fileNo]);
 	remove((b + ".dat").c_str());
 	remove((b + ".stat").c_str());

@@ -29,15 +29,52 @@ frame_rate = 60
 
 # Internal resolution: 1 is the GameCube's 640x528, 2 twice that, and so on.
 # resolution = 1
+# Anisotropic filtering: keeps textures sharp at glancing angles. 0 (off), 2,
+# 4, 8 or 16, up to what the GPU supports.
+# anisotropic = 0
 # Window size, in multiples of 640x480.
 # window_scale = 1
-# Wait for the display's refresh when presenting.
+# Wait for the display's refresh when presenting: off, on, or adaptive (waits
+# too, but shows a late frame at once instead of holding it a whole refresh).
 # vsync = off
+# Fullscreen: off, on (borderless at the desktop's resolution) or exclusive
+# (the display switches to fullscreen_mode, WxH@Hz, else the desktop's mode).
+# F11 or Alt+Enter switches between the window and fullscreen while playing.
+# fullscreen = off
+# fullscreen_mode = 1920x1080@144
+# Monitor to open on (0 is the primary one); by default, the one under the mouse.
+# display = 0
+
+# Anti-aliasing: MSAA smooths the edges of 3D shapes (0, 2, 4 or 8 samples);
+# FXAA also smooths the rest, at almost no cost.
+# msaa = 0
+# fxaa = off
+# Sharpening of the final picture, 0 to 100, and brightness (1.0 unchanged,
+# above 1 brighter).
+# sharpen = 0
+# brightness = 1.0
+# How the picture fits the window: keep (its shape, letterboxed), stretch
+# (fill the window) or integer (whole multiples of the GameCube's size), and
+# how it is scaled: bilinear (smooth), sharp (crisp pixels) or nearest.
+# aspect = keep
+# present_filter = bilinear
 
 # skip_movies = off
 # audio = on
+# Master volume, 0 (silent) to 100 (full).
+# volume = 100
 # Open the debug overlay (frame rate, where the time goes) at start.
 # overlay = off
+
+# Camera: invert either axis (C-stick, camera keys and mouse), a free camera
+# that stays where you point it (L recentres it), rotation speed in percent,
+# and mouse look (F10 releases the mouse) with its sensitivity in percent.
+# camera_invert_x = off
+# camera_invert_y = off
+# free_camera = off
+# camera_speed = 100
+# mouse_camera = off
+# mouse_sensitivity = 100
 
 # save_dir = /path/to/memory/card/folder
 # disc_image = /path/to/GMSE01.iso

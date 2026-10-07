@@ -3,6 +3,7 @@
 #include "gl_funcs.h"
 #include "gx_glcache.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <algorithm>
 #include <unordered_map>
@@ -396,6 +397,24 @@ uint32_t encodeTexture(const uint8_t* rgba, uint32_t fmt, uint32_t w, uint32_t h
 // sampler bind instead of seven glTexParameter calls.
 static std::unordered_map<uint64_t, GLuint> s_samplers;
 
+// SMS_ANISO=n: anisotropic filtering for every filtered texture, clamped to
+// the driver's maximum (EXT/ARB_texture_filter_anisotropic, core in GL 4.6).
+static float anisotropy() {
+    static float s_aniso = -1.0f;
+    if (s_aniso >= 0.0f) return s_aniso;
+    s_aniso = 0.0f;
+    const char* e = getenv("SMS_ANISO");
+    const float want = e ? float(atof(e)) : 0.0f;
+    if (want <= 1.0f) return s_aniso;
+    while (glGetError() != GL_NO_ERROR) {}
+    GLint maxAniso = 0;
+    glGetIntegerv(0x84FF /* GL_MAX_TEXTURE_MAX_ANISOTROPY */, &maxAniso);
+    if (glGetError() == GL_NO_ERROR && maxAniso > 1) s_aniso = std::min(want, float(maxAniso));
+    if (s_aniso > 1.0f) logmsg("anisotropic filtering %gx", double(s_aniso));
+    else logmsg("anisotropic filtering is not supported by this driver");
+    return s_aniso;
+}
+
 // hires: log2 of a texture pack replacement's size over the GX size (-1 for
 // none). Its LOD range moves up by that much, so the same screen size samples
 // the same level of detail; a replacement of a texture without mipmaps gets
@@ -433,6 +452,8 @@ static GLuint samplerFor(uint32_t mode0, uint32_t mode1, uint32_t levels, int hi
     glSamplerParameterf(smp, GL_TEXTURE_LOD_BIAS, float(int8_t((mode0 >> 9) & 0xFF)) / 32.0f);
     glSamplerParameterf(smp, GL_TEXTURE_MIN_LOD, minLod);
     glSamplerParameterf(smp, GL_TEXTURE_MAX_LOD, maxLod);
+    if (minf != GL_NEAREST && minf != GL_NEAREST_MIPMAP_NEAREST && anisotropy() > 1.0f)
+        glSamplerParameterf(smp, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */, anisotropy());
     return smp;
 }
 

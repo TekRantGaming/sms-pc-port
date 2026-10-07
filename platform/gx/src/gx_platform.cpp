@@ -65,6 +65,52 @@ bool envTrue(const char* name) {
 #ifdef SMS_GX_HAVE_SDL2
 void* sdlGetProc(const char* name) { return SDL_GL_GetProcAddress(name); }
 
+// SMS_MOUSE_CAMERA=1: mouse look. The mouse is captured (relative mode) while
+// the window has focus; F10 releases it, a click in the window takes it back,
+// and losing focus always frees it.
+bool s_mouseCamera = false, s_mouseCaptured = false, s_mouseReleased = false;
+
+void captureMouse(bool on) {
+    if (!s_mouseCamera) on = false;
+    if (on == s_mouseCaptured) return;
+    if (SDL_SetRelativeMouseMode(on ? SDL_TRUE : SDL_FALSE) == 0) s_mouseCaptured = on;
+}
+
+// SMS_FULLSCREEN: 1 or desktop (borderless, at the desktop's resolution), or
+// exclusive (the display switches to SMS_FULLSCREEN_MODE=WxH[@Hz], else the
+// desktop's mode). F11 or Alt+Enter toggles between the window and that
+// fullscreen (desktop when SMS_FULLSCREEN is unset).
+bool s_exclusive = false, s_isFullscreen = false;
+
+void setFullscreen(bool on) {
+    if (!s_window) return;
+    Uint32 flags = 0;
+    if (on && s_exclusive) {
+        SDL_DisplayMode want = {}, got = {};
+        const int display = std::max(0, SDL_GetWindowDisplayIndex(s_window));
+        SDL_GetDesktopDisplayMode(display, &want);
+        if (const char* e = getenv("SMS_FULLSCREEN_MODE")) {
+            int w = 0, h = 0, hz = 0;
+            if (sscanf(e, "%dx%d@%d", &w, &h, &hz) >= 2 && w > 0 && h > 0) {
+                want.w = w;
+                want.h = h;
+                if (hz > 0) want.refresh_rate = hz;
+            }
+        }
+        if (SDL_GetClosestDisplayMode(display, &want, &got)) SDL_SetWindowDisplayMode(s_window, &got);
+        flags = SDL_WINDOW_FULLSCREEN;
+        logmsg("exclusive fullscreen %dx%d@%dHz", got.w, got.h, got.refresh_rate);
+    } else if (on) {
+        flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
+    }
+    if (SDL_SetWindowFullscreen(s_window, flags) != 0) {
+        logmsg("fullscreen change failed: %s; continuing as before", SDL_GetError());
+        return;
+    }
+    s_isFullscreen = on;
+    SDL_ShowCursor(on ? SDL_DISABLE : SDL_ENABLE);
+}
+
 void applyIcon() {
     if (!s_window || s_icon.empty()) return;
     SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(s_icon.data(), s_iconW, s_iconH, 32, s_iconW * 4,
@@ -112,6 +158,11 @@ bool openWindow(int scale) {
             break;
         }
     }
+    // SMS_DISPLAY=n picks the monitor instead (0 is the primary one)
+    if (const char* e = getenv("SMS_DISPLAY")) {
+        const int want = atoi(e);
+        if (*e && want >= 0 && want < SDL_GetNumVideoDisplays()) display = want;
+    }
     SDL_Rect desktop = {0, 0, 1280, 800};
     if (SDL_GetDisplayUsableBounds(display, &desktop) != 0 &&
         SDL_GetDisplayBounds(display, &desktop) != 0) desktop = {0, 0, 1280, 800};
@@ -143,7 +194,8 @@ bool openWindow(int scale) {
         return false;
     }
     SDL_GL_MakeCurrent(s_window, s_glctx);
-    SDL_GL_SetSwapInterval(s_vsync);
+    // adaptive vsync (-1) tears only when a frame is late; not every driver has it
+    if (SDL_GL_SetSwapInterval(s_vsync) != 0 && s_vsync < 0) SDL_GL_SetSwapInterval(1);
     if (!GXPC_Init(sdlGetProc, scale)) {
         snprintf(s_windowError, sizeof s_windowError, "the renderer could not start on this OpenGL context");
         SDL_GL_DeleteContext(s_glctx);
@@ -166,15 +218,21 @@ bool openWindow(int scale) {
     // Apply the launcher's choice after normal placement so fullscreen uses
     // the same monitor. Desktop fullscreen keeps the display's native mode;
     // rendering quality and aspect ratio are still handled by the renderer.
-    if (envTrue("SMS_FULLSCREEN") && SDL_SetWindowFullscreen(s_window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
-        logmsg("fullscreen failed: %s; continuing in a window", SDL_GetError());
+    // Exclusive fullscreen switches the display to the mode asked for.
+    if (const char* e = getenv("SMS_FULLSCREEN")) s_exclusive = strcmp(e, "exclusive") == 0;
+    if (envTrue("SMS_FULLSCREEN")) setFullscreen(true);
     if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
-        logmsg("desktop fullscreen on display %d (%s), internal resolution scale %d, OpenGL context ready", display,
-               s_videoDriver, scale);
+        logmsg("%s fullscreen on display %d (%s), internal resolution scale %d, OpenGL context ready",
+               s_exclusive ? "exclusive" : "desktop", display, s_videoDriver, scale);
     else
         logmsg("window %dx%d centered on display %d (%s), internal resolution scale %d, OpenGL context ready",
                layout.w, layout.h, display, s_videoDriver, scale);
     s_windowFailure = WF_NONE;
+    s_mouseCamera = envTrue("SMS_MOUSE_CAMERA");
+    if (s_mouseCamera) {
+        logmsg("mouse look on (F10 releases the mouse)");
+        captureMouse((SDL_GetWindowFlags(s_window) & SDL_WINDOW_INPUT_FOCUS) != 0);
+    }
     return true;
 }
 
@@ -344,13 +402,20 @@ void GXPC_SetWindowIcon(const uint8_t* rgba, int w, int h) {
 #endif
 }
 void GXPC_SetAutoPresent(int enable) { s_autoPresent = enable != 0; }
+int GXPC_MouseCaptured(void) {
+#ifdef SMS_GX_HAVE_SDL2
+    return s_mouseCaptured;
+#else
+    return 0;
+#endif
+}
 int GXPC_IsHeadless(void) { return s_mode != MODE_WINDOW; }
 uint32_t GXPC_FrameCount(void) { return s_frame; }
 
 int GXPC_InitAuto(int efbScale) {
     if (rendererReady()) return 1;
     if (const char* e = getenv("SMS_GX_SCALE")) efbScale = atoi(e) > 0 ? atoi(e) : efbScale;
-    if (envTrue("SMS_VSYNC")) s_vsync = 1;
+    if (envTrue("SMS_VSYNC")) s_vsync = strcmp(getenv("SMS_VSYNC"), "adaptive") == 0 ? -1 : 1;
     bool headless;
     if (s_forceHeadless >= 0) headless = s_forceHeadless != 0;
     else if (envTrue("SMS_HEADLESS")) headless = true;
@@ -447,6 +512,31 @@ void sms_gx_pump_events(void) {
         // backtick toggles the debug overlay and is kept from the pad layer
         if ((ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) && ev.key.keysym.scancode == SDL_SCANCODE_GRAVE) {
             if (ev.type == SDL_KEYDOWN && !ev.key.repeat) GXPC_OverlayToggle();
+            continue;
+        }
+        if (s_mouseCamera) {
+            if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_FOCUS_LOST) captureMouse(false);
+            if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_FOCUS_GAINED && !s_mouseReleased)
+                captureMouse(true);
+            if (ev.type == SDL_MOUSEBUTTONDOWN && !s_mouseCaptured) {
+                s_mouseReleased = false;
+                captureMouse(true);
+                continue;
+            }
+            if (ev.type == SDL_KEYDOWN && ev.key.keysym.scancode == SDL_SCANCODE_F10) {
+                if (!ev.key.repeat) {
+                    s_mouseReleased = s_mouseCaptured;
+                    captureMouse(!s_mouseCaptured);
+                }
+                continue;
+            }
+        }
+        // F11 or Alt+Enter toggles fullscreen and is kept from the pad layer
+        if ((ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP) &&
+            (ev.key.keysym.scancode == SDL_SCANCODE_F11 ||
+             ((ev.key.keysym.scancode == SDL_SCANCODE_RETURN || ev.key.keysym.scancode == SDL_SCANCODE_KP_ENTER) &&
+              (ev.key.keysym.mod & KMOD_ALT)))) {
+            if (ev.type == SDL_KEYDOWN && !ev.key.repeat) setFullscreen(!s_isFullscreen);
             continue;
         }
         // F7 with the overlay open cycles the game speed

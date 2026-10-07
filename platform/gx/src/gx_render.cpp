@@ -106,6 +106,11 @@ static float centredOffset(float at) {
 // the game camera's aspect (TMarDirector: video width 660 * 0.91346 / 448)
 static const float kCamAspect = 660.0f * 0.91346145f / 448.0f;
 static GLuint s_efbFbo, s_efbColor, s_efbDepth;
+// SMS_MSAA=n: the game draws into s_efbFbo, built from multisampled
+// renderbuffers; every read of the EFB (copies, peeks) first resolves it into
+// s_efbResolveFbo, which holds s_efbColor and s_efbDepth.
+static int s_msaa = 0;
+static GLuint s_efbResolveFbo, s_efbMsColor, s_efbMsDepth;
 static GLuint s_vao;
 static GLuint s_copyProg, s_copyVao;
 static GLint s_copyUMode, s_copyURect, s_copyUAlphaOne;
@@ -356,6 +361,194 @@ void main() {
 }
 )";
 
+// ------------------------------------------------------------ post-processing
+// The XFB reaches the window through up to two passes: FXAA at the XFB's own
+// size (SMS_FXAA), then a scaling pass into the letterboxed viewport that also
+// sharpens (SMS_SHARPEN) and applies the brightness curve (SMS_GAMMA).
+// SMS_PRESENT_FILTER picks the scaler: bilinear (an area average when the
+// XFB is larger than the window, so a high internal resolution supersamples),
+// nearest, or sharp (bilinear only between texels: crisp pixels at any size).
+// SMS_ASPECT=stretch fills the window; integer keeps whole multiples of 640x528.
+static const char* kPostVs = R"(#version 330 core
+uniform int u_flip;
+out vec2 v_uv;
+void main() {
+  vec2 p = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
+  v_uv = u_flip != 0 ? vec2(p.x, 1.0 - p.y) : p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+static const char* kFxaaFs = R"(#version 330 core
+uniform sampler2D u_tex;
+uniform vec2 u_rcp;  // 1 / texture size
+in vec2 v_uv;
+out vec4 o_color;
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main() {
+  vec3 nw = texture(u_tex, v_uv + vec2(-1.0, -1.0) * u_rcp).rgb;
+  vec3 ne = texture(u_tex, v_uv + vec2( 1.0, -1.0) * u_rcp).rgb;
+  vec3 sw = texture(u_tex, v_uv + vec2(-1.0,  1.0) * u_rcp).rgb;
+  vec3 se = texture(u_tex, v_uv + vec2( 1.0,  1.0) * u_rcp).rgb;
+  vec3 m  = texture(u_tex, v_uv).rgb;
+  float lNW = luma(nw), lNE = luma(ne), lSW = luma(sw), lSE = luma(se), lM = luma(m);
+  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
+  float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+  float reduce = max((lNW + lNE + lSW + lSE) * (0.25 / 8.0), 1.0 / 128.0);
+  float rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+  dir = clamp(dir * rcpMin, vec2(-8.0), vec2(8.0)) * u_rcp;
+  vec3 a = 0.5 * (texture(u_tex, v_uv + dir * (1.0 / 3.0 - 0.5)).rgb +
+                  texture(u_tex, v_uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+  vec3 b = a * 0.5 + 0.25 * (texture(u_tex, v_uv - dir * 0.5).rgb + texture(u_tex, v_uv + dir * 0.5).rgb);
+  float lB = luma(b);
+  o_color = vec4((lB < lMin || lB > lMax) ? a : b, 1.0);
+}
+)";
+static const char* kScaleFs = R"(#version 330 core
+uniform sampler2D u_tex;
+uniform vec2 u_src;      // texture size in texels
+uniform vec2 u_dst;      // viewport size in pixels
+uniform int u_filter;    // 0 bilinear/area, 1 nearest, 2 sharp
+uniform float u_sharpen; // 0..1
+uniform float u_gamma;   // 1: unchanged; above 1 brightens
+in vec2 v_uv;
+out vec4 o_color;
+vec3 areaSample(vec2 uv) {
+  vec2 ratio = u_src / u_dst;  // texels per pixel
+  if (ratio.x <= 1.0 && ratio.y <= 1.0) return texture(u_tex, uv).rgb;
+  ivec2 n = ivec2(clamp(ceil(ratio), vec2(1.0), vec2(8.0)));
+  vec2 stepUv = ratio / vec2(n) / u_src;
+  vec2 start = uv - 0.5 * ratio / u_src + 0.5 * stepUv;
+  vec3 acc = vec3(0.0);
+  for (int j = 0; j < n.y; j++)
+    for (int i = 0; i < n.x; i++) acc += texture(u_tex, start + vec2(i, j) * stepUv).rgb;
+  return acc / float(n.x * n.y);
+}
+vec3 fetch(vec2 uv) {
+  if (u_filter == 1) return texelFetch(u_tex, clamp(ivec2(uv * u_src), ivec2(0), ivec2(u_src) - 1), 0).rgb;
+  if (u_filter == 2 && u_dst.x >= u_src.x) {
+    vec2 scale = max(floor(u_dst / u_src), vec2(1.0));
+    vec2 texel = uv * u_src;
+    vec2 base = floor(texel - 0.5) + 0.5;
+    vec2 f = texel - base;
+    vec2 region = 0.5 - 0.5 / scale;
+    vec2 d = f - 0.5;
+    f = (d - clamp(d, -region, region)) * scale + 0.5;
+    return texture(u_tex, (base + f) / u_src).rgb;
+  }
+  return areaSample(uv);
+}
+void main() {
+  vec3 c = fetch(v_uv);
+  if (u_sharpen > 0.0) {
+    // contrast-adaptive: sharpen less where the neighbourhood already has contrast
+    vec2 d = max(1.0 / u_src, 1.0 / u_dst);
+    vec3 n = texture(u_tex, v_uv + vec2(0.0, -d.y)).rgb, s = texture(u_tex, v_uv + vec2(0.0, d.y)).rgb;
+    vec3 w = texture(u_tex, v_uv + vec2(-d.x, 0.0)).rgb, e = texture(u_tex, v_uv + vec2(d.x, 0.0)).rgb;
+    vec3 mn = min(c, min(min(n, s), min(w, e))), mx = max(c, max(max(n, s), max(w, e)));
+    vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-4), 0.0, 1.0));
+    vec3 wgt = -amp * mix(0.125, 0.2, u_sharpen);
+    c = clamp((c + (n + s + w + e) * wgt) / (1.0 + 4.0 * wgt), 0.0, 1.0);
+  }
+  if (u_gamma != 1.0) c = pow(max(c, vec3(0.0)), vec3(1.0 / u_gamma));
+  o_color = vec4(c, 1.0);
+}
+)";
+
+struct PostSettings {
+    bool fxaa = false;
+    int filter = 0;        // 0 bilinear/area, 1 nearest, 2 sharp
+    float sharpen = 0.0f;  // 0..1
+    float gamma = 1.0f;
+    int aspect = 0;        // 0 keep, 1 stretch, 2 integer
+};
+static PostSettings s_post;
+static GLuint s_fxaaProg, s_scaleProg, s_postTex, s_postFbo;
+static GLint s_fxaaURcp, s_fxaaUFlip, s_scaleUSrc, s_scaleUDst, s_scaleUFilter, s_scaleUSharpen, s_scaleUGamma,
+    s_scaleUFlip;
+static int s_postW, s_postH;
+
+static void postInit() {
+    if (const char* e = getenv("SMS_FXAA")) s_post.fxaa = atoi(e) != 0;
+    if (const char* e = getenv("SMS_PRESENT_FILTER"))
+        s_post.filter = !strcmp(e, "nearest") ? 1 : !strcmp(e, "sharp") ? 2 : 0;
+    if (const char* e = getenv("SMS_SHARPEN")) s_post.sharpen = std::max(0.0f, std::min(1.0f, float(atof(e)) / 100.0f));
+    if (const char* e = getenv("SMS_GAMMA")) {
+        float v = float(atof(e));
+        if (v >= 0.3f && v <= 3.0f) s_post.gamma = v;
+    }
+    if (const char* e = getenv("SMS_ASPECT")) s_post.aspect = !strcmp(e, "stretch") ? 1 : !strcmp(e, "integer") ? 2 : 0;
+    s_fxaaProg = compileProgram(kPostVs, kFxaaFs);
+    glUseProgram(s_fxaaProg);
+    glUniform1i(glGetUniformLocation(s_fxaaProg, "u_tex"), 0);
+    s_fxaaURcp = glGetUniformLocation(s_fxaaProg, "u_rcp");
+    s_fxaaUFlip = glGetUniformLocation(s_fxaaProg, "u_flip");
+    s_scaleProg = compileProgram(kPostVs, kScaleFs);
+    glUseProgram(s_scaleProg);
+    glUniform1i(glGetUniformLocation(s_scaleProg, "u_tex"), 0);
+    s_scaleUSrc = glGetUniformLocation(s_scaleProg, "u_src");
+    s_scaleUDst = glGetUniformLocation(s_scaleProg, "u_dst");
+    s_scaleUFilter = glGetUniformLocation(s_scaleProg, "u_filter");
+    s_scaleUSharpen = glGetUniformLocation(s_scaleProg, "u_sharpen");
+    s_scaleUGamma = glGetUniformLocation(s_scaleProg, "u_gamma");
+    s_scaleUFlip = glGetUniformLocation(s_scaleProg, "u_flip");
+    static const char* const kFilters[] = {"bilinear", "nearest", "sharp"};
+    static const char* const kAspects[] = {"keep", "stretch", "integer"};
+    logmsg("post-processing: FXAA %s, scaler %s, sharpen %d%%, brightness %.2f, aspect %s", s_post.fxaa ? "on" : "off",
+           kFilters[s_post.filter], int(s_post.sharpen * 100.0f + 0.5f), double(s_post.gamma), kAspects[s_post.aspect]);
+}
+
+// Draws `tex` (w x h, row 0 at the top) into the viewport (ox, oy, vw, vh) of
+// framebuffer 0, through FXAA when it is on.
+static void postPresent(GLuint tex, int w, int h, int ox, int oy, int vw, int vh) {
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_COLOR_LOGIC_OP);
+    glDisable(GL_CLIP_DISTANCE0);
+    glDisable(GL_CLIP_DISTANCE0 + 1);
+    glDisable(GL_SCISSOR_TEST);
+    glBindSampler(0, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(s_copyVao);
+    if (s_post.fxaa) {
+        if (!s_postTex || s_postW != w || s_postH != h) {
+            if (!s_postTex) glGenTextures(1, &s_postTex);
+            glBindTexture(GL_TEXTURE_2D, s_postTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            if (!s_postFbo) glGenFramebuffers(1, &s_postFbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, s_postFbo);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_postTex, 0);
+            s_postW = w;
+            s_postH = h;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, s_postFbo);
+        glViewport(0, 0, w, h);
+        glUseProgram(s_fxaaProg);
+        glUniform2f(s_fxaaURcp, 1.0f / float(w), 1.0f / float(h));
+        glUniform1i(s_fxaaUFlip, 0);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        tex = s_postTex;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(ox, oy, vw, vh);
+    glUseProgram(s_scaleProg);
+    glUniform2f(s_scaleUSrc, float(w), float(h));
+    glUniform2f(s_scaleUDst, float(vw), float(vh));
+    glUniform1i(s_scaleUFilter, s_post.filter);
+    glUniform1f(s_scaleUSharpen, s_post.sharpen);
+    glUniform1f(s_scaleUGamma, s_post.gamma);
+    glUniform1i(s_scaleUFlip, 1);  // XFB row 0 is the top; the window's row 0 is its bottom
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(s_vao);
+}
+
 void rendererInit(int efbScale) {
     s_scale = efbScale < 1 ? 1 : efbScale;
     g_gxStats = g_gxStats || statsEnv();  // settings.txt is read after static initialisation
@@ -385,10 +578,42 @@ void rendererInit(int efbScale) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (const char* e = getenv("SMS_MSAA")) s_msaa = atoi(e);
+    if (s_msaa > 1) {
+        GLint maxSamples = 0;
+        glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
+        s_msaa = std::min(s_msaa, int(maxSamples));
+    }
+    if (s_msaa < 2) s_msaa = 0;
     glGenFramebuffers(1, &s_efbFbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_efbColor, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, s_efbDepth, 0);
+    if (s_msaa) {
+        glGenRenderbuffers(1, &s_efbMsColor);
+        glBindRenderbuffer(GL_RENDERBUFFER, s_efbMsColor);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, s_msaa, GL_RGBA8, W, H);
+        glGenRenderbuffers(1, &s_efbMsDepth);
+        glBindRenderbuffer(GL_RENDERBUFFER, s_efbMsDepth);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, s_msaa, GL_DEPTH_COMPONENT24, W, H);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glGenFramebuffers(1, &s_efbResolveFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, s_efbResolveFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_efbColor, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, s_efbDepth, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) logmsg("EFB resolve framebuffer incomplete");
+        glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, s_efbMsColor);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, s_efbMsDepth);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+            logmsg("anti-aliasing: %dx MSAA", s_msaa);
+        } else {  // fall back to the plain EFB
+            logmsg("anti-aliasing: %dx MSAA framebuffer incomplete, MSAA off", s_msaa);
+            s_msaa = 0;
+        }
+    }
+    if (!s_msaa) {
+        glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_efbColor, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, s_efbDepth, 0);
+    }
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) logmsg("EFB framebuffer incomplete");
     glClearColor(0, 0, 0, 1);
     glClearDepth(1.0);
@@ -419,6 +644,7 @@ void rendererInit(int efbScale) {
     s_copyURect = glGetUniformLocation(s_copyProg, "u_rect");
     s_copyUAlphaOne = glGetUniformLocation(s_copyProg, "u_alphaOne");
     glGenVertexArrays(1, &s_copyVao);
+    postInit();
     glcInvalidate();
     s_ready = true;
 }
@@ -1194,6 +1420,19 @@ void flushBatch() {
 }
 
 // ------------------------------------------------------------------ EFB copies
+// The framebuffer whose attachments hold the EFB's current pixels, and whose
+// colour and depth are s_efbColor/s_efbDepth: with MSAA, the multisampled EFB
+// is resolved into it first. Leaves the scissor test off.
+static GLuint efbReadFbo() {
+    if (!s_msaa) return s_efbFbo;
+    const int W = s_efbW * s_scale, H = EFB_H * s_scale;
+    glDisable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, s_efbFbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_efbResolveFbo);
+    glBlitFramebuffer(0, 0, W, H, 0, 0, W, H, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    return s_efbResolveFbo;
+}
+
 static void clearRect(int x, int y, int w, int h) {
     uint32_t ar = g.bp[BP_CLEAR_AR], gb = g.bp[BP_CLEAR_GB], z = g.bp[BP_CLEAR_Z];
     glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
@@ -1396,7 +1635,7 @@ static void copyEfb(uint32_t ctrl) {
             xfb.w = w * S;
             xfb.h = h * S;
         }
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, s_efbFbo);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, efbReadFbo());
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_tmpFbo);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, xfb.tex, 0);
         glBlitFramebuffer(x * S, y * S, (x + w) * S, (y + h) * S, 0, 0, w * S, h * S, GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -1422,6 +1661,7 @@ static void copyEfb(uint32_t ctrl) {
         }
         uint32_t mode = fmt | (intensity ? 16u : 0u) | (zcopy ? 32u : 0u);
         efbCopyRegister(dest, tex, ow, oh, mode);
+        efbReadFbo();  // s_efbColor/s_efbDepth, sampled below, hold the current EFB
         glBindFramebuffer(GL_FRAMEBUFFER, s_tmpFbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
         glViewport(0, 0, ow, oh);
@@ -1534,7 +1774,7 @@ static uint32_t peekSync(int x, int y, bool depth) {
     s_syncReads++;
     uint32_t v = 0;
     uint8_t px[4] = {0, 0, 0, 0};
-    glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, efbReadFbo());
     if (depth) {
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
         glReadPixels(x * s_scale, y * s_scale, 1, 1, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, &v);
@@ -1550,7 +1790,7 @@ static uint32_t peekSync(int x, int y, bool depth) {
 static GLuint s_peekFbo, s_peekColor, s_peekDepth;
 
 static GLuint peekSource() {
-    if (s_scale == 1) return s_efbFbo;
+    if (s_scale == 1) return efbReadFbo();
     if (!s_peekFbo) {
         glGenRenderbuffers(1, &s_peekColor);
         glBindRenderbuffer(GL_RENDERBUFFER, s_peekColor);
@@ -1565,7 +1805,8 @@ static GLuint peekSource() {
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, s_peekDepth);
     }
     glDisable(GL_SCISSOR_TEST);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, s_efbFbo);
+    const GLuint src = efbReadFbo();
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, src);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_peekFbo);
     glBlitFramebuffer(0, 0, s_efbW * s_scale, EFB_H * s_scale, 0, 0, s_efbW, EFB_H,
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
@@ -1652,18 +1893,23 @@ int GXPC_PresentXFB(const void* xfb, int winW, int winH) {
     // letterbox to 4:3, or to the widened aspect
     float aspect = 4.0f / 3.0f * float(s_efbW) / float(EFB_W);
     int vw = winW, vh = winH;
-    if (float(vw) > float(vh) * aspect) vw = int(float(vh) * aspect + 0.5f);
-    else vh = int(float(vw) / aspect + 0.5f);
+    if (s_post.aspect != 1) {
+        if (float(vw) > float(vh) * aspect) vw = int(float(vh) * aspect + 0.5f);
+        else vh = int(float(vw) / aspect + 0.5f);
+    }
+    const int baseH = x.h / s_scale;  // the picture's height at the GameCube's resolution
+    if (s_post.aspect == 2 && baseH > 0 && vh >= baseH) {
+        vh = vh / baseH * baseH;
+        vw = int(float(vh) * aspect + 0.5f);
+    }
     int ox = (winW - vw) / 2, oy = (winH - vh) / 2;
     glDisable(GL_SCISSOR_TEST);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, s_tmpFbo);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, x.tex, 0);
-    // XFB row 0 is the top of the picture; the window's row 0 is its bottom
-    glBlitFramebuffer(0, 0, x.w, x.h, ox, oy + vh, ox + vw, oy, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    postPresent(x.tex, x.w, x.h, ox, oy, vw, vh);
+    glViewport(0, 0, winW, winH);
     // Framebuffer 0 stays bound through the swap: macOS presents nothing
     // (a black window) if an FBO is bound at SDL_GL_SwapWindow.
     // GXPC_EndPresent restores the EFB.
@@ -1682,7 +1928,7 @@ void GXPC_ReadEFB(uint8_t* rgba, int* w, int* h) {
     *w = s_efbW * s_scale;
     *h = EFB_H * s_scale;
     if (!rgba) return;
-    glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, efbReadFbo());
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, *w, *h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
 }

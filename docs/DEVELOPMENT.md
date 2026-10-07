@@ -26,6 +26,12 @@ How the port is put together and where changes go. To build and play, see the [R
 - `-DSMS_ARCH=32` compiles with `-m32` (Linux: `gcc-multilib g++-multilib`; Windows: MINGW32).
   `-DSMS_ARCH=64` is a native 64-bit build that keeps game memory, static data and thread stacks below 4 GiB ([64-BIT.md](64-BIT.md)); it is what macOS builds.
 - Default build type `RelWithDebInfo` = `-O2 -g` for all targets (the fall-off-the-end functions got explicit returns, `ret-*` patches).
+- `SMS_COMPILER_CACHE=/absolute/path/to/sccache` (or `-DSMS_COMPILER_CACHE=...`)
+  enables compiler caching without changing the selected compiler or build flags.
+  Windows CI uses sccache's GitHub Actions backend and reports cache statistics.
+  The private 32-bit Windows cross compiler uses relative paths that both native
+  sccache and MSYS GCC can read; response-file compilations and paths on another
+  drive bypass caching. Link commands keep their existing path conversion.
 - The 32-bit Linux build compiles against the amd64 SDL2/EGL headers and links the i386 runtime libraries (`/usr/lib/i386-linux-gnu/libSDL2-2.0.so.0`, `libEGL.so.1`) directly, so no `:i386` `-dev` packages are needed.
 - The decomp keeps the game in `src/` and `include/`, and each library in `libs/<name>/src` and `libs/<name>/include` (`dolphin`, `JSystem`, `THPPlayer`, `PowerPC_EABI_Support`, `TRK_MINNOW_DOLPHIN`, `OdemuExi2`), as upstream `doldecomp/sms` does.
   The game sees the headers through the same roots in `configure.py`'s order (`include`, then each `libs/<name>/include`), except MSL's C and C++ headers: the port uses the host's.

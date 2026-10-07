@@ -69,12 +69,12 @@ static void setOrtho() {
     GXSetCurrentMtx(GX_PNMTX0);
 }
 
-static void colorQuad(float x0, float y0, float x1, float y1, u8 r, u8 g, u8 b, u8 a) {
+static void colorQuad(float x0, float y0, float x1, float y1, u8 r, u8 g, u8 b, u8 a, float z = -1) {
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
-    GXPosition3f32(x0, y0, -1); GXColor4u8(r, g, b, a);
-    GXPosition3f32(x1, y0, -1); GXColor4u8(r, g, b, a);
-    GXPosition3f32(x1, y1, -1); GXColor4u8(r, g, b, a);
-    GXPosition3f32(x0, y1, -1); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x0, y0, z); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x1, y0, z); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x1, y1, z); GXColor4u8(r, g, b, a);
+    GXPosition3f32(x0, y1, z); GXColor4u8(r, g, b, a);
     GXEnd();
 }
 
@@ -136,6 +136,12 @@ static void texSetup() {
 }
 
 int main(int argc, char** argv) {
+    // Assertions need the current EFB, rather than the game's pipelined peeks.
+#ifdef _WIN32
+    _putenv_s("SMS_GX_SYNC_READS", "1");
+#else
+    setenv("SMS_GX_SYNC_READS", "1", 1);
+#endif
     // default to offscreen; `gx_selftest --window` shows the result instead
     GXPC_SetHeadless(1);
     GXPC_ParseArgs(&argc, argv);
@@ -412,6 +418,105 @@ int main(int argc, char** argv) {
         u8 tlut[4] = {0xF8, 0x00, 0x07, 0xE0};
         gx::decodeTexture(c8, GX_TF_C8, 8, 4, tlut, GX_TL_RGB565, out);
         expect("C8 + RGB565 TLUT decode", out[0] == 255 && out[1] == 0 && out[4] == 0 && out[5] == 255);
+    }
+
+    // Early-Z must retain an alpha-rejected surface's depth. Shadow volumes
+    // use that depth to keep their alpha mask off foreground geometry (#33).
+    {
+        colorSetup();
+        setOrtho();
+        GXSetColorUpdate(GX_TRUE);
+        GXSetAlphaUpdate(GX_TRUE);
+        GXSetDstAlpha(GX_FALSE, 0);
+        GXSetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
+        GXColor white = {255, 255, 255, 0};
+        GXSetCopyClear(white, 0xFFFFFF);
+        GXCopyDisp(xfb, GX_TRUE);
+        for (int early = 0; early < 2; early++) {
+            float x = 100.0f + early * 100.0f;
+            GXSetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
+            colorQuad(x, 100, x + 80, 180, 255, 255, 255, 0, -3);
+            GXSetZCompLoc(GXBool(early));
+            GXSetZMode(GX_TRUE, GX_LESS, GX_TRUE);
+            GXSetAlphaCompare(GX_GREATER, 128, GX_AOP_AND, GX_ALWAYS, 0);
+            colorQuad(x, 100, x + 80, 180, 255, 0, 0, 0, -2);
+            expectPixel("alpha-rejected wall keeps colour", int(x + 40), 140, 255, 255, 255);
+            u32 depth = 0;
+            GXPeekZ(u16(x + 40), 140, &depth);
+            expect(early ? "early alpha rejection writes depth" : "late alpha rejection preserves depth",
+                   early ? depth > 3300000 && depth < 3400000 : depth > 5000000 && depth < 5100000);
+
+            // Reset alpha, then the near and far faces of a shadow volume.
+            GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
+            GXSetColorUpdate(GX_FALSE);
+            GXSetZMode(GX_TRUE, GX_ALWAYS, GX_FALSE);
+            GXSetDstAlpha(GX_TRUE, 0);
+            colorQuad(x, 100, x + 80, 180, 0, 0, 0, 180, -2.5f);
+            GXSetDstAlpha(GX_FALSE, 0);
+            GXSetZMode(GX_TRUE, GX_LEQUAL, GX_FALSE);
+            colorQuad(x, 100, x + 80, 180, 0, 0, 0, 180, -2.5f);
+            GXSetColorUpdate(GX_TRUE);
+            GXSetDstAlpha(GX_TRUE, 0);
+            GXSetZMode(GX_TRUE, GX_GEQUAL, GX_FALSE);
+            GXSetBlendMode(GX_BM_BLEND, GX_BL_DSTALPHA, GX_BL_INVDSTALPHA, GX_LO_NOOP);
+            colorQuad(x, 100, x + 80, 180, 0, 0, 0, 180, -4);
+            expectPixel(early ? "shadow blocked by early-Z wall" : "shadow visible without wall depth",
+                        int(x + 40), 140, early ? 255 : 75, early ? 255 : 75, early ? 255 : 75);
+            GXSetBlendMode(GX_BM_NONE, GX_BL_ONE, GX_BL_ZERO, GX_LO_NOOP);
+            GXSetDstAlpha(GX_FALSE, 0);
+        }
+        // Both quads share one batch. The second must fail LESS against the
+        // first even though its alpha passes; the fallback must keep order.
+        GXSetZCompLoc(GX_TRUE);
+        GXSetZMode(GX_TRUE, GX_LESS, GX_TRUE);
+        GXSetAlphaCompare(GX_GREATER, 128, GX_AOP_AND, GX_ALWAYS, 0);
+        colorQuad(300, 100, 380, 180, 255, 0, 0, 255, -1);
+        colorQuad(300, 100, 380, 180, 0, 0, 255, 255, -1);
+        expectPixel("early-Z overlapping LESS keeps first", 340, 140, 255, 0, 0);
+    }
+
+    // Copy clears must preserve disabled channels and alpha in RGB8. The
+    // airstrip boat shadow uses that backing alpha after switching to RGBA6.
+    {
+        colorSetup();
+        setOrtho();
+        GXSetColorUpdate(GX_TRUE);
+        GXSetAlphaUpdate(GX_TRUE);
+        GXSetDstAlpha(GX_FALSE, 0);
+        GXSetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
+        colorQuad(400, 100, 480, 180, 200, 100, 50, 180, -3);
+        u32 oldDepth = 0, depth = 0, pixel = 0;
+        GXPeekZ(440, 140, &oldDepth);
+        GXColor clear = {32, 48, 64, 255};
+        GXSetCopyClear(clear, 0xFFFFFF);
+        GXSetAlphaUpdate(GX_FALSE);
+        GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+        GXCopyDisp(xfb, GX_TRUE);
+        expectPixel("copy-clear enabled colour", 440, 140, 32, 48, 64);
+        GXPeekARGB(440, 140, &pixel);
+        expect("copy-clear preserves shadow alpha", (pixel >> 24) == 180);
+        GXPeekZ(440, 140, &depth);
+        expect("copy-clear preserves disabled depth", depth == oldDepth);
+
+        GXSetAlphaUpdate(GX_TRUE);
+        GXSetPixelFmt(GX_PF_RGB8_Z24, GX_ZC_LINEAR);
+        GXCopyDisp(xfb, GX_TRUE);
+        GXSetPixelFmt(GX_PF_RGBA6_Z24, GX_ZC_LINEAR);
+        GXPeekARGB(440, 140, &pixel);
+        expect("RGB8 copy-clear preserves backing alpha", (pixel >> 24) == 180);
+
+        GXSetColorUpdate(GX_FALSE);
+        GXSetAlphaUpdate(GX_TRUE);
+        GXSetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
+        clear.r = 255;
+        GXSetCopyClear(clear, 0xFFFFFF);
+        GXCopyDisp(xfb, GX_TRUE);
+        expectPixel("copy-clear preserves disabled colour", 440, 140, 32, 48, 64);
+        GXPeekARGB(440, 140, &pixel);
+        expect("copy-clear enabled alpha", (pixel >> 24) == 255);
+        GXPeekZ(440, 140, &depth);
+        expect("copy-clear enabled depth", depth == 0xFFFFFF);
+        GXSetColorUpdate(GX_TRUE);
     }
 
     GXPCStats st;

@@ -134,6 +134,8 @@ On Linux this is usually the 32-bit build without the GPU driver's 32-bit librar
 Controller 1 reads the keyboard and any game controller SDL recognises (A/B/X/Y, Start, right shoulder = Z, triggers = L/R, sticks, d-pad).
 Keyboard defaults:
 
+GameCube adapters work too. On Windows, an adapter in Wii U mode (Nintendo WUP-028, Mayflash and other copies; USB `057e:0337`) is read directly through WinUSB, so it needs its WinUSB driver (the one Dolphin installs); `SMS_GC_ADAPTER=VVVV:PPPP` adds another USB id and `SMS_NO_GC_ADAPTER=1` turns it off. In PC/HID mode the adapter is a normal joystick for SDL. The first plugged port is controller 1.
+
 | GameCube | Keys |
 | --- | --- |
 | Control stick | arrow keys or WASD (hold Left Ctrl for half tilt) |

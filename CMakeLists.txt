@@ -46,6 +46,13 @@ if(SMS_ARCH STREQUAL "auto")
 endif()
 add_compile_options(-m${SMS_ARCH})
 add_link_options(-m${SMS_ARCH})
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # RUNPATH, not RPATH: a toolchain's library directory (the launcher's conda
+  # tools add one to every link) then finds only the game's own libraries.
+  # An RPATH would also be searched for the system GL driver's libraries, and
+  # an older libdrm there stops a newer Mesa loading: no window and no EGL.
+  add_link_options("LINKER:--enable-new-dtags")
+endif()
 message(STATUS "SMS port: building -m${SMS_ARCH}")
 
 # --- Decomp translation units -----------------------------------------------

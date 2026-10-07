@@ -9,6 +9,7 @@ permissions:
 jobs:
   window:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -37,7 +38,7 @@ jobs:
           apt_install() { for n in 1 2 3; do sudo timeout 300 apt-get -o Acquire::Retries=3 install -y --no-install-recommends "$@" && return; echo "apt-get install attempt $n failed"; done; return 1; }
           if [ "$ARCH" = 32 ]; then sudo dpkg --add-architecture i386; fi
           apt_update
-          apt_install cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
+          apt_install cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0 gdb
           # The port already supports 32-bit SDL using the host's headers and
           # i386 runtime libraries. Avoid incompatible multiarch GLib dev tools.
           if [ "$ARCH" = 32 ]; then
@@ -53,6 +54,21 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
+          # A smoke run that hangs prints every thread's stack and the window
+          # manager's log, then fails, instead of holding the runner.
+          smoke() {
+            "$@" & local pid=$!
+            for _ in {1..600}; do
+              if ! kill -0 "$pid" 2>/dev/null; then wait "$pid"; return; fi
+              sleep 0.1
+            done
+            echo "::error::still running after 60s: $*"
+            sudo gdb -q -batch -p "$pid" -ex "thread apply all bt" || true
+            cat build/window/window-manager.log || true
+            kill -9 "$pid"
+            return 1
+          }
+          export -f smoke
           ctest --test-dir build/window/platform/gx -R '^gx_windowtest$' --output-on-failure
           # SDL desktop fullscreen is managed by the desktop window manager.
           xvfb-run -a -s '-screen 0 1280x800x24' bash -e -c '
@@ -64,8 +80,8 @@ jobs:
               sleep 0.05
             done
             xprop -root _NET_SUPPORTING_WM_CHECK | grep -q "window id #"
-            env -u SMS_FULLSCREEN build/window/platform/gx/gx_windowsmoke --window
-            SMS_FULLSCREEN=0 build/window/platform/gx/gx_windowsmoke --window
-            SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --fullscreen
+            smoke env -u SMS_FULLSCREEN build/window/platform/gx/gx_windowsmoke --window
+            smoke env SMS_FULLSCREEN=0 build/window/platform/gx/gx_windowsmoke --window
+            smoke env SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --fullscreen
           '
-          SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --headless
+          smoke env SMS_FULLSCREEN=1 build/window/platform/gx/gx_windowsmoke --headless

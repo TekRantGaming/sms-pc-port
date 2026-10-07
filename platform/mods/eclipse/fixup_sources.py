@@ -502,6 +502,27 @@ SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
 ]
 
 
+def native_mario_flags(match):
+    """Keep the game's numeric flag masks on little-endian native hosts."""
+    fields = match.group("fields").strip("\n").splitlines()
+    # SHI declares these from bit 31 down to bit 0 for the GameCube.
+    # Native compilers allocate from bit 0 up: keeping that order gives
+    # mHasFludd 0x10000 instead of the game's MARIO_FLAG_HAS_FLUDD (0x8000).
+    # Use one storage type too: MS bitfield layout separates bool and u32
+    # allocation units, whereas the game stores all flags in one u32.
+    fields = [re.sub(r"\bbool\b", "u32", field) for field in reversed(fields)]
+    return "struct {\n" + "\n".join(fields) + "\n    } " + match.group("name") + ";"
+
+
+# Run after shi-layout.patch, which duplicates mAttributes for the two host
+# widths. Keeping this separate also preserves the fix when layouts regenerate.
+SHI_NATIVE_FLAG_FIXES = [
+    ("include/SMS/Player/Mario.hxx",
+     r"struct \{\n(?P<fields>\s*u32 _04\s*: 10;\n(?:\s*(?:u32|bool) \w+\s*: \d+;\n)+)\s*\} (?P<name>mAttributes|mPrevAttributes);",
+     native_mario_flags, "Mario's current and previous flags use the game's numeric masks"),
+]
+
+
 def apply(root, fixes, strict=False):
     changed = 0
     groups = {}
@@ -590,6 +611,7 @@ if __name__ == "__main__":
     # SunshineHeaderInterface's classes laid out as the port lays out the game's
     # (tools/mods/shi_layout, which also explains how to regenerate the patch).
     n += apply_patch(roots[2], patches[0])
+    n += apply(roots[2], SHI_NATIVE_FLAG_FIXES, True)
     # The mods' own sources where they need more than a pattern: members they
     # address by retail offset (SMS_OFFSET, tools/mods/shi_layout/offsets.py).
     if len(roots) == 4 and os.path.exists(patches[1]):

@@ -3,6 +3,8 @@
 # Controls: A B X Y Z L R START DPAD_UP DPAD_DOWN DPAD_LEFT DPAD_RIGHT
 #           STICK_UP STICK_DOWN STICK_LEFT STICK_RIGHT
 #           CSTICK_UP CSTICK_DOWN CSTICK_LEFT CSTICK_RIGHT HALF_TILT QUIT
+#           L_SOFT R_SOFT (a light L or R press, no click; SMS_SOFT_TRIGGER
+#           sets how far, default 40%; no default keys)
 # Keys: letters, digits, ENTER ESC SPACE TAB BACKSPACE UP DOWN LEFT RIGHT
 #       LSHIFT RSHIFT LCTRL RCTRL LALT RALT KP_0..KP_9 KP_ENTER F1..F4
 #       COMMA PERIOD SLASH SEMICOLON ... or #<SDL scancode>

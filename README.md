@@ -156,6 +156,8 @@ To change them, edit [`bindings.txt`](bindings.txt) (`CONTROL = KEY KEY ...`, on
 
 Controller buttons can be remapped the same way, by name: `PAD_A`, `PAD_B`, `PAD_X`, `PAD_Y`, `PAD_LB`, `PAD_RB`, `PAD_LT`, `PAD_RT`, `PAD_START`, `PAD_BACK`, `PAD_DPUP` … (the full list is in `bindings.txt`). A line's keys and buttons each replace only their own kind, so `A = PAD_Y` moves A to the controller's Y button and keeps Space and X; `Z = PAD_RT` puts Z on the right trigger. L and R stay analog when bound to a trigger.
 
+`L_SOFT` and `R_SOFT` are a light L or R press: the trigger goes part of the way, without the click, as when a GameCube trigger is pressed gently (for example, spraying FLUDD on the move with R). They have no default keys; bind them like any other control (`R_SOFT = LALT PAD_RB`). `SMS_SOFT_TRIGGER=n` (`soft_trigger`) sets how far, 5 to 95 percent (default 40).
+
 `SMS_CAMERA_INVERT_X=1` and `SMS_CAMERA_INVERT_Y=1` invert the C-stick's camera control left/right and up/down, for keys and controllers alike (recorded `.dtm` movies are played as recorded).
 The launcher sets them from **Settings → Gameplay → Invert camera X / Y** (X on, Y off by default), effective on the next game launch.
 

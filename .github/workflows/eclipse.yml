@@ -72,6 +72,21 @@ jobs:
             git patch mingw-w64-x86_64-gcc mingw-w64-x86_64-clang mingw-w64-x86_64-llvm-tools
             mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-make
             mingw-w64-x86_64-python mingw-w64-x86_64-SDL2
+      - name: Install compiler cache
+        if: runner.os == 'Windows'
+        uses: Mozilla-Actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        with:
+          version: v0.18.0
+      - name: Enable compiler cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "SMS_COMPILER_CACHE=$((Get-Command sccache).Source.Replace('\', '/'))" >> $env:GITHUB_ENV
+          "SCCACHE_GHA_ENABLED=on" >> $env:GITHUB_ENV
+          "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> $env:GITHUB_ENV
+      - name: Test Windows cross compiler cache routing
+        if: runner.os == 'Windows'
+        run: python tools/tests/test_msys_cross_compile.py
       - name: Test partial-link response files with long paths
         run: |
           if [[ "$RUNNER_OS" == Windows ]]; then python tools/mods/tests/test_object_response.py

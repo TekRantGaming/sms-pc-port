@@ -61,6 +61,18 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+      - name: Install compiler cache
+        if: runner.os == 'Windows'
+        uses: Mozilla-Actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        with:
+          version: v0.18.0
+      - name: Enable compiler cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "SMS_COMPILER_CACHE=$((Get-Command sccache).Source.Replace('\', '/'))" >> $env:GITHUB_ENV
+          "SCCACHE_GHA_ENABLED=on" >> $env:GITHUB_ENV
+          "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> $env:GITHUB_ENV
       - name: Point the launcher at this commit
         shell: bash
         env:
@@ -74,6 +86,26 @@ jobs:
       - run: node scripts/smoke-build-tools.js
         env:
           SMS_SMOKE_ARCHES: ${{ matrix.arches }}
+      - name: Verify a warm compiler cache hit
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SMS_SMOKE_ARCHES: ${{ matrix.arches }}
+        run: |
+          @'
+          const path = require('node:path');
+          const os = require('node:os');
+          const { spawnSync } = require('node:child_process');
+          const tools = require('./src/build-tools');
+          const root = path.join(os.tmpdir(), 'SMS Port Private Tools CI');
+          const userData = path.join(os.tmpdir(), 'SMS Launcher Private Tools CI');
+          const env = tools.environment(userData, { ...process.env, SMS_ARCH: process.env.SMS_SMOKE_ARCHES });
+          const python = path.join(env.MSYS2_ROOT, 'mingw64', 'bin', 'python.exe');
+          const result = spawnSync(python, [path.join(root, 'tools', 'tests', 'check_compiler_cache.py')],
+            { cwd: root, env, stdio: 'inherit' });
+          if (result.error) throw result.error;
+          process.exit(result.status ?? 1);
+          '@ | node
   compile-mac-port:
     needs: pin
     strategy:
@@ -124,6 +156,18 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+      - name: Install compiler cache
+        if: runner.os == 'Windows'
+        uses: Mozilla-Actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+        with:
+          version: v0.18.0
+      - name: Enable compiler cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "SMS_COMPILER_CACHE=$((Get-Command sccache).Source.Replace('\', '/'))" >> $env:GITHUB_ENV
+          "SCCACHE_GHA_ENABLED=on" >> $env:GITHUB_ENV
+          "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> $env:GITHUB_ENV
       - name: Point the launcher at this commit
         shell: bash
         env:

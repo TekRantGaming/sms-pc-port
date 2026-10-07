@@ -247,6 +247,37 @@ BSE_BE_FIXES = [
              r"    return GetResourceTextureHeader(sTinyArrowResTIMG);\n}"),
 ]
 
+# The frame rate is the port's (frame_rate setting), as for the plain game.
+# BetterSunshineEngine replaces TApplication::proc with its own loop, so the
+# port's switch to the gameplay rate there never ran and stages stayed at 30;
+# the loop now switches it where proc does (sms_port_set_gameplay_frame_rate,
+# decomp-patches/modhook-41). BSE's own Frame Rate setting paced the game
+# instead: every frame its updateFPS set the display's retrace count (2, or 1
+# at 60 FPS, which ran the game at twice its speed while the port stepped it
+# for 30) and stored into two retail .sdata2 constants by address, which in
+# the port are inside the game's heap. Its patches are waived
+# (tools/mods/not_ported.txt) and updateFPS is not run; the setting stays in
+# the save, so the card files keep their layout, but is hidden from the menu,
+# and getFrameRate reports the port's rate.
+FRAME_RATE_FIXES = [
+    ("src/application.cpp",
+     r"(BETTER_SMS_FOR_CALLBACK bool BetterAppContextDirectStage\(TApplication \*app\) \{\n"
+     r"\s*sIsAdditionalMovie = app->checkAdditionalMovie\(\);\n\s*if \(!sIsAdditionalMovie\) \{\n)",
+     r'extern "C" void sms_port_set_gameplay_frame_rate(TApplication *app, int gameplay);\n\n'
+     r"\1        sms_port_set_gameplay_frame_rate(app, 1);\n",
+     "the port's frame rate in stages"),
+    ("src/application.cpp", r"\n(\s*)(Application::ContextCallback cb = sContextCBs\[app->mContext\];)",
+     r"\n\1sms_port_set_gameplay_frame_rate(app, 0);\n\1\2", "the port's frame rate between stages"),
+    ("src/module.cpp", r"\n\s*Game::addLoopCallback\(updateFPS\);", "",
+     "BSE's frame rate setting does not pace the port"),
+    ("src/p_settings.hxx", r"(\n(\s*)~FPSSetting\(\) override \{\}\n)",
+     r"\1\2bool isUnlocked() const override { return false; }\n",
+     "BSE's frame rate setting is hidden"),
+    ("src/globals.cpp", r"(f32 BetterSMS::getFrameRate\(\) \{\n\s*const f32 FPS = )static_cast<f32>\(30 << gFPSSetting\.getInt\(\)\);",
+     r'extern "C" int port_active_frame_rate;\n\1static_cast<f32>(port_active_frame_rate);',
+     "BSE reports the port's frame rate"),
+]
+
 ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + ECLIPSE_BE_FIXES + ECLIPSE_PATCH_TYPE_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
@@ -258,6 +289,22 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DE
      r"\1&mTranslation, &mScale)",
      "aggregates go by address through (...)"),
     RAWADDR_FIX,
+
+    # Eclipse's ModuleInfo (main.cpp) links its settings group to the module,
+    # but the group is defined in settings.cpp, whose constructor ran after
+    # main.cpp's here and cleared the link. The group then took the game's
+    # name, "Super Mario Sunshine", in the settings menu and as the name of its
+    # card file, which is Eclipse's game save: the game found a one-sector file
+    # there and could not save. Made on first use, in initModule, the
+    # ModuleInfo comes after the group, and the file is super_mario_eclipse
+    # (platform/card/card.cpp moves the old one).
+    ("src/main.cpp", r"static BetterSMS::ModuleInfo sModuleInfo\((\"Super Mario Eclipse\", \d+, \d+, &gSettingsGroup)\);",
+     r"static BetterSMS::ModuleInfo &moduleInfo() {\n    static BetterSMS::ModuleInfo info(\1);\n    return info;\n}",
+     "Eclipse's settings group knows its module"),
+    ("src/main.cpp", r"(static void initModule\(\) \{\n)", r"\1    moduleInfo();\n",
+     "Eclipse's settings group knows its module"),
+    ("src/main.cpp", r"BetterSMS::registerModule\(sModuleInfo\);", r"BetterSMS::registerModule(moduleInfo());",
+     "Eclipse's settings group knows its module"),
 
     # SunshineHeaderInterface named obj_hit_info's third field (May 2026);
     # Eclipse still initialises it by its old placeholder name.
@@ -296,9 +343,36 @@ BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDAT
      r'extern "C" void sms_mod_code_write(uint32_t, uint32_t, int);\n'
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
-]
+    # shadowMarioInitHandler stands in for TEMario::loadAfter's
+    # SMS_isMultiPlayerMap call and loads Shadow Mario with PowerPC assembly
+    # from the TEMario in r31 (its mEnemyMario, retail offset 0x150); the
+    # shim's SMS_ASM_BLOCK is empty, so the player was never set and every
+    # stage with Shadow Mario crashed loading (Red Lily). The hook passes the
+    # TEMario, and port_shims.cpp reads the member.
+    ("src/player.cpp", r'SMS_ASM_BLOCK\("lwz %0, 0x150 \(31\)" : "=r"\(player\)\);',
+     'void *emario;\n    SMS_FROM_GPR(31, emario);\n    player = (TMario *)sms_mod_emario_mario(emario);',
+     "Shadow Mario's player comes from the TEMario"),
+    ("src/player.cpp", r"\n(static bool shadowMarioInitHandler\(\) \{)",
+     '\nextern "C" void *sms_mod_emario_mario(void *emario);\n\n\\1',
+     "Shadow Mario's player comes from the TEMario"),
+    # Console::log and its kin pass their va_list to OSReport as a single
+    # argument (as on the console, where the values are garbage too); the
+    # port's sms_mod_vreport (sdk_extras.cpp) formats with it.
+    ("src/logging.cpp", r'(#include "module.hxx"\n)', r'\1\nextern "C" void sms_mod_vreport(const char *, va_list);\n',
+     "BSE's console log formats its arguments"),
+    ("src/logging.cpp", r"\bOSReport\(msg, vargs\);", r"sms_mod_vreport(msg, vargs);",
+     "BSE's console log formats its arguments"),
+] + FRAME_RATE_FIXES
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
 SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
+    # The SDK's OSMessage is a void *, as the port's OS keeps it; declared u32,
+    # it was half the size in the 64-bit build. BSE's music streamer queues 16
+    # of them in a u32 array, which the port wrote 8 bytes apiece, over the
+    # streamer's file handle after it (a crash stopping the music on a stage
+    # change), and OSReceiveMessage wrote 8 bytes into a 4-byte local. An
+    # integer the size of a pointer keeps the mods' integer messages.
+    ("include/Dolphin/OS.h", r"\btypedef u32 OSMessage;", "typedef __UINTPTR_TYPE__ OSMessage;",
+     "OSMessage is pointer-sized"),
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port
     # spells them int there (src/port_include/dolphin/types.h), and so must
     # the mods, or every u32 field and u32-typed call disagrees with the game.

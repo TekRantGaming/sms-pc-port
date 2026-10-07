@@ -1368,7 +1368,36 @@ void flushBatch() {
     }
     size_t vOff = pc[np - 2].at, iOff = pc[np - 1].at;
     GLenum mode = s_bclass == PRIM_TRIS ? GL_TRIANGLES : s_bclass == PRIM_LINES ? GL_LINES : GL_POINTS;
-    {
+    uint32_t alphaFunc = (g.bp[BP_ALPHACOMPARE] >> 16) & 0xFF;
+    bool earlyFallback = !shaderHasEarlyFragmentTests() && (g.bp[BP_PE_CONTROL] & (1 << 6)) &&
+                         (g.bp[BP_ZMODE] & 0x11) == 0x11 && alphaFunc != 0x3F && alphaFunc != 0x7F;
+    if (earlyFallback) {
+        const ShaderProgram* depthSp = shaderForCurrentState(true);
+        glcUseProgram(depthSp->prog);
+        uploadUniforms(depthSp, texW, texH);
+        GLboolean masks[4];
+        memcpy(masks, g_glc.cmask, sizeof masks);
+        size_t step = s_bclass == PRIM_TRIS ? 3 : s_bclass == PRIM_LINES ? 2 : 1;
+        // Preserve primitive order and the original comparison (including LESS
+        // and NOTEQUAL): colour tests the old depth, then an unconditional
+        // fragment shader writes depth even where the alpha test discarded.
+        // A batch-wide prepass followed by EQUAL would change overlapping draws.
+        for (size_t i = 0; i < s_bidx.size; i += step) {
+            const void* indices = reinterpret_cast<const void*>(iOff + i * 4);
+            pixMetricPause();
+            glcUseProgram(sp->prog);
+            glColorMask(masks[0], masks[1], masks[2], masks[3]);
+            glDepthMask(GL_FALSE);
+            glDrawElementsBaseVertex(mode, GLsizei(step), GL_UNSIGNED_INT, indices, GLint(vOff / s_bstride));
+            pixMetricResume();
+            glcUseProgram(depthSp->prog);
+            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            glDepthMask(GL_TRUE);
+            glDrawElementsBaseVertex(mode, GLsizei(step), GL_UNSIGNED_INT, indices, GLint(vOff / s_bstride));
+        }
+        glColorMask(masks[0], masks[1], masks[2], masks[3]);
+        glcUseProgram(sp->prog);
+    } else {
         glDrawElementsBaseVertex(mode, GLsizei(s_bidx.size), GL_UNSIGNED_INT, reinterpret_cast<const void*>(iOff),
                                  GLint(vOff / s_bstride));
     }
@@ -1410,8 +1439,13 @@ static void clearRect(int x, int y, int w, int h) {
     glEnable(GL_SCISSOR_TEST);
     glScissor(x * s_scale, y * s_scale, w * s_scale, h * s_scale);
     bool hasAlpha = (g.bp[BP_PE_CONTROL] & 7) == 1;
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glDepthMask(GL_TRUE);
+    // Copy clears obey the PE write enables, just like ordinary EFB writes.
+    // A copy clear in RGB8 must not overwrite the backing alpha used later by
+    // SMS's RGBA6 shadow volumes, nor may a disabled alpha/depth write do so.
+    bool colour = (g.bp[BP_CMODE0] >> 3) & 1;
+    bool alpha = hasAlpha && ((g.bp[BP_CMODE0] >> 4) & 1);
+    glColorMask(colour, colour, colour, alpha);
+    glDepthMask((g.bp[BP_ZMODE] >> 4) & 1);
     glClearColor(float(ar & 255) / 255.0f, float((gb >> 8) & 255) / 255.0f, float(gb & 255) / 255.0f,
                  hasAlpha ? float((ar >> 8) & 255) / 255.0f : 1.0f);
     glClearDepth(double(z & 0xFFFFFF) / 16777215.0);

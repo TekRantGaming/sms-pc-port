@@ -209,7 +209,8 @@ struct ShaderProgram {
         uProj, uViewport, uAmbMat, uDstAlpha;
     mutable UniformCache uc;
 };
-const ShaderProgram* shaderForCurrentState();
+bool shaderHasEarlyFragmentTests();
+const ShaderProgram* shaderForCurrentState(bool depthOnly = false);
 
 // ---------------------------------------------------------------- util
 uint64_t hashBytes(const void* data, size_t n, uint64_t seed = 0);

@@ -36,6 +36,7 @@
 
 extern "C" int port_audio_dsp_frame_pending(void) __attribute__((weak));
 extern "C" int GXPC_GetSpeed(void) __attribute__((weak));
+extern "C" void port_dtk_mix(s16* lr, size_t frames, u32 outRate);
 
 namespace {
 
@@ -84,6 +85,7 @@ struct Ai {
 	u64 blocks;
 	FILE* wav;
 	u32 wavBytes;
+	std::vector<int16_t> mix; // a block in output order, with the DVD stream (dtk.cpp)
 } g;
 
 size_t fifo_cap() { return g.fifo.size() / 2; }
@@ -286,15 +288,14 @@ void dma_block()
 	const int16_t* src = (const int16_t*)(uintptr_t)g.latchedStart;
 	size_t frames      = g.latchedLen / 4;
 	if (src && frames) {
+		g.mix.resize(frames * 2);
+		for (size_t i = 0; i < frames; i++) {
+			g.mix[i * 2]     = g.swap ? src[i * 2 + 1] : src[i * 2];
+			g.mix[i * 2 + 1] = g.swap ? src[i * 2] : src[i * 2 + 1];
+		}
+		port_dtk_mix(g.mix.data(), frames, kRate);
 		if (g.wav) {
-			if (g.swap) {
-				for (size_t i = 0; i < frames; i++) {
-					int16_t lr[2] = { src[i * 2 + 1], src[i * 2] };
-					fwrite(lr, 2, 2, g.wav);
-				}
-			} else {
-				fwrite(src, 4, frames, g.wav);
-			}
+			fwrite(g.mix.data(), 4, frames, g.wav);
 			g.wavBytes += (u32)frames * 4;
 			if ((++g.blocks & 63) == 0) {
 				wav_header(g.wav, g.wavBytes);
@@ -306,8 +307,8 @@ void dma_block()
 			size_t cap = fifo_cap();
 			for (size_t i = 0; i < frames && g.count < cap; i++) {
 				size_t p         = (g.head + g.count) % cap;
-				g.fifo[p * 2]     = g.swap ? src[i * 2 + 1] : src[i * 2];
-				g.fifo[p * 2 + 1] = g.swap ? src[i * 2] : src[i * 2 + 1];
+				g.fifo[p * 2]     = g.mix[i * 2];
+				g.fifo[p * 2 + 1] = g.mix[i * 2 + 1];
 				g.count++;
 			}
 		}
@@ -402,7 +403,6 @@ extern "C" u32 AIGetDMAStartAddr(void) { return g.latchedStart; }
 extern "C" u32 AIGetDMALength(void) { return g.latchedLen; }
 extern "C" void AISetDSPSampleRate(u32 rate) { g.dspRate = rate; }
 extern "C" u32 AIGetDSPSampleRate(void) { return g.dspRate; }
-// DVD audio streaming (DTK) is not used for SMS's music; the stream calls
-// keep their state only.
+// DVD audio streaming (DTK, dtk.cpp): retail SMS never streams; code mods do.
 extern "C" void AISetStreamSampleRate(u32 rate) { g.streamRate = rate; }
 extern "C" u32 AIGetStreamSampleRate(void) { return g.streamRate; }

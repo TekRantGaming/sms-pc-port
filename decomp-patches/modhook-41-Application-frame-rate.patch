@@ -1,0 +1,18 @@
+Reason: port: code mods: a C entry point to the gameplay frame-rate switch, for BetterSunshineEngine's replacement of TApplication::proc
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -146,6 +146,14 @@
+ 	if (port_active_frame_rate != was)
+ 		portSetPadRepeat(app);
+ }
++
++// BetterSunshineEngine replaces proc with its own loop
++// (BetterApplicationProcess), which fixup_sources.py has switch the frame
++// rate where proc does: 30 for each director, the setting for a stage.
++extern "C" void sms_port_set_gameplay_frame_rate(TApplication* app, int gameplay)
++{
++	portSetGameplayFrameRate(app, gameplay != 0);
++}
+ #endif
+ 
+ f32 SMSGetVSyncTimesPerSec()

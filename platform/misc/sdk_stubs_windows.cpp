@@ -4,13 +4,8 @@
  * definitions; the Linux build keeps using the generated weak stubs. */
 #include "port_compat.h"
 #include "port_stub.h"
-#include <dolphin/ai.h>
 #include <dolphin/os/OSFont.h>
 
-void AISetStreamVolLeft(u8) { SDK_STUB(AISetStreamVolLeft); }
-void AISetStreamVolRight(u8) { SDK_STUB(AISetStreamVolRight); }
-void AIResetStreamSampleCount(void) { SDK_STUB(AIResetStreamSampleCount); }
-void AISetStreamPlayState(u32) { SDK_STUB(AISetStreamPlayState); }
 u16 OSGetFontEncode(void) { SDK_STUB(OSGetFontEncode); return 0; }
 char* OSGetFontTexture(char*, void**, s32*, s32*, s32*) { SDK_STUB(OSGetFontTexture); return 0; }
 char* OSGetFontWidth(char*, s32*) { SDK_STUB(OSGetFontWidth); return 0; }

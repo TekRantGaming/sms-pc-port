@@ -7,7 +7,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <vector>
 
 namespace {
 void once(const char* what)
@@ -54,36 +53,35 @@ struct Alarm {
 	int64_t fire, period; // period 0: once
 	AlarmHandler handler;
 };
-std::vector<Alarm> g_alarms;
+// built with the game's flags (C++03): a fixed table, no containers
+Alarm g_alarms[16];
+int g_alarm_count;
+
+void cancel_alarm(void* alarm)
+{
+	for (int i = 0; i < g_alarm_count; i++)
+		if (g_alarms[i].alarm == alarm) {
+			g_alarms[i] = g_alarms[--g_alarm_count];
+			return;
+		}
+}
 
 void poll_alarms()
 {
 	const int64_t now = OSGetTime();
-	for (size_t i = 0; i < g_alarms.size();) {
+	for (int i = 0; i < g_alarm_count; i++) {
 		Alarm a = g_alarms[i];
-		if (a.fire > now) {
-			i++;
+		if (a.fire > now)
 			continue;
-		}
 		if (a.period > 0) {
 			// a stalled game does not get a burst of late periods
-			int64_t next = a.fire + a.period;
+			int64_t next     = a.fire + a.period;
 			g_alarms[i].fire = next > now ? next : now + a.period;
-			i++;
 		} else {
-			g_alarms.erase(g_alarms.begin() + i);
+			g_alarms[i--] = g_alarms[--g_alarm_count];
 		}
 		a.handler(a.alarm, NULL); // may set or cancel alarms
 	}
-}
-
-void cancel_alarm(void* alarm)
-{
-	for (size_t i = 0; i < g_alarms.size(); i++)
-		if (g_alarms[i].alarm == alarm) {
-			g_alarms.erase(g_alarms.begin() + i);
-			return;
-		}
 }
 
 void set_alarm(void* alarm, int64_t fire, int64_t period, void* handler)
@@ -94,8 +92,17 @@ void set_alarm(void* alarm, int64_t fire, int64_t period, void* handler)
 		port_irq_add_source(poll_alarms);
 	}
 	cancel_alarm(alarm);
-	if (handler)
-		g_alarms.push_back({ alarm, fire, period, (AlarmHandler)handler });
+	if (!handler)
+		return;
+	if (g_alarm_count == (int)(sizeof g_alarms / sizeof g_alarms[0])) {
+		fprintf(stderr, "[mod] too many OS alarms\n");
+		return;
+	}
+	Alarm& a  = g_alarms[g_alarm_count++];
+	a.alarm   = alarm;
+	a.fire    = fire;
+	a.period  = period;
+	a.handler = (AlarmHandler)handler;
 }
 } // namespace
 

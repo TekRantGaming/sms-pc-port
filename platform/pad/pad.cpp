@@ -13,6 +13,7 @@
 #include <strings.h>
 #include <ctype.h>
 #include <dlfcn.h>
+#include <algorithm>
 #include <vector>
 
 // --- SDL2 event ABI (SDL_events.h, SDL_scancode.h, SDL_gamecontroller.h) ---
@@ -134,6 +135,27 @@ bool g_key[512];
 // Game controller state (first controller wins).
 s16 g_axis[6];
 bool g_cbtn[21];
+
+// Controller buttons a control reads, from bindings.txt names starting PAD_:
+// SDL_CONTROLLER_BUTTON_* numbers, plus the two triggers (analog axes 4 and 5).
+// A line lists keys, controller buttons or both; each part replaces only its
+// own defaults, so a keyboard-only line keeps the controller layout.
+enum { PAD_SRC_LT = 21, PAD_SRC_RT = 22, PAD_SRC_COUNT = 23 };
+const KeyName kPadButtons[] = {
+	{ "PAD_A", 0 }, { "PAD_B", 1 }, { "PAD_X", 2 }, { "PAD_Y", 3 }, { "PAD_BACK", 4 }, { "PAD_GUIDE", 5 },
+	{ "PAD_START", 6 }, { "PAD_LSTICK", 7 }, { "PAD_RSTICK", 8 }, { "PAD_LB", 9 }, { "PAD_RB", 10 },
+	{ "PAD_DPUP", 11 }, { "PAD_DPDOWN", 12 }, { "PAD_DPLEFT", 13 }, { "PAD_DPRIGHT", 14 }, { "PAD_MISC", 15 },
+	{ "PAD_PADDLE1", 16 }, { "PAD_PADDLE2", 17 }, { "PAD_PADDLE3", 18 }, { "PAD_PADDLE4", 19 },
+	{ "PAD_TOUCHPAD", 20 }, { "PAD_LT", PAD_SRC_LT }, { "PAD_RT", PAD_SRC_RT },
+};
+const int kMaxPad = 4;
+int g_pbind[C_COUNT][kMaxPad];
+int g_npbind[C_COUNT];
+// The built-in controller layout (the one before PAD_ bindings existed).
+const struct { int control, source; } kDefaultPad[] = {
+	{ C_A, 0 }, { C_B, 1 }, { C_X, 2 }, { C_Y, 3 }, { C_Z, 10 }, { C_L, PAD_SRC_LT }, { C_R, PAD_SRC_RT },
+	{ C_START, 6 }, { C_DUP, 11 }, { C_DDOWN, 12 }, { C_DLEFT, 13 }, { C_DRIGHT, 14 },
+};
 bool g_inited;
 // SMS_CAMERA_INVERT_X / SMS_CAMERA_INVERT_Y=1 flip the C-stick, which only
 // turns the camera.
@@ -154,6 +176,14 @@ float env_percent(const char* name, float lo, float hi)
 		return 1.0f;
 	float f = (float)atof(v) / 100.0f;
 	return f < lo ? lo : f > hi ? hi : f;
+}
+
+int pad_code(const char* name)
+{
+	for (size_t i = 0; i < sizeof kPadButtons / sizeof kPadButtons[0]; i++)
+		if (strcasecmp(kPadButtons[i].name, name) == 0)
+			return kPadButtons[i].code;
+	return -1;
 }
 
 int key_code(const char* name)
@@ -197,13 +227,39 @@ void parse_bindings(const char* text, const char* source)
 			port_log("[pad] %s:%d: unknown control '%s'\n", source, line, name);
 			continue;
 		}
-		g_nbind[c] = 0;
+		int keys[kMaxKeys], nkeys = 0, pads[kMaxPad], npads = 0;
+		bool anyKey = false, anyPad = false;
 		for (char* k = strtok(eq + 1, " \t,"); k; k = strtok(NULL, " \t,")) {
+			if (strncasecmp(k, "PAD_", 4) == 0) {
+				anyPad   = true;
+				int code = pad_code(k);
+				if (code < 0)
+					port_log("[pad] %s:%d: unknown controller button '%s'\n", source, line, k);
+				else if (npads < kMaxPad)
+					pads[npads++] = code;
+				continue;
+			}
+			anyKey   = true;
 			int code = key_code(k);
 			if (code < 0 || code >= 512)
 				port_log("[pad] %s:%d: unknown key '%s'\n", source, line, k);
-			else if (g_nbind[c] < kMaxKeys)
-				g_bind[c][g_nbind[c]++] = code;
+			else if (nkeys < kMaxKeys)
+				keys[nkeys++] = code;
+		}
+		// each part replaces only its own defaults; an empty line clears the keys
+		if (anyKey || !anyPad) {
+			memcpy(g_bind[c], keys, sizeof keys[0] * nkeys);
+			g_nbind[c] = nkeys;
+		}
+		if (anyPad) {
+			memcpy(g_pbind[c], pads, sizeof pads[0] * npads);
+			g_npbind[c] = npads;
+			char list[96] = "";
+			for (int i = 0; i < npads; i++)
+				for (size_t j = 0; j < sizeof kPadButtons / sizeof kPadButtons[0]; j++)
+					if (kPadButtons[j].code == pads[i])
+						snprintf(list + strlen(list), sizeof list - strlen(list), " %s", kPadButtons[j].name);
+			port_log("[pad] %s: controller %s =%s\n", source, kControlNames[c], npads ? list : " (none)");
 		}
 	}
 }
@@ -249,12 +305,31 @@ void on_event(const union SDL_Event* ev)
 	}
 }
 
+// How far a trigger is pressed, 0..255.
+int trigger(int source) { return g_axis[source == PAD_SRC_LT ? 4 : 5] > 0 ? g_axis[source == PAD_SRC_LT ? 4 : 5] * 255 / 32767 : 0; }
+
+// A control's bound keys or controller buttons (a trigger counts once it clicks).
 bool held(int c)
 {
 	for (int i = 0; i < g_nbind[c]; i++)
 		if (g_key[g_bind[c][i]])
 			return true;
+	for (int i = 0; i < g_npbind[c]; i++) {
+		const int s = g_pbind[c][i];
+		if (s == PAD_SRC_LT || s == PAD_SRC_RT ? trigger(s) >= 250 : g_cbtn[s])
+			return true;
+	}
 	return false;
+}
+
+// L or R's analog pressure: its triggers' own travel, full for a key or button.
+int analog_trigger(int c)
+{
+	int v = 0;
+	for (int i = 0; i < g_npbind[c]; i++)
+		if (g_pbind[c][i] == PAD_SRC_LT || g_pbind[c][i] == PAD_SRC_RT)
+			v = std::max(v, trigger(g_pbind[c][i]));
+	return held(c) ? 255 : v;
 }
 
 s8 axis8(int v, int range)
@@ -278,6 +353,8 @@ void init()
 	if (port_free_camera || port_camera_speed_x != 1.0f)
 		port_log("[pad] camera: free camera %s, speed %d%%\n", port_free_camera ? "on" : "off",
 		         (int)(port_camera_speed_x * 100.0f + 0.5f));
+	for (size_t i = 0; i < sizeof kDefaultPad / sizeof kDefaultPad[0]; i++)
+		g_pbind[kDefaultPad[i].control][g_npbind[kDefaultPad[i].control]++] = kDefaultPad[i].source;
 	parse_bindings(kDefaultBindings, "defaults");
 	g_invert_cx = env_on("SMS_CAMERA_INVERT_X");
 	g_invert_cy = env_on("SMS_CAMERA_INVERT_Y");
@@ -430,23 +507,19 @@ extern "C" u32 PADRead(PADStatus* status)
 	static const struct {
 		int control;
 		u16 bit;
-		int cbutton; // SDL_CONTROLLER_BUTTON_*
 	} map[] = {
-		{ C_A, PAD_BUTTON_A, 0 },          { C_B, PAD_BUTTON_B, 1 },          { C_X, PAD_BUTTON_X, 2 },
-		{ C_Y, PAD_BUTTON_Y, 3 },          { C_Z, PAD_TRIGGER_Z, 10 },        { C_START, PAD_BUTTON_START, 6 },
-		{ C_DUP, PAD_BUTTON_UP, 11 },      { C_DDOWN, PAD_BUTTON_DOWN, 12 }, { C_DLEFT, PAD_BUTTON_LEFT, 13 },
-		{ C_DRIGHT, PAD_BUTTON_RIGHT, 14 },
+		{ C_A, PAD_BUTTON_A },          { C_B, PAD_BUTTON_B },          { C_X, PAD_BUTTON_X },
+		{ C_Y, PAD_BUTTON_Y },          { C_Z, PAD_TRIGGER_Z },         { C_START, PAD_BUTTON_START },
+		{ C_DUP, PAD_BUTTON_UP },       { C_DDOWN, PAD_BUTTON_DOWN },   { C_DLEFT, PAD_BUTTON_LEFT },
+		{ C_DRIGHT, PAD_BUTTON_RIGHT },
 	};
 	for (size_t i = 0; i < sizeof map / sizeof map[0]; i++)
-		if (held(map[i].control) || g_cbtn[map[i].cbutton])
+		if (held(map[i].control))
 			b |= map[i].bit;
-	// Triggers: a key is a full press (analog 255 plus the digital click).
-	int tl = g_axis[4] > 0 ? g_axis[4] * 255 / 32767 : 0;
-	int tr = g_axis[5] > 0 ? g_axis[5] * 255 / 32767 : 0;
-	if (held(C_L))
-		tl = 255;
-	if (held(C_R))
-		tr = 255;
+	// Triggers: analog from the bound triggers; a key or button is a full press
+	// (analog 255 plus the digital click).
+	int tl = analog_trigger(C_L);
+	int tr = analog_trigger(C_R);
 	if (tl >= 250)
 		b |= PAD_TRIGGER_L;
 	if (tr >= 250)

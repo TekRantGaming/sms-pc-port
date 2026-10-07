@@ -247,6 +247,37 @@ BSE_BE_FIXES = [
              r"    return GetResourceTextureHeader(sTinyArrowResTIMG);\n}"),
 ]
 
+# The frame rate is the port's (frame_rate setting), as for the plain game.
+# BetterSunshineEngine replaces TApplication::proc with its own loop, so the
+# port's switch to the gameplay rate there never ran and stages stayed at 30;
+# the loop now switches it where proc does (sms_port_set_gameplay_frame_rate,
+# decomp-patches/modhook-41). BSE's own Frame Rate setting paced the game
+# instead: every frame its updateFPS set the display's retrace count (2, or 1
+# at 60 FPS, which ran the game at twice its speed while the port stepped it
+# for 30) and stored into two retail .sdata2 constants by address, which in
+# the port are inside the game's heap. Its patches are waived
+# (tools/mods/not_ported.txt) and updateFPS is not run; the setting stays in
+# the save, so the card files keep their layout, but is hidden from the menu,
+# and getFrameRate reports the port's rate.
+FRAME_RATE_FIXES = [
+    ("src/application.cpp",
+     r"(BETTER_SMS_FOR_CALLBACK bool BetterAppContextDirectStage\(TApplication \*app\) \{\n"
+     r"\s*sIsAdditionalMovie = app->checkAdditionalMovie\(\);\n\s*if \(!sIsAdditionalMovie\) \{\n)",
+     r'extern "C" void sms_port_set_gameplay_frame_rate(TApplication *app, int gameplay);\n\n'
+     r"\1        sms_port_set_gameplay_frame_rate(app, 1);\n",
+     "the port's frame rate in stages"),
+    ("src/application.cpp", r"\n(\s*)(Application::ContextCallback cb = sContextCBs\[app->mContext\];)",
+     r"\n\1sms_port_set_gameplay_frame_rate(app, 0);\n\1\2", "the port's frame rate between stages"),
+    ("src/module.cpp", r"\n\s*Game::addLoopCallback\(updateFPS\);", "",
+     "BSE's frame rate setting does not pace the port"),
+    ("src/p_settings.hxx", r"(\n(\s*)~FPSSetting\(\) override \{\}\n)",
+     r"\1\2bool isUnlocked() const override { return false; }\n",
+     "BSE's frame rate setting is hidden"),
+    ("src/globals.cpp", r"(f32 BetterSMS::getFrameRate\(\) \{\n\s*const f32 FPS = )static_cast<f32>\(30 << gFPSSetting\.getInt\(\)\);",
+     r'extern "C" int port_active_frame_rate;\n\1static_cast<f32>(port_active_frame_rate);',
+     "BSE reports the port's frame rate"),
+]
+
 ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DEBS_FIXES + [RAWDATA_FIX] + BOOL_RET_FIXES + ECLIPSE_BE_FIXES + ECLIPSE_PATCH_TYPE_FIXES + [
     # A retail function taking TVec3f references, called through a (...) cast:
     # on the GameCube an aggregate in a variable argument list is passed by
@@ -312,7 +343,7 @@ BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDAT
      r'extern "C" void sms_mod_code_write(uint32_t, uint32_t, int);\n'
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
-]
+] + FRAME_RATE_FIXES
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
 SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
     # MWCC's u32/s32 are (unsigned) long, 64 bits on LP64 hosts: the port

@@ -23,8 +23,25 @@ struct ShaderKey {
     uint32_t numStages, numInd;
     uint32_t colorEnv[16], alphaEnv[16], order[16], ksel[16], ind[16];
     uint32_t swap[4];
-    uint32_t iref, alphaFunc, fogType;
+    uint32_t iref, alphaFunc, fogType, earlyZ, depthOnly;
 };
+
+// The qualifier is available in GL 4.2 and as an extension on GL 3.3.
+// Older contexts (including macOS) use the ordered depth pass in flushBatch.
+static int s_earlyFragmentTests = -1;
+bool shaderHasEarlyFragmentTests() {
+    if (s_earlyFragmentTests >= 0) return s_earlyFragmentTests != 0;
+    s_earlyFragmentTests = 0;
+    GLint n = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &n);
+    for (GLint i = 0; i < n; i++) {
+        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, GLuint(i)));
+        if (ext && !strcmp(ext, "GL_ARB_shader_image_load_store")) s_earlyFragmentTests = 1;
+    }
+    // Also permits exercising the GL 3.3 fallback on newer drivers.
+    if (getenv("SMS_GX_FORCE_EARLY_Z_FALLBACK")) s_earlyFragmentTests = 0;
+    return s_earlyFragmentTests != 0;
+}
 
 static void buildKey(ShaderKey& k) {
     memset(&k, 0, sizeof(k));
@@ -57,6 +74,7 @@ static void buildKey(ShaderKey& k) {
         k.swap[t] = (g.bp[BP_TEV_KSEL + 2 * t] & 15) | (g.bp[BP_TEV_KSEL + 2 * t + 1] & 15) << 4;
     k.iref = k.numInd ? g.bp[BP_RAS1_IREF] & 0xFFFFFF : 0;
     k.alphaFunc = (g.bp[BP_ALPHACOMPARE] >> 16) & 0xFF;
+    k.earlyZ = ((g.bp[BP_PE_CONTROL] >> 6) & 1) && shaderHasEarlyFragmentTests();
     k.fogType = (g.bp[BP_FOG3] >> 21) & 7;
 }
 
@@ -297,6 +315,10 @@ static std::string swizzle(uint32_t swap) {
 
 static std::string genFS(const ShaderKey& k) {
     std::string s = kFsHeader;
+    if (k.earlyZ) {
+        s.insert(s.find('\n') + 1, "#extension GL_ARB_shader_image_load_store : require\nlayout(early_fragment_tests) in;\n");
+    }
+    if (k.depthOnly) return s + "void main() { o_color = vec4(0.0); }\n";
     char buf[2048];
     s += "void main() {\n"
          "  ivec4 cprev = u_tevreg[0], creg0 = u_tevreg[1], creg1 = u_tevreg[2], creg2 = u_tevreg[3];\n"
@@ -518,10 +540,11 @@ static std::unordered_map<ProgramKey, ShaderProgram, ProgramKeyHash> s_programs;
 static ProgramKey s_lastKey;
 static const ShaderProgram* s_lastProgram = nullptr;
 
-const ShaderProgram* shaderForCurrentState() {
+const ShaderProgram* shaderForCurrentState(bool depthOnly) {
     ProgramKey key;
     ShaderKey& k = key.k;
     buildKey(k);
+    k.depthOnly = depthOnly;
     key.indScale[0] = k.numInd ? g.bp[BP_RAS1_SS0] : 0;
     key.indScale[1] = k.numInd ? g.bp[BP_RAS1_SS0 + 1] : 0;
     // consecutive batches mostly share a program
@@ -591,6 +614,7 @@ void shaderShutdown() {
     for (auto& kv : s_programs) glDeleteProgram(kv.second.prog);
     s_programs.clear();
     s_lastProgram = nullptr;
+    s_earlyFragmentTests = -1;
 }
 
 }  // namespace gx

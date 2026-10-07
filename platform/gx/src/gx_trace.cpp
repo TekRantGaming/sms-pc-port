@@ -302,6 +302,10 @@ void traceCopy(bool disp, int x, int y, int w, int h, const void* dest, uint32_t
     fprintf(f, "\n== %s copy src %d,%d %dx%d -> %p ctrl=%06X (fmt %u%s%s%s)\n", disp ? "display" : "texture", x, y, w, h,
             dest, ctrl, ((ctrl >> 3) & 1) << 3 | ((ctrl >> 4) & 7), ((ctrl >> 15) & 3) == 3 ? " intensity" : "",
             (ctrl >> 9) & 1 ? " half" : "", (ctrl >> 11) & 1 ? " clear" : "");
+    if ((ctrl >> 11) & 1)
+        fprintf(f, "  clear writes: colour=%u alpha=%u depth=%u pixfmt=%u\n",
+                (g.bp[BP_CMODE0] >> 3) & 1, (g.bp[BP_CMODE0] >> 4) & 1,
+                (g.bp[BP_ZMODE] >> 4) & 1, g.bp[BP_PE_CONTROL] & 7);
     fflush(f);
 }
 

@@ -26,6 +26,7 @@
 #include <System/FlagManager.hpp>
 #include <System/GameSequence.hpp>
 #include <System/ScenarioArchiveName.hpp>
+#include <Enemy/Emario.hpp>
 
 // sym is the mods' C++ name; asm labels are literal, so add the platform's
 // prefix (Mach-O and 32-bit COFF put an underscore before every C name).
@@ -174,3 +175,9 @@ extern "C" void setShineFlag__12TFlagManagerFUc(TFlagManager* self, u16 flag)
 {
 	self->setShineFlag((u8)flag);
 }
+
+// BetterSunshineEngine's shadowMarioInitHandler, in place of TEMario::loadAfter's
+// SMS_isMultiPlayerMap call, loads Shadow Mario from the TEMario in r31 at its
+// retail offset (lwz r, 0x150(r31)): the port's hook passes the TEMario
+// (zz-modhook-50) and the mod reads the member here (fixup_sources.py).
+extern "C" void* sms_mod_emario_mario(void* emario) { return static_cast<TEMario*>(emario)->mEnemyMario; }

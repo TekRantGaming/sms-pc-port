@@ -1,0 +1,34 @@
+Reason: Retail out-of-bounds access: a root directory's ".." entry (0xFFFFFFFF) makes findFsResource and findDirectory read the 16 bytes before the directory table as a directory, which on the console has no entries, so retail finds nothing; the port's tables differ there and a 64-bit host faults (Super Mario Eclipse's Red Lily: Shadow Mario's ../map/pad/Setting.prm from the params archive's root). Such an index finds nothing, as on the console.
+--- a/libs/JSystem/src/JKernel/JKRArchivePri.cpp
++++ b/libs/JSystem/src/JKernel/JKRArchivePri.cpp
+@@ -71,6 +71,11 @@
+ 	}
+ 
+ 	CArcName arcName(&name, '/');
++#ifdef TARGET_PC
++	// see findFsResource
++	if (directoryId >= mArcInfoBlock->num_nodes)
++		return nullptr;
++#endif
+ 	SDIDirEntry* dirEntry   = mDirectories + directoryId;
+ 	SDIFileEntry* fileEntry = mFileEntries + dirEntry->mFirstIdx;
+ 
+@@ -121,6 +126,18 @@
+ {
+ 	if (name) {
+ 		CArcName arcName(&name, '/');
++#ifdef TARGET_PC
++		// A root directory's ".." entry holds 0xFFFFFFFF. Retail then reads
++		// the 16 bytes before the directory table, the end of the archive's
++		// info block, as a directory, with no entries there, and finds
++		// nothing (Super Mario Eclipse's Red Lily looks up Shadow Mario's
++		// "../map/pad/Setting.prm" from the params archive's root, and the
++		// parameters keep their defaults). The port's tables are not laid out
++		// that way, and a 64-bit host would add 64 GiB: nothing is found, as
++		// on the console.
++		if (directoryId >= mArcInfoBlock->num_nodes)
++			return nullptr;
++#endif
+ 		SDIDirEntry* dirEntry   = mDirectories + directoryId;
+ 		SDIFileEntry* fileEntry = mFileEntries + dirEntry->mFirstIdx;
+ 

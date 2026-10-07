@@ -2,6 +2,7 @@
 // the port) never needed. Each is a logged no-op until a feature needs more:
 // streamed music (DVD audio streaming, its fade alarms), cache control, the
 // memory card's game-code switch and the exception handler.
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -41,6 +42,17 @@ void* OSGetCurrentContext(void) { return 0; }
 void __OSUnhandledException(uint8_t, void*, uint32_t, uint32_t) { once("__OSUnhandledException"); }
 
 void __CARDSetDiskID(const void*) { once("__CARDSetDiskID"); }
+
+// BetterSunshineEngine's Console::log and its kin hand their va_list to
+// OSReport as one argument, so the values never reached the format (the
+// moveset's state warnings printed a stack address as the state);
+// fixup_sources.py sends the va_list here instead.
+void sms_mod_vreport(const char* fmt, va_list ap)
+{
+	fputs("[OSReport] ", stderr);
+	vfprintf(stderr, fmt, ap);
+	fflush(stderr);
+}
 
 typedef void (*AISCallback)(uint32_t);
 AISCallback AIRegisterStreamCallback(AISCallback) { once("AIRegisterStreamCallback"); return 0; }

@@ -343,6 +343,13 @@ BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDAT
      r'extern "C" void sms_mod_code_write(uint32_t, uint32_t, int);\n'
      r'\1    sms_mod_code_write((uint32_t)(uintptr_t)ptr, value, \2 / 8);',
      "code writes go to the patch registry"),
+    # Console::log and its kin pass their va_list to OSReport as a single
+    # argument (as on the console, where the values are garbage too); the
+    # port's sms_mod_vreport (sdk_extras.cpp) formats with it.
+    ("src/logging.cpp", r'(#include "module.hxx"\n)', r'\1\nextern "C" void sms_mod_vreport(const char *, va_list);\n',
+     "BSE's console log formats its arguments"),
+    ("src/logging.cpp", r"\bOSReport\(msg, vargs\);", r"sms_mod_vreport(msg, vargs);",
+     "BSE's console log formats its arguments"),
 ] + FRAME_RATE_FIXES
 MOVESET_FIXES = optional(TEXTURE_FIXES + [RAWADDR_FIX]) + CARD_IMAGE_FIXES
 SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [

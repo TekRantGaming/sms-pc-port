@@ -1,0 +1,29 @@
+Reason: fpu: JMASSin and JMASCos take an s16 angle, and most callers pass a float (DEG2SHORTANGLE of degrees, or JMASin/JMACos). The console converts it with fctiwz and keeps the low halfword, so an angle past +-180 degrees wraps round the table. In C++ a float to s16 conversion is undefined when the value does not fit, and GCC 16 (the launcher's compiler on Linux and Windows) uses that: where it can prove the angle is not negative it takes the converted value as 0..32767 and sign-extends it, so 180 to 360 degrees index the sine table backwards from its start. TMushroom1up::control orbits a collected 1-Up at 5 degrees a frame from 900 degrees down, and crashed on its first frame (issue #28). Convert a float angle through a 32-bit int, which wraps as the console does.
+--- a/libs/JSystem/include/JSystem/JMath.hpp
++++ b/libs/JSystem/include/JSystem/JMath.hpp
+@@ -94,14 +94,21 @@
+ extern f32* jmaSinTable;
+ extern f32* jmaCosTable;
+ 
+-inline f32 JMASCos(s16 v)
++// port: the console converts a float angle to s16 with fctiwz and keeps the low
++// halfword, so angles past +-180 degrees wrap. In C++ that conversion is
++// undefined out of range: the host goes through a 32-bit int to wrap the same way.
++template <class T> inline s16 JMAShortAngle(T v) { return static_cast<s16>(v); }
++template <> inline s16 JMAShortAngle(f32 v) { return static_cast<s16>(static_cast<int>(v)); }
++template <> inline s16 JMAShortAngle(f64 v) { return static_cast<s16>(static_cast<int>(v)); }
++
++template <class T> inline f32 JMASCos(T v)
+ {
+-	return jmaCosTable[static_cast<u16>(v) >> jmaSinShift];
++	return jmaCosTable[static_cast<u16>(JMAShortAngle(v)) >> jmaSinShift];
+ }
+ 
+-inline f32 JMASSin(s16 v)
++template <class T> inline f32 JMASSin(T v)
+ {
+-	return jmaSinTable[static_cast<u16>(v) >> jmaSinShift];
++	return jmaSinTable[static_cast<u16>(JMAShortAngle(v)) >> jmaSinShift];
+ }
+ 
+ inline f32 JMACos(f32 v) { return JMASCos(DEG2SHORTANGLE(v)); }

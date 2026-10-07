@@ -25,7 +25,6 @@
 #include "port_platform.h"
 #include <dolphin/ai.h>
 
-#include <algorithm>
 #include <mutex>
 #include <vector>
 
@@ -53,6 +52,10 @@ struct Dtk {
 	s16 prevL, prevR, curL, curR;
 } g;
 
+// s32 is long in the 32-bit build (as CodeWarrior's), so the std::min and
+// std::max of it and an int literal do not deduce
+s32 clamp(s32 v, s32 lo, s32 hi) { return v < lo ? lo : v > hi ? hi : v; }
+
 s16 decode_sample(s32 bits, s32 q, s32& hist1, s32& hist2)
 {
 	s32 hist = 0;
@@ -61,12 +64,12 @@ s16 decode_sample(s32 bits, s32 q, s32& hist1, s32& hist2)
 	case 2: hist = hist1 * 0x73 - hist2 * 0x34; break;
 	case 3: hist = hist1 * 0x62 - hist2 * 0x37; break;
 	}
-	hist    = std::min(std::max((hist + 0x20) >> 6, -0x200000), 0x1fffff);
+	hist    = clamp((hist + 0x20) >> 6, -0x200000, 0x1fffff);
 	s32 cur = (((s16)(bits << 12) >> (q & 0xf)) << 6) + hist;
 	hist2   = hist1;
 	hist1   = cur;
 	cur >>= 6;
-	return (s16)std::min(std::max(cur, -0x8000), 0x7fff);
+	return (s16)clamp(cur, -0x8000, 0x7fff);
 }
 
 // The next stream frame (silence once the region is played).
@@ -155,8 +158,8 @@ extern "C" void port_dtk_mix(s16* lr, size_t frames, u32 outRate)
 			if (lr) {
 				s32 l = (s32)(g.prevL + (g.curL - g.prevL) * g.t) * g.volL >> 8;
 				s32 r = (s32)(g.prevR + (g.curR - g.prevR) * g.t) * g.volR >> 8;
-				lr[i * 2]     = (s16)std::min(std::max(lr[i * 2] + l, -0x8000), 0x7fff);
-				lr[i * 2 + 1] = (s16)std::min(std::max(lr[i * 2 + 1] + r, -0x8000), 0x7fff);
+				lr[i * 2]     = (s16)clamp(lr[i * 2] + l, -0x8000, 0x7fff);
+				lr[i * 2 + 1] = (s16)clamp(lr[i * 2 + 1] + r, -0x8000, 0x7fff);
 			}
 			g.t += step;
 		}

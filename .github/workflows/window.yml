@@ -20,14 +20,18 @@ jobs:
       - name: Install SDL and software OpenGL
         env:
           ARCH: ${{ matrix.arch }}
+        timeout-minutes: 15
         run: |
+          # The Azure Ubuntu mirror sometimes stalls a connection without
+          # closing it, which apt's own timeout doesn't catch. Kill and retry.
+          apt() { for n in 1 2 3; do sudo timeout 240 apt-get -o Acquire::Retries=3 "$@" && return; echo "apt-get $1 attempt $n failed"; done; return 1; }
           if [ "$ARCH" = 32 ]; then sudo dpkg --add-architecture i386; fi
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
+          apt update
+          apt install -y --no-install-recommends cmake g++-multilib python3 patch binutils xvfb xauth openbox x11-utils libsdl2-dev libegl-dev libgl-dev libgl1-mesa-dri libegl-mesa0
           # The port already supports 32-bit SDL using the host's headers and
           # i386 runtime libraries. Avoid incompatible multiarch GLib dev tools.
           if [ "$ARCH" = 32 ]; then
-            sudo apt-get install -y --no-install-recommends libsdl2-2.0-0:i386 libegl1:i386 libgl1:i386 libgl1-mesa-dri:i386 libegl-mesa0:i386
+            apt install -y --no-install-recommends libsdl2-2.0-0:i386 libegl1:i386 libgl1:i386 libgl1-mesa-dri:i386 libegl-mesa0:i386
           fi
       - name: Build the game's window smoke test
         env:

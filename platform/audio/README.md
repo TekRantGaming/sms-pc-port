@@ -9,6 +9,7 @@ This module replaces the hardware it talks to: the DSP microcode that mixes voic
 | `dsp_mixer.{h,cpp}` | audio | The mixer: ADPCM4/ADPCM2/PCM8/PCM16 from ARAM, DirectPCM stream rings from main memory, 4-tap polyphase resampling with the game's `DSPRES_FILTER`, per-send Q15 volume ramps, the auto mixer, the four FX lines, the master level. No game headers. |
 | `dsp_hle.cpp` | audio | The DSP task's side of the mail protocol: setup (0x81), sync frame (0x82), release-halt → render one subframe → `0xF355FF00` through `__DSPHandler`. The SDK-named `DSP*` functions are built only with `SMS_AUDIO_DSP_HLE` (see Integration). |
 | `ai.cpp` | audio | `AI*`: DMA latch/callback emulation, SDL2 output (loaded with `dlopen`), host-clock pacing without a device, WAV recording. |
+| `dtk.cpp` | audio | DVD audio streaming (DTK): the `AIS*` stream registers and trigger interrupt, the DTK ADPCM decoder, and the mix of the stream into each AI DMA block (48 kHz resampled to 32 kHz). Retail SMS never streams; Super Mario Eclipse's music does (BetterSunshineEngine's `AudioStreamer`). The DVD side is `../dvd/dvd.cpp`. |
 | `noaudio.cpp` | bring-up lead | `SMS_NO_AUDIO` (empty sound configuration). |
 | `tests/` | audio | `audio_test`: offline mixer test against the disc; `mixer_regression`: asset-free reverb and release checks (not part of the CMake build). |
 | `../../decomp-patches/audio-01-*.patch`, `audio-02-*.patch` | audio | JAudio bitfield/byte views that assumed big-endian layout (mix-config bus numbers, BMS note-on flags). |

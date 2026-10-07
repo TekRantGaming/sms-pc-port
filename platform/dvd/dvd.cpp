@@ -694,15 +694,40 @@ extern "C" BOOL DVDReadDir(DVDDir* dir, DVDDirEntry* ent)
 
 extern "C" BOOL DVDCloseDir(DVDDir* dir) { return TRUE; }
 
-// Streaming audio (DVD ADPCM streams) is not emulated: report success with no data.
+// Streaming audio (DTK): the region is read whole and played by the Audio
+// Interface (platform/audio/dtk.cpp). The stream stops at the end of its
+// region; DVDStopStreamAtEndAsync asks for nothing more.
+extern "C" void port_dtk_prepare(u32 base, u32 offset, std::vector<u8>& data);
+extern "C" void port_dtk_cancel(void);
+extern "C" u32 port_dtk_play_addr(void);
+extern "C" int port_dtk_active(void);
+
 extern "C" BOOL DVDPrepareStreamAsync(DVDFileInfo* fi, u32 length, u32 offset, DVDCallback cb)
 {
+	std::vector<u8> data;
+	u32 entry = fi->startAddr;
+	if (entry < g_fst.size() && !g_fst[entry].dir && offset < g_fst[entry].length) {
+		u32 len = g_fst[entry].length - offset;
+		if (length && length < len)
+			len = length;
+		data.resize(len);
+		DVDFileInfo tmp = *fi;
+		s32 n           = do_read(&tmp, data.data(), (s32)len, (s32)offset);
+		data.resize(n > 0 ? (size_t)n : 0);
+	}
+	port_dtk_prepare(entry, offset, data);
 	if (cb)
 		port_irq_defer([fi, cb]() { cb(0, fi); });
 	return TRUE;
 }
+extern "C" s32 DVDCancelStream(DVDCommandBlock*)
+{
+	port_dtk_cancel();
+	return 0;
+}
 extern "C" BOOL DVDCancelStreamAsync(DVDCommandBlock* block, DVDCBCallback cb)
 {
+	port_dtk_cancel();
 	if (cb)
 		port_irq_defer([block, cb]() { cb(0, block); });
 	return TRUE;
@@ -715,7 +740,16 @@ extern "C" BOOL DVDStopStreamAtEndAsync(DVDCommandBlock* block, DVDCBCallback cb
 }
 extern "C" BOOL DVDGetStreamPlayAddrAsync(DVDCommandBlock* block, DVDCBCallback cb)
 {
+	u32 addr = port_dtk_play_addr();
 	if (cb)
-		port_irq_defer([block, cb]() { cb(0, block); });
+		port_irq_defer([block, cb, addr]() { cb((s32)addr, block); });
+	return TRUE;
+}
+// 1 while the stream plays, 0 once it is cancelled or has played its region
+extern "C" BOOL DVDGetStreamErrorStatusAsync(DVDCommandBlock* block, DVDCBCallback cb)
+{
+	s32 status = port_dtk_active();
+	if (cb)
+		port_irq_defer([block, cb, status]() { cb(status, block); });
 	return TRUE;
 }

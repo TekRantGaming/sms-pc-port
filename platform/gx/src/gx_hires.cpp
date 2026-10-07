@@ -15,8 +15,8 @@
 // Packs are found under the directories in SMS_TEXTURE_PACKS (separated by ':'
 // or ';'), else under mods/textures/ in the working directory (or two levels
 // up, when started from build/<os>-<arch>/). SMS_TEXTURE_PACKS=0 disables
-// them. Images decode on a worker thread: a texture shows its original until
-// its replacement is ready.
+// them. Resource textures prepare on a worker, then upload before gameplay.
+// Late textures show their original until a bounded frame-end upload finishes.
 #include "gx_internal.h"
 #include "gl_funcs.h"
 #include "gx_glcache.h"
@@ -25,10 +25,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -116,7 +119,7 @@ struct PackFile {
 };
 static std::unordered_map<std::string, PackFile>& s_index =
     *new std::unordered_map<std::string, PackFile>;  // key: the texture name (read by the worker; never destroyed)
-static int s_state = -1;                                   // -1 not scanned, 0 off, 1 on
+static std::atomic<int> s_state{-1};                       // published after the index and GL formats are ready
 static uint32_t s_uploaded = 0;                            // replacements in GL
 
 static bool endsWith(const std::string& s, const char* suf) {
@@ -153,6 +156,7 @@ static void indexFile(const std::filesystem::path& p) {
 }
 
 static void queryFormats();
+static void startWorker();
 
 static void scan() {
     s_state = 0;
@@ -184,8 +188,11 @@ static void scan() {
     }
     for (auto it = s_index.begin(); it != s_index.end();)  // mips without a level 0
         it = it->second.path.empty() ? s_index.erase(it) : std::next(it);
-    s_state = s_index.empty() ? 0 : 1;
-    if (s_state) queryFormats();
+    if (!s_index.empty()) {
+        queryFormats();
+        startWorker();
+        s_state = 1;
+    }
 }
 
 bool hiresEnabled() {
@@ -353,15 +360,15 @@ static bool decodeDds(const std::string& path, Loaded* L) {
     size_t bsz = fmt == DDS_BC1 ? 8 : 16;
     int full = 1;
     for (int m = std::max(w, h); m > 1; m >>= 1) full++;
-    // blocks go to the GL as they are only with a full chain: a partial one
-    // (Dolphin packs often ship 3 levels) is completed from RGBA below
-    bool gpu = mips >= full && ((fmt <= DDS_BC3 && s_s3tc) || (fmt == DDS_BC7 && s_bptc));
+    // Keep supported blocks compressed even with only one or three levels.
+    // GL_TEXTURE_MAX_LEVEL makes a partial chain complete for sampling.
+    bool gpu = (fmt <= DDS_BC3 && s_s3tc) || (fmt == DDS_BC7 && s_bptc);
     static const GLenum kGl[] = {0, 0x83F1, 0x83F2, 0x83F3, 0x8E8C};  // S3TC DXT1/3/5 RGBA, BPTC UNORM
     L->w = w;
     L->h = h;
     L->compressed = gpu ? kGl[fmt] : 0;
     int lw = w, lh = h;
-    for (int m = 0; m < mips; m++) {
+    for (int m = 0; m < std::min(mips, full); m++) {
         int bw = (lw + 3) / 4, bh = (lh + 3) / 4;
         size_t bytes = block ? size_t(bw) * bh * bsz : size_t(lw) * lh * 4;
         if (off + bytes > file.size()) break;
@@ -413,14 +420,105 @@ static std::unordered_map<std::string, Replacement> s_repl;  // render thread on
 // exits, and destroying a condition variable with a waiter blocks forever.
 static std::mutex& s_mu = *new std::mutex;
 static std::condition_variable& s_cv = *new std::condition_variable;
-static std::deque<std::string>& s_queue = *new std::deque<std::string>;  // to decode
-static std::vector<std::pair<std::string, Loaded*>>& s_decoded =
-    *new std::vector<std::pair<std::string, Loaded*>>;  // decoded, to upload
-static bool s_workerStarted = false;
+struct Request { std::string name; uint32_t w, h; };
+struct Decoded { Request request; std::unique_ptr<Loaded> image; size_t bytes; };
+static std::deque<Request>& s_queue = *new std::deque<Request>;
+static std::deque<Decoded>& s_decoded = *new std::deque<Decoded>;
+static std::unordered_set<std::string>& s_requested = *new std::unordered_set<std::string>;
+static size_t s_decodedBytes = 0;
+static bool s_stop = false, s_busy = false;
+static std::thread* s_worker = nullptr;
 
-// Completes an RGBA mip chain down to 1x1 with 2x2 box filtering, so every
-// replacement has all its levels (the sampler picks the ones the original
-// would use) whatever the pack supplied.
+static bool syncLoading() {
+    static const bool sync = getenv("SMS_TEXTURE_PACK_SYNC") && atoi(getenv("SMS_TEXTURE_PACK_SYNC")) != 0;
+    return sync;
+}
+
+static size_t pendingBudget() {
+    static const size_t budget = [] {
+        const char* e = getenv("SMS_TEXTURE_PACK_PENDING_MB");
+        return size_t(e && atoi(e) > 0 ? atoi(e) : 256) << 20;
+    }();
+    return budget;
+}
+
+static void requestTexture(const std::string& name, uint32_t w, uint32_t h) {
+    if (name.empty()) return;
+    std::lock_guard<std::mutex> lk(s_mu);
+    if (s_requested.insert(name).second) {
+        s_queue.push_back({name, w, h});
+        s_cv.notify_all();
+    }
+}
+
+static bool preloading() {
+    static const bool on = !getenv("SMS_TEXTURE_PACK_PRELOAD") || atoi(getenv("SMS_TEXTURE_PACK_PRELOAD")) != 0;
+    return on && !syncLoading();
+}
+
+// Inspect resources before endian conversion. Only names/hashes are retained:
+// the loader may free or reuse its buffer immediately after this returns.
+static uint32_t readBe32(const uint8_t* p) {
+    return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 | p[3];
+}
+static uint32_t readBe16(const uint8_t* p) { return uint32_t(p[0]) << 8 | p[1]; }
+
+static void prefetchTimg(const uint8_t* data, size_t size, size_t off) {
+    if (off > size || size - off < 0x20) return;
+    const uint8_t* t = data + off;
+    uint32_t fmt = t[0], w = readBe16(t + 2), h = readBe16(t + 4);
+    if (fmt > 14 || !w || !h || w > 1024 || h > 1024) return;
+    uint32_t image = readBe32(t + 0x1C);
+    size_t bytes = texLevelBytes(fmt, w, h);
+    if (image < 0x20 || image > size - off || !bytes || bytes > size - off - image) return;
+    const uint8_t* palette = nullptr;
+    uint32_t paletteBytes = 0;
+    if (fmt == 8 || fmt == 9 || fmt == 10) {
+        uint32_t pal = readBe32(t + 0x0C);
+        paletteBytes = readBe16(t + 0x0A) * 2;
+        if (!paletteBytes || pal < 0x20 || pal > size - off || paletteBytes > size - off - pal) return;
+        palette = t + pal;
+    }
+    bool mipmapped = t[0x14] >= 2 && t[0x17] != 0;
+    std::string name = hiresName(t + image, fmt, w, h, mipmapped, palette, paletteBytes, true);
+    if (name.empty()) name = hiresName(t + image, fmt, w, h, !mipmapped, palette, paletteBytes, true);
+    requestTexture(name, w, h);
+}
+
+void hiresPrefetchResource(const void* ptr, uint32_t size, const char* name) {
+    // Never scan directories or query GL on a resource-loading thread.
+    if (s_state != 1 || !preloading() || !ptr || size < 0x20) return;
+    const uint8_t* data = static_cast<const uint8_t*>(ptr);
+    bool model = !memcmp(data, "J3D2", 4), particle = !memcmp(data, "JEFFjpa1", 8);
+    if (!model && !particle) {
+        if (name) {
+            std::string ext = std::filesystem::path(name).extension().string();
+            for (char& c : ext) c = char(tolower(uint8_t(c)));
+            if (ext == ".bti" && data[0x19] != 0x6E) prefetchTimg(data, size, 0);
+        }
+        return;
+    }
+    uint32_t blocks = readBe32(data + 0x0C);
+    size_t pos = 0x20;
+    for (uint32_t i = 0; i < blocks && pos <= size && size - pos >= 8; ++i) {
+        uint32_t len = readBe32(data + pos + 4);
+        if (len < 8 || len > size - pos) break;
+        const uint8_t* b = data + pos;
+        if (!memcmp(b, "TEX1", 4)) {
+            if (particle) {
+                prefetchTimg(b, len, 0x20);
+            } else if (len >= 0x14) {
+                uint32_t count = readBe16(b + 8), headers = readBe32(b + 0x0C);
+                if (headers >= 0x14 && headers <= len && count <= (len - headers) / 0x20)
+                    for (uint32_t j = 0; j < count; ++j) prefetchTimg(b, len, headers + size_t(j) * 0x20);
+            }
+        }
+        pos += len;
+    }
+}
+
+// Complete uncompressed images down to 1x1. Supported DDS blocks retain the
+// pack's supplied levels; GL clamps sampling to their last uploaded level.
 static void completeChain(Loaded* L) {
     if (L->compressed || L->levels.empty()) return;
     int lw = L->w, lh = L->h;
@@ -456,6 +554,19 @@ static Loaded* decode(const PackFile& f) {
             logmsg("texture pack: cannot read %s (not a DDS of a supported format)", f.path.c_str());
             L->failed = true;
         }
+        if (!L->failed) {
+            int lw = std::max(1, L->w >> (L->levels.size() - 1));
+            int lh = std::max(1, L->h >> (L->levels.size() - 1));
+            for (size_t level = L->levels.size(); level <= f.mips.size() && (lw > 1 || lh > 1); ++level) {
+                const std::string& path = f.mips[level - 1];
+                Loaded mip;
+                lw = std::max(1, lw / 2);
+                lh = std::max(1, lh / 2);
+                if (path.empty() || !decodeDds(path, &mip) || mip.w != lw || mip.h != lh || mip.compressed != L->compressed)
+                    break;
+                L->levels.push_back(std::move(mip.levels.front()));
+            }
+        }
         completeChain(L);
         return L;
     }
@@ -487,16 +598,34 @@ static Loaded* decode(const PackFile& f) {
 
 static void worker() {
     for (;;) {
-        std::string name;
+        Request req;
         {
             std::unique_lock<std::mutex> lk(s_mu);
-            s_cv.wait(lk, [] { return !s_queue.empty(); });
-            name = s_queue.front();
+            // The backlog can exceed its byte budget by one result, allowing
+            // even a single texture larger than the budget to make progress.
+            s_cv.wait(lk, [] { return s_stop || (!s_queue.empty() &&
+                s_decoded.size() < 64 && s_decodedBytes < pendingBudget()); });
+            if (s_stop) return;
+            req = std::move(s_queue.front());
             s_queue.pop_front();
+            s_busy = true;
         }
-        Loaded* L = decode(s_index.at(name));  // the index is read-only after the scan
+        std::unique_ptr<Loaded> L(decode(s_index.at(req.name)));
+        size_t bytes = 0;
+        for (const auto& level : L->levels) bytes += level.size();
         std::lock_guard<std::mutex> lk(s_mu);
-        s_decoded.emplace_back(name, L);
+        s_busy = false;
+        if (s_stop) return;
+        s_decodedBytes += bytes;
+        s_decoded.push_back({std::move(req), std::move(L), bytes});
+        s_cv.notify_all();
+    }
+}
+
+static void startWorker() {
+    if (!syncLoading() && !s_worker) {
+        s_stop = false;
+        s_worker = new std::thread(worker);
     }
 }
 
@@ -522,53 +651,33 @@ static void upload(Replacement& r, Loaded* L, int unit, uint32_t gxW, uint32_t g
         lh = std::max(1, lh / 2);
         n++;
     }
-    // every replacement arrives with its full chain (completeChain)
+    // Compressed DDS files keep precisely the levels supplied by the pack.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, int(L->levels.size()) - 1);
     r.scale = scale;
     r.state = Replacement::READY;
     s_bytes += r.bytes;
     s_uploaded++;
+    extern uint32_t g_statTexUploads;
+    g_statTexUploads++;
 }
 
 // The GL texture replacing `name` (a name hiresName found in the pack), or 0
-// while it is still decoding or if it cannot be read. Uploading binds it on
-// `unit`. SMS_TEXTURE_PACK_SYNC=1 decodes on the spot (repeatable captures).
+// while it is still preparing or if it cannot be read. Normal draws only
+// request/look up replacements; uploads happen at frame boundaries/loading.
+// SMS_TEXTURE_PACK_SYNC=1 decodes on the spot (repeatable captures).
 GLuint hiresTexture(const std::string& name, int unit, uint32_t gxW, uint32_t gxH, int* scale) {
-    static int sync = -1;
-    if (sync < 0) sync = getenv("SMS_TEXTURE_PACK_SYNC") && atoi(getenv("SMS_TEXTURE_PACK_SYNC")) != 0;
     auto it = s_repl.find(name);
     if (it == s_repl.end()) {
         Replacement& r = s_repl[name];
-        if (sync) {
+        if (syncLoading()) {
             Loaded* L = decode(s_index.at(name));
             upload(r, L, unit, gxW, gxH);
             delete L;
         } else {
-            std::lock_guard<std::mutex> lk(s_mu);
-            s_queue.push_back(name);
-            if (!s_workerStarted) {
-                s_workerStarted = true;
-                std::thread(worker).detach();
-            }
-            s_cv.notify_one();
+            requestTexture(name, gxW, gxH);
         }
         it = s_repl.find(name);
-    } else if (it->second.state == Replacement::QUEUED) {
-        std::vector<std::pair<std::string, Loaded*>> done;
-        {
-            std::lock_guard<std::mutex> lk(s_mu);
-            for (size_t i = 0; i < s_decoded.size(); i++)
-                if (s_decoded[i].first == name) {
-                    done.push_back(s_decoded[i]);
-                    s_decoded.erase(s_decoded.begin() + long(i));
-                    break;
-                }
-        }
-        for (auto& d : done) {
-            upload(it->second, d.second, unit, gxW, gxH);
-            delete d.second;
-        }
     }
     if (it->second.state != Replacement::READY) return 0;
     it->second.used = s_frame;
@@ -576,11 +685,46 @@ GLuint hiresTexture(const std::string& name, int unit, uint32_t gxW, uint32_t gx
     return it->second.tex;
 }
 
+static void uploadPending(bool wait) {
+    using Clock = std::chrono::steady_clock;
+    const auto start = Clock::now();
+    size_t bytes = 0;
+    // Soft limits between textures: a single large upload cannot be interrupted.
+    do {
+        Decoded item;
+        {
+            std::unique_lock<std::mutex> lk(s_mu);
+            if (wait) s_cv.wait(lk, [] { return !s_decoded.empty() || (s_queue.empty() && !s_busy); });
+            if (s_decoded.empty()) break;
+            item = std::move(s_decoded.front());
+            s_decoded.pop_front();
+            s_decodedBytes -= item.bytes;
+            s_cv.notify_all();
+        }
+        Replacement& r = s_repl[item.request.name];
+        upload(r, item.image.get(), 0, item.request.w, item.request.h);
+        r.used = s_frame;  // keep preloaded textures through the first draw
+        bytes += item.bytes;
+    } while (wait || (bytes < (16u << 20) && Clock::now() - start < std::chrono::milliseconds(2)));
+}
+
+void hiresPreload() {
+    if (s_state != 1 || !preloading()) return;
+    const auto start = std::chrono::steady_clock::now();
+    uint32_t before = s_uploaded;
+    uploadPending(true);
+    if (s_uploaded != before)
+        logmsg("texture pack: prepared %u replacements before gameplay in %.1f ms (%zu MiB resident)",
+               s_uploaded - before,
+               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), s_bytes >> 20);
+}
+
 // Once a display frame: over the memory budget (SMS_TEXTURE_PACK_MB, 1536
 // by default), the replacements unused for longest are freed, down to three
 // quarters of it. One sampled since the previous frame is never freed; a
 // freed one is read again the next time its texture is.
 void hiresEndFrame() {
+    if (s_state == 1 && !syncLoading()) uploadPending(false);
     s_frame++;
     static size_t budget = 0;
     if (!budget) {
@@ -604,6 +748,8 @@ void hiresEndFrame() {
         glcForgetTexture(r.tex);
         glDeleteTextures(1, &r.tex);
         s_repl.erase(nm);
+        std::lock_guard<std::mutex> lk(s_mu);
+        s_requested.erase(nm);
         n++;
     }
     s_bytes -= freed;
@@ -611,6 +757,22 @@ void hiresEndFrame() {
 }
 
 void hiresShutdown() {
+    s_state = 0;
+    {
+        std::lock_guard<std::mutex> lk(s_mu);
+        s_stop = true;
+        s_cv.notify_all();
+    }
+    if (s_worker) {
+        s_worker->join();
+        delete s_worker;
+        s_worker = nullptr;
+    }
+    s_queue.clear();
+    s_decoded.clear();
+    s_requested.clear();
+    s_decodedBytes = 0;
+    s_busy = false;
     s_bytes = 0;
     for (auto& kv : s_repl)
         if (kv.second.tex) {
@@ -618,8 +780,16 @@ void hiresShutdown() {
             glDeleteTextures(1, &kv.second.tex);
         }
     s_repl.clear();
+    s_index.clear();
+    s_s3tc = s_bptc = false;
+    s_state = -1;
 }
 
 uint32_t hiresUploadedCount() { return s_uploaded; }
+
+HiresStats hiresStats() {
+    std::lock_guard<std::mutex> lk(s_mu);
+    return {s_bytes, s_decodedBytes, s_queue.size() + s_decoded.size() + size_t(s_busy), s_uploaded};
+}
 
 }  // namespace gx

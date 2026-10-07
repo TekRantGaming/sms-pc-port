@@ -187,7 +187,11 @@ void hiresShutdown();
 const char* hiresDumpDir();  // SMS_TEXTURE_DUMP, or null
 void hiresDump(const std::string& name, const uint8_t* rgba, uint32_t w, uint32_t h);
 void hiresEndFrame();  // once per display copy
+void hiresPreload();   // drain resource requests on the GL thread before gameplay
+void hiresPrefetchResource(const void* data, uint32_t size, const char* name);
 uint32_t hiresUploadedCount();
+struct HiresStats { size_t residentBytes, decodedBytes, pendingCount; uint32_t uploaded; };
+HiresStats hiresStats();
 uint64_t xxh64(const void* data, size_t len, uint64_t seed);
 
 // ---------------------------------------------------------------- shaders (gx_shader.cpp)

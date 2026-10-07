@@ -229,7 +229,7 @@ The everyday options are in the [README](../README.md#options); this is the full
 | `SMS_MEM_MB`, `SMS_QUIET_STUBS=1` | emulated MEM1 size; silence first-call stub logs |
 | `SMS_OVERLAY=1` | open the debug overlay (frame rate and where the frame's time goes) at start |
 | `SMS_SETTINGS=file` | settings file to read instead of `settings.txt` (working directory, then `../../`); its names map to the variables in `kSettings` (`platform/port_runtime.cpp`), and any `SMS_*` name can be used as is |
-| `SMS_TEXTURE_PACKS`, `SMS_TEXTURE_PACK_MB`, `SMS_TEXTURE_PACK_LOG`, `SMS_TEXTURE_PACK_SYNC` | texture packs (see [mods/README.md](../mods/README.md)); `_SYNC=1` decodes on first use instead of on the worker thread, for repeatable captures |
+| `SMS_TEXTURE_PACKS`, `SMS_TEXTURE_PACK_MB`, `SMS_TEXTURE_PACK_LOG`, `SMS_TEXTURE_PACK_SYNC`, `SMS_TEXTURE_PACK_PRELOAD`, `SMS_TEXTURE_PACK_PENDING_MB` | texture packs (see [mods/README.md](../mods/README.md)); preloading prepares loaded level resources before gameplay, `_PENDING_MB` bounds decoded backlog, `_SYNC=1` restores first-use loading for repeatable captures |
 | `SMS_GX_*` | graphics switches (`platform/gx/README.md`) |
 
 ## Progress log

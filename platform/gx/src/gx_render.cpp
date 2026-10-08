@@ -1370,9 +1370,7 @@ void flushBatch() {
     }
     size_t vOff = pc[np - 2].at, iOff = pc[np - 1].at;
     GLenum mode = s_bclass == PRIM_TRIS ? GL_TRIANGLES : s_bclass == PRIM_LINES ? GL_LINES : GL_POINTS;
-    uint32_t alphaFunc = (g.bp[BP_ALPHACOMPARE] >> 16) & 0xFF;
-    bool earlyFallback = !shaderHasEarlyFragmentTests() && (g.bp[BP_PE_CONTROL] & (1 << 6)) &&
-                         (g.bp[BP_ZMODE] & 0x11) == 0x11 && alphaFunc != 0x3F && alphaFunc != 0x7F;
+    bool earlyFallback = !shaderHasEarlyFragmentTests() && earlyZWritesRejected();
     if (earlyFallback) {
         const ShaderProgram* depthSp = shaderForCurrentState(true);
         glcUseProgram(depthSp->prog);
@@ -1384,18 +1382,20 @@ void flushBatch() {
         // and NOTEQUAL): colour tests the old depth, then an unconditional
         // fragment shader writes depth even where the alpha test discarded.
         // A batch-wide prepass followed by EQUAL would change overlapping draws.
+        // Pixel metrics count the colour pass, whose pixels passed the alpha
+        // test, and not the depth pass.
         for (size_t i = 0; i < s_bidx.size; i += step) {
             const void* indices = reinterpret_cast<const void*>(iOff + i * 4);
-            pixMetricPause();
             glcUseProgram(sp->prog);
             glColorMask(masks[0], masks[1], masks[2], masks[3]);
             glDepthMask(GL_FALSE);
             glDrawElementsBaseVertex(mode, GLsizei(step), GL_UNSIGNED_INT, indices, GLint(vOff / s_bstride));
-            pixMetricResume();
+            pixMetricPause();
             glcUseProgram(depthSp->prog);
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
             glDepthMask(GL_TRUE);
             glDrawElementsBaseVertex(mode, GLsizei(step), GL_UNSIGNED_INT, indices, GLint(vOff / s_bstride));
+            pixMetricResume();
         }
         glColorMask(masks[0], masks[1], masks[2], masks[3]);
         glcUseProgram(sp->prog);

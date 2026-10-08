@@ -139,6 +139,7 @@ The following are accepted, and their state is stored, but they have no or only 
 - copy-clear, and a vertex-colour quad through `PASSCLR`
 - copy clears respect colour/alpha/depth write enables and preserve backing alpha in RGB8, preventing opaque boat-shadow fragments at the airstrip (issue #33)
 - early/late alpha rejection, shadow-volume depth blocking and ordered overlapping primitives, including the early-Z fallback
+- pixel metrics with early Z on count only the pixels that pass the alpha test, also through the early-Z fallback
 - a textured RGBA8 quad through a **2-stage TEV** (texture × rasterized colour, then × konst colour): exact 8-bit results
 - an **EFB → texture copy** (RGBA8, and I8 through the luma conversion) sampled back
 - alpha blending, alpha compare, subtractive blending and scissor
@@ -167,10 +168,11 @@ Without them it still compiles, but only a host-supplied context (`GXPC_Init(get
   Dynamic S/T matrices (bump mapping) and the exact hardware fixed-point rounding are missing.
   Emboss texgen passes the source coordinate through.
 - **Early-Z.**
-  `GXSetZCompLoc(GX_TRUE)` uses `ARB_shader_image_load_store`'s early fragment tests so alpha-rejected pixels still write depth, as on GX. Contexts without the extension use ordered colour/depth passes per primitive when an alpha test can reject a depth-writing draw. `SMS_GX_FORCE_EARLY_Z_FALLBACK=1` exercises that fallback. This keeps later shadow-volume masks behind foreground depth (issue #33).
+  `GXSetZCompLoc(GX_TRUE)` on a depth-writing draw whose alpha test can reject uses `ARB_shader_image_load_store`'s early fragment tests so alpha-rejected pixels still write depth, as on GX. Contexts without the extension use ordered colour/depth passes per primitive for those draws. `SMS_GX_FORCE_EARLY_Z_FALLBACK=1` exercises that fallback. This keeps later shadow-volume masks behind foreground depth (issue #33).
+  Other draws keep the late test even with early Z on: early fragment tests also count occlusion-query samples before the alpha test's `discard`, and the pollution counters draw with `ReInitializeGX`'s early Z, Z off and an alpha test (with every texel counted, Noki Bay's wall rocks never rose).
 - **EFB copies are also written back to RAM.**
   Every texture copy is read back and stored in its GX tile layout (the GL copy stays as the sampling fast path), because the game reads some on the CPU: Delfino's goop map (`TPollutionLayer::isPolluted`) is updated only by EFB copies. A `DCFlushRange`/`DCStoreRange` over a copy drops the GL copy so RAM wins again. `SMS_GX_COPY_WRITEBACK=0` turns write-back off; `SMS_GX_COPY_LOG=n` logs the first n write-backs.
-- **Pixel metrics** (`GXClearPixMetric`/`GXReadPixMetric`) count samples that pass (a GL occlusion query) plus 4 per triangle, which the pollution counters subtract again; copy passes are not counted.
+- **Pixel metrics** (`GXClearPixMetric`/`GXReadPixMetric`) count samples that pass (a GL occlusion query) plus 4 per triangle, which the pollution counters subtract again; copy passes and the early-Z fallback's depth passes are not counted. A depth-writing, alpha-tested early-Z draw through the extension would count its alpha-rejected samples; the game reads metrics only around draws with Z off.
 - **GPU reads arrive one frame late.**
   A synchronous read makes the CPU wait until the GPU has drawn everything queued, so the two stop overlapping (the plaza made 30–85 such reads a frame).
   As in Dolphin, the reads the game repeats every frame are answered from the same read one frame earlier: copy write-backs are stored a frame later (a pixel buffer and a fence), a pixel-metric pair is answered from the previous frame's query when it drew the same number of triangles, and each group of `GXPeekARGB`/`GXPeekZ` calls with no drawing in between is answered from the previous frame's 1× snapshot of the EFB.

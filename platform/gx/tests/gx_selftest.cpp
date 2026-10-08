@@ -25,6 +25,7 @@
 namespace gx {
 void decodeTexture(const uint8_t* src, uint32_t fmt, uint32_t w, uint32_t h, const uint8_t* tlut, uint32_t tlutFmt,
                    uint8_t* out);
+bool shaderHasEarlyFragmentTests();
 }
 
 // The OS layer normally provides these.
@@ -488,6 +489,36 @@ int main(int argc, char** argv) {
         colorQuad(300, 100, 380, 180, 255, 0, 0, 255, -1);
         colorQuad(300, 100, 380, 180, 0, 0, 255, 255, -1);
         expectPixel("early-Z overlapping LESS keeps first", 340, 140, 255, 0, 0);
+    }
+
+    // Pixel metrics count only the pixels that pass the alpha test, also with
+    // early Z on as ReInitializeGX leaves it: the pollution counters (Noki
+    // Bay's wall rocks, the goop events) draw that way with Z off.
+    {
+        colorSetup();
+        setOrtho();
+        u32 d = 0, alone = 0, both = 0;
+        GXSetZCompLoc(GX_TRUE);
+        GXClearPixMetric();
+        colorQuad(100, 260, 140, 300, 255, 255, 255, 255);
+        GXReadPixMetric(&d, &d, &d, &d, &alone, &d);
+        GXSetAlphaCompare(GX_GREATER, 0, GX_AOP_AND, GX_ALWAYS, 0);
+        GXClearPixMetric();
+        colorQuad(100, 260, 140, 300, 255, 255, 255, 255);
+        colorQuad(200, 260, 240, 300, 255, 255, 255, 0);
+        GXReadPixMetric(&d, &d, &d, &d, &both, &d);
+        expect("early-Z pixel metric skips alpha-rejected pixels", alone > 8 && both == alone + 8);
+        if (!gx::shaderHasEarlyFragmentTests()) {
+            // the fallback's depth pass draws rejected pixels too
+            GXSetZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
+            GXClearPixMetric();
+            colorQuad(100, 260, 140, 300, 255, 255, 255, 255);
+            colorQuad(200, 260, 240, 300, 255, 255, 255, 0);
+            GXReadPixMetric(&d, &d, &d, &d, &both, &d);
+            expect("early-Z fallback pixel metric skips its depth pass", both == alone + 8);
+        }
+        GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+        GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
     }
 
     // Copy clears must preserve disabled channels and alpha in RGB8. The

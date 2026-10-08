@@ -55,10 +55,11 @@ frame_rate = 60
 # brightness = 1.0
 # How the picture fits the window: keep (its shape, letterboxed), stretch
 # (fill the window) or integer (whole multiples of the GameCube's size), and
-# how it is scaled: bilinear (smooth), sharp (crisp pixels), nearest, or fsr
+# how it is scaled: bilinear (smooth), sharp (crisp pixels), nearest, fsr
 # (AMD FSR 1: upscales a low internal resolution with sharp edges; sharpen
-# sets how much it sharpens).
-# With fsr, fsr_mode sets the internal resolution from the picture's size on
+# sets how much it sharpens) or nis (NVIDIA Image Scaling: the same job its own
+# way, sharpening as NVIDIA's default plus sharpen).
+# With fsr or nis, fsr_mode sets the internal resolution from the picture's size on
 # screen, in place of resolution: native renders at that size, quality at 67%,
 # balanced 59%, performance 50%, ultraperformance 33%.
 # fsr_mode = quality

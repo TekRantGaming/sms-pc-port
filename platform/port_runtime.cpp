@@ -537,8 +537,8 @@ static const struct {
 	{ "sharpen", "SMS_SHARPEN" },               // 0..100
 	{ "brightness", "SMS_GAMMA" },              // 1.0 = unchanged
 	{ "aspect", "SMS_ASPECT" },                 // keep, stretch or integer
-	{ "present_filter", "SMS_PRESENT_FILTER" }, // bilinear, sharp, nearest or fsr
-	{ "fsr_mode", "SMS_FSR_MODE" }, // with fsr: native, quality, balanced, performance or ultraperformance
+	{ "present_filter", "SMS_PRESENT_FILTER" }, // bilinear, sharp, nearest, fsr or nis
+	{ "fsr_mode", "SMS_FSR_MODE" }, // with fsr or nis: native, quality, balanced, performance or ultraperformance
 	{ "skip_movies", "SMS_SKIP_MOVIES" },
 	{ "heat_haze", "SMS_HEAT_HAZE" }, // the heat-wave shimmer, on by default
 	{ "audio", "SMS_AUDIO" },

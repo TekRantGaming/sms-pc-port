@@ -150,15 +150,15 @@ WindowFailure s_windowFailure = WF_NONE;
 char s_videoDriver[32];     // the SDL video driver of the last attempt ("x11", "wayland", ...)
 char s_windowError[256];    // and its SDL error
 
-// SMS_FSR_MODE (with SMS_PRESENT_FILTER=fsr) sets the internal resolution
+// SMS_FSR_MODE (with SMS_PRESENT_FILTER=fsr or nis) sets the internal resolution
 // from the picture's width on screen (outW x outH pixels): native renders it
 // at that width, quality at 1/1.5 of it, balanced 1/1.7, performance 1/2 and
-// ultraperformance 1/3, and FSR 1 upscales the rest of the way. Never below
+// ultraperformance 1/3, and FSR 1 or NIS upscales the rest of the way. Never below
 // the GameCube's own resolution, nor above 8 times it.
 static float fsrScale(float scale, float outW, float outH) {
     const char* filter = getenv("SMS_PRESENT_FILTER");
     const char* mode = getenv("SMS_FSR_MODE");
-    if (!filter || strcmp(filter, "fsr") != 0 || !mode || !*mode) return scale;
+    if (!filter || (strcmp(filter, "fsr") != 0 && strcmp(filter, "nis") != 0) || !mode || !*mode) return scale;
     static const struct { const char* name; float ratio; } kModes[] = {
         {"native", 1.0f}, {"quality", 1.5f}, {"balanced", 1.7f}, {"performance", 2.0f}, {"ultraperformance", 3.0f}};
     float ratio = 0.0f;
@@ -170,7 +170,8 @@ static float fsrScale(float scale, float outW, float outH) {
     const char* fit = getenv("SMS_ASPECT");
     const float picW = fit && !strcmp(fit, "stretch") ? outW : std::min(outW, outH * aspect);
     const float s = std::max(1.0f, std::min(8.0f, picW / (640.0f * wide * ratio)));
-    logmsg("FSR 1 %s: the picture is %d pixels wide on screen, so internal resolution scale %.2f", mode,
+    logmsg("%s %s: the picture is %d pixels wide on screen, so internal resolution scale %.2f",
+           strcmp(filter, "nis") == 0 ? "NIS" : "FSR 1", mode,
            int(picW + 0.5f), double(s));
     return s;
 }

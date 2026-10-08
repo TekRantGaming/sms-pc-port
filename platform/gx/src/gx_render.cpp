@@ -34,11 +34,7 @@ double g_flushSeconds = 0;  // in flushBatch (read by the vertex loader timer)
 static double s_waitSeconds = 0;  // blocked on the GPU
 double g_presentSeconds = 0, g_swapSeconds = 0;  // GXPC_Present (gx_platform.cpp)
 static double (*s_idleClock)(void) = nullptr;
-static double nowSeconds() {
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return double(ts.tv_sec) + double(ts.tv_nsec) * 1e-9;
-}
+static double nowSeconds() { return monoSeconds(); }
 // The breakdown timers (textures, draws, copies, peeks, GPU waits, the vertex
 // loader) run with SMS_GX_STATS or while the overlay is open
 // (GXPC_SetDetailedTimers). Otherwise only the overall sms_gx time is

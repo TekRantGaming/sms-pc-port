@@ -30,20 +30,25 @@ if args.build_directory:
     entry = next(command for command in commands if command["file"].endswith("/platform/port_runtime.cpp"))
     temporary = tempfile.TemporaryDirectory(prefix="sms-crash-probe-")
     folder = pathlib.Path(temporary.name)
-    compile_args = shlex.split(entry["command"])
-    compile_args[compile_args.index("-o") + 1] = str(folder / "runtime.o")
-    compile_args.extend(["-ffunction-sections", "-fdata-sections"])
-    subprocess.run(compile_args, cwd=entry["directory"], check=True)
     root = pathlib.Path(__file__).resolve().parent.parent
+    # The build supplies the flags; the sources are this checkout's.
+    objects = []
+    for source in ("platform/port_runtime.cpp", "platform/os/crash_info.cpp"):
+        compile_args = shlex.split(entry["command"])
+        compile_args[compile_args.index("-o") + 1] = str(folder / (pathlib.Path(source).stem + ".o"))
+        compile_args[compile_args.index(entry["file"])] = str(root / source)
+        compile_args.extend(["-ffunction-sections", "-fdata-sections"])
+        subprocess.run(compile_args, cwd=entry["directory"], check=True)
+        objects.append(compile_args[compile_args.index("-o") + 1])
     args.probe = str(folder / "probe")
     subprocess.run([compile_args[0], "-m" + args.arch, "-std=c++11", "-fno-pie", "-no-pie", "-ffunction-sections", "-fdata-sections",
                     "-Wl,--gc-sections", "-I" + str(root / "src"),
-                    str(root / "platform/os/tests/crash_probe.cpp"), str(folder / "runtime.o"),
+                    str(root / "platform/os/tests/crash_probe.cpp"), *objects,
                     "-pthread", "-ldl", "-o", args.probe], check=True)
 if not args.probe:
     parser.error("pass a probe executable or --build-directory")
 if os.name == "nt":
-    cases = [("access", 0xC0000005), ("heap", 0xC0000374)]
+    cases = [("access", 0xC0000005), ("heap", 0xC0000374), ("unwind", 0xC00000FF)]
     if args.arch == "64":
         cases.append(("low-stack", 0xC0000005))
 else:
@@ -51,11 +56,19 @@ else:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     cases = [("access", signal.SIGSEGV), ("abort", signal.SIGABRT),
              ("thread", signal.SIGSEGV), ("overflow", signal.SIGSEGV)]
+if os.name == "nt":
+    run = subprocess.run([args.probe, "report"], capture_output=True, text=True, timeout=30)
+    assert run.returncode == 0 and "[port] fatal: probe report" in run.stderr, (run.returncode, run.stderr)
+    assert "[port] registers:" in run.stderr and "[port] build: " in run.stderr, run.stderr
+    print("report: registers, backtrace and context without an exception")
 for mode, expected in cases:
     run = subprocess.run([args.probe, mode], capture_output=True, text=True, timeout=15)
     if os.name == "nt":
         assert run.returncode & 0xFFFFFFFF == expected, (mode, run.returncode, run.stderr)
         assert "Windows exception 0x%X" % expected in run.stderr, (mode, run.stderr)
+        assert re.search(r"backtrace \(stack .*\n.*#0 0x[0-9A-F]+ .*\n.*#1 0x[0-9A-F]+ ", run.stderr), (mode, run.stderr)
+        if mode == "low-stack":
+            assert "backtrace stops: entry to the game thread's low stack" in run.stderr, (mode, run.stderr)
     else:
         # macOS exits with 128+signal to avoid Rosetta's fatal-signal exit hang.
         assert run.returncode in (-expected, 128 + expected), (mode, run.returncode, run.stderr)

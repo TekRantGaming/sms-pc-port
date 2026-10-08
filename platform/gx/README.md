@@ -143,6 +143,7 @@ The following are accepted, and their state is stored, but they have no or only 
 - a textured RGBA8 quad through a **2-stage TEV** (texture × rasterized colour, then × konst colour): exact 8-bit results
 - an **EFB → texture copy** (RGBA8, and I8 through the luma conversion) sampled back
 - alpha blending, alpha compare, subtractive blending and scissor
+- an unclamped last TEV stage keeping its low 8 bits for the output and the alpha compare, as Bianco Hills' river surface needs (sms-launcher issue #60)
 - a **GD-built display list** (decomp `GDSetCullMode`/`GDSetZMode`, raw BP writes and a draw command) through `GXCallDisplayList`
 - raw write-gather-pipe BP writes via `GXPC_WGPipe`
 - perspective projection with depth test, a lit channel (diffuse light, ambient × material) and `GXPeekZ`

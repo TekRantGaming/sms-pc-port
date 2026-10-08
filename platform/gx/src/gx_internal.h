@@ -16,6 +16,10 @@
 
 namespace gx {
 
+// Monotonic seconds. macOS's clock_gettime is slow (more so under Rosetta),
+// and the overlay's timers read the clock around every batch and primitive.
+double monoSeconds();
+
 // ---------------------------------------------------------------- registers
 enum : uint32_t {
     XF_MEM_WORDS   = 0x680,   // 0x000-0x67F: matrices, normal matrices, post matrices, lights
@@ -193,6 +197,10 @@ uint32_t hiresUploadedCount();
 struct HiresStats { size_t residentBytes, decodedBytes, pendingCount; uint32_t uploaded; };
 HiresStats hiresStats();
 uint64_t xxh64(const void* data, size_t len, uint64_t seed);
+// Button prompts (gx_prompts.cpp): the 64x64 RGBA image of button glyph
+// (0 A, 1 B, 2 X, 3 Y, 4 Z, 5 L, 6 R, 7 C-stick) in the style shown now, with
+// that style's id in *style; null to keep the game's own picture.
+const uint8_t* promptImage(int glyph, int* style);
 
 // ---------------------------------------------------------------- shaders (gx_shader.cpp)
 // The uniform values a program was last given (uploadUniforms skips the ones

@@ -273,6 +273,21 @@ int main(int argc, char** argv) {
     expectPixel("outside scissor", 30, 110, 32, 48, 64);
     GXSetScissor(0, 0, 640, 480);
 
+    // 6b. an unclamped last stage keeps the low 8 bits (Bianco Hills' river
+    // surface: alpha (1 + a) * 2 wraps to 2a and passes GEQUAL 215 OR LEQUAL 30)
+    colorSetup();
+    GXSetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
+    GXSetTevColorOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_2, GX_FALSE, GX_TEVPREV);
+    GXSetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, GX_CA_RASA);
+    GXSetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_2, GX_FALSE, GX_TEVPREV);
+    colorQuad(70, 100, 120, 120, 200, 100, 50, 255);
+    expectPixel("unclamped TEV output wraps", 95, 110, 144, 200, 100);
+    GXSetAlphaCompare(GX_GEQUAL, 215, GX_AOP_OR, GX_LEQUAL, 30);
+    colorQuad(70, 100, 120, 120, 0, 0, 255, 200);  // alpha 400 -> 144: rejected
+    expectPixel("alpha compare sees the wrapped alpha", 95, 110, 144, 200, 100);
+    GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
+    GXSetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
+
     // 7. display list built with GD: a TEV register write and a draw command
     {
         static u8 dl[512] __attribute__((aligned(32)));

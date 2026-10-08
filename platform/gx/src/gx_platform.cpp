@@ -493,11 +493,36 @@ void sms_gx_set_event_callback(void (*cb)(const union SDL_Event*)) {
 #endif
 }
 
+#ifdef SMS_GX_HAVE_SDL2
+extern "C" void GXPC_NoteInputDevice(int controller, int sdlType, const char* name);
+
+// Tell the button prompts which device the player last used: a key, mouse
+// click or mouse movement means keyboard and mouse; a button or a stick pushed
+// well off centre means that controller.
+static void noteInputDevice(const SDL_Event& ev) {
+    SDL_JoystickID which = -1;
+    if (ev.type == SDL_CONTROLLERBUTTONDOWN) which = ev.cbutton.which;
+    else if (ev.type == SDL_CONTROLLERAXISMOTION && (ev.caxis.value > 16000 || ev.caxis.value < -16000))
+        which = ev.caxis.which;
+    else if (ev.type == SDL_KEYDOWN || ev.type == SDL_MOUSEBUTTONDOWN ||
+             (ev.type == SDL_MOUSEMOTION && ev.motion.xrel * ev.motion.xrel + ev.motion.yrel * ev.motion.yrel > 25)) {
+        GXPC_NoteInputDevice(0, 0, "");
+        return;
+    }
+    if (which < 0) return;
+    SDL_GameController* c = SDL_GameControllerFromInstanceID(which);
+    if (!c) return;
+    const char* name = SDL_GameControllerName(c);
+    GXPC_NoteInputDevice(1, int(SDL_GameControllerGetType(c)), name ? name : "");
+}
+#endif
+
 void sms_gx_pump_events(void) {
 #ifdef SMS_GX_HAVE_SDL2
     if (s_mode != MODE_WINDOW) return;
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
+        noteInputDevice(ev);
         switch (ev.type) {
         case SDL_CONTROLLERDEVICEADDED:
             if (SDL_IsGameController(ev.cdevice.which)) {

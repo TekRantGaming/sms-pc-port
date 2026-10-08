@@ -36,7 +36,7 @@ typedef void* (*GXPCGetProcFn)(const char* name);
  * with GXPC_SetAutoPresent(0) if the VI layer calls GXPC_Present itself). */
 int GXPC_ParseArgs(int* argc, char** argv);  /* strips the options above; returns count removed */
 void GXPC_SetHeadless(int headless);
-int GXPC_InitAuto(int efbScale);             /* 1 on success */
+int GXPC_InitAuto(float efbScale);           /* 1 on success */
 int GXPC_IsHeadless(void);
 void GXPC_SetAutoPresent(int enable);
 void GXPC_Present(const void* xfb);          /* window mode: draw XFB, swap, pump events */
@@ -73,9 +73,10 @@ void sms_gx_set_event_callback(void (*cb)(const union SDL_Event* ev));
 void sms_gx_pump_events(void);
 
 /* Call once with an OpenGL 3.3 core context current (SDL, EGL, ...), before the
- * game calls GXInit.  efbScale multiplies the 640x528 EFB (1 = native).
+ * game calls GXInit.  efbScale multiplies the 640x528 EFB (1 = native; FSR 1's
+ * modes make it fractional).
  * Returns 0 on failure (missing entry points, FBO creation failed). */
-int GXPC_Init(GXPCGetProcFn getProc, int efbScale);
+int GXPC_Init(GXPCGetProcFn getProc, float efbScale);
 void GXPC_Shutdown(void);
 
 /* Before endian conversion, discover HD replacements in BTI, J3D TEX1 and

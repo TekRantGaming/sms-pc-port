@@ -60,7 +60,11 @@ struct GxTimer {
 
 enum { EFB_W = 640, EFB_H = 528 };
 
-static int s_scale = 1;
+// The internal resolution: the EFB is s_scale times the GameCube's. FSR 1's
+// modes make it fractional; EFB rectangles map through scaled() edge by edge,
+// so pieces that meet on the GameCube still meet.
+static float s_scale = 1;
+static int scaled(int v) { return int(lroundf(float(v) * s_scale)); }
 
 // Widescreen (GXPC_SetWidescreen): the EFB is s_efbW = 640 * s_wide wide
 // while the game keeps working in 640-wide coordinates, which each draw,
@@ -369,7 +373,12 @@ void main() {
 // sharpens (SMS_SHARPEN) and applies the brightness curve (SMS_GAMMA).
 // SMS_PRESENT_FILTER picks the scaler: bilinear (an area average when the
 // XFB is larger than the window, so a high internal resolution supersamples),
-// nearest, or sharp (bilinear only between texels: crisp pixels at any size).
+// nearest, sharp (bilinear only between texels: crisp pixels at any size), or
+// fsr: AMD FidelityFX Super Resolution 1, an edge-adaptive upscale (EASU) to
+// the viewport's size and then its sharpening (RCAS, as strong as
+// SMS_SHARPEN asks), for a low internal resolution on a large window. When
+// the XFB is no smaller than the viewport there is nothing to upscale, and fsr
+// scales as bilinear does.
 // SMS_ASPECT=stretch fills the window; integer keeps whole multiples of 640x528.
 static const char* kPostVs = R"(#version 330 core
 uniform int u_flip;
@@ -457,9 +466,123 @@ void main() {
 }
 )";
 
+// FSR 1's two passes, after AMD's FidelityFX Super Resolution 1.0
+// (ffx_fsr1.h, MIT licence, Copyright (c) 2021 Advanced Micro Devices, Inc.),
+// in plain GLSL 3.30: texel fetches in place of gathers, one pixel at a time.
+// EASU: 12 taps around the sample, the local edge direction and length from
+// their luma, then a Lanczos-like lobe stretched along the edge, clamped to the
+// nearest four taps so it does not ring.
+static const char* kEasuFs = R"(#version 330 core
+uniform sampler2D u_tex;
+uniform vec2 u_src;  // texture size in texels
+in vec2 v_uv;
+out vec4 o_color;
+vec3 tap(ivec2 p) { return texelFetch(u_tex, clamp(p, ivec2(0), ivec2(u_src) - 1), 0).rgb; }
+float luma(vec3 c) { return c.b * 0.5 + (c.r * 0.5 + c.g); }
+// one quadrant's direction and edge length, weighted by its bilinear share
+void easuSet(inout vec2 dir, inout float len, float w, float lA, float lB, float lC, float lD, float lE) {
+  float lenX = max(abs(lD - lC), abs(lC - lB));
+  float dirX = lD - lB;
+  dir.x += dirX * w;
+  lenX = clamp(abs(dirX) / max(lenX, 1e-5), 0.0, 1.0);
+  len += lenX * lenX * w;
+  float lenY = max(abs(lE - lC), abs(lC - lA));
+  float dirY = lE - lA;
+  dir.y += dirY * w;
+  lenY = clamp(abs(dirY) / max(lenY, 1e-5), 0.0, 1.0);
+  len += lenY * lenY * w;
+}
+void easuTap(inout vec3 aC, inout float aW, vec2 off, vec2 dir, vec2 len, float lob, float clp, vec3 c) {
+  vec2 v = vec2(off.x * dir.x + off.y * dir.y, off.x * -dir.y + off.y * dir.x) * len;
+  float d2 = min(dot(v, v), clp);
+  float wB = 2.0 / 5.0 * d2 - 1.0;
+  float wA = lob * d2 - 1.0;
+  wB *= wB;
+  wA *= wA;
+  wB = 25.0 / 16.0 * wB - (25.0 / 16.0 - 1.0);
+  float w = wB * wA;
+  aC += c * w;
+  aW += w;
+}
+void main() {
+  vec2 pp = v_uv * u_src - 0.5;
+  vec2 fp = floor(pp);
+  pp -= fp;
+  ivec2 p = ivec2(fp);
+  //    b c
+  //  e f g h
+  //  i j k l
+  //    n o
+  vec3 b = tap(p + ivec2(0, -1)), c = tap(p + ivec2(1, -1));
+  vec3 e = tap(p + ivec2(-1, 0)), f = tap(p), g = tap(p + ivec2(1, 0)), h = tap(p + ivec2(2, 0));
+  vec3 i = tap(p + ivec2(-1, 1)), j = tap(p + ivec2(0, 1)), k = tap(p + ivec2(1, 1)), l = tap(p + ivec2(2, 1));
+  vec3 n = tap(p + ivec2(0, 2)), o = tap(p + ivec2(1, 2));
+  float bL = luma(b), cL = luma(c), eL = luma(e), fL = luma(f), gL = luma(g), hL = luma(h);
+  float iL = luma(i), jL = luma(j), kL = luma(k), lL = luma(l), nL = luma(n), oL = luma(o);
+  vec2 dir = vec2(0.0);
+  float len = 0.0;
+  easuSet(dir, len, (1.0 - pp.x) * (1.0 - pp.y), bL, eL, fL, gL, jL);
+  easuSet(dir, len, pp.x * (1.0 - pp.y), cL, fL, gL, hL, kL);
+  easuSet(dir, len, (1.0 - pp.x) * pp.y, fL, iL, jL, kL, nL);
+  easuSet(dir, len, pp.x * pp.y, gL, jL, kL, lL, oL);
+  float dirR = dot(dir, dir);
+  bool zro = dirR < 1.0 / 32768.0;
+  dir = zro ? vec2(1.0, 0.0) : dir * inversesqrt(dirR);
+  len = len * 0.5;
+  len *= len;
+  float stretch = 1.0 / max(abs(dir.x), abs(dir.y));
+  vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);
+  float lob = 0.5 + ((1.0 / 4.0 - 0.04) - 0.5) * len;
+  float clp = 1.0 / lob;
+  vec3 aC = vec3(0.0);
+  float aW = 0.0;
+  easuTap(aC, aW, vec2(0.0, -1.0) - pp, dir, len2, lob, clp, b);
+  easuTap(aC, aW, vec2(1.0, -1.0) - pp, dir, len2, lob, clp, c);
+  easuTap(aC, aW, vec2(-1.0, 1.0) - pp, dir, len2, lob, clp, i);
+  easuTap(aC, aW, vec2(0.0, 1.0) - pp, dir, len2, lob, clp, j);
+  easuTap(aC, aW, vec2(0.0, 0.0) - pp, dir, len2, lob, clp, f);
+  easuTap(aC, aW, vec2(-1.0, 0.0) - pp, dir, len2, lob, clp, e);
+  easuTap(aC, aW, vec2(1.0, 1.0) - pp, dir, len2, lob, clp, k);
+  easuTap(aC, aW, vec2(2.0, 1.0) - pp, dir, len2, lob, clp, l);
+  easuTap(aC, aW, vec2(2.0, 0.0) - pp, dir, len2, lob, clp, h);
+  easuTap(aC, aW, vec2(1.0, 0.0) - pp, dir, len2, lob, clp, g);
+  easuTap(aC, aW, vec2(1.0, 2.0) - pp, dir, len2, lob, clp, o);
+  easuTap(aC, aW, vec2(0.0, 2.0) - pp, dir, len2, lob, clp, n);
+  vec3 mn = min(min(f, g), min(j, k)), mx = max(max(f, g), max(j, k));
+  o_color = vec4(clamp(aC / aW, mn, mx), 1.0);
+}
+)";
+// RCAS: sharpens each pixel against its four neighbours by as much as it can
+// without clipping (u_con = 2^-stops: 1 is the most), then the brightness curve.
+static const char* kRcasFs = R"(#version 330 core
+uniform sampler2D u_tex;
+uniform vec2 u_dst;     // viewport size: the texture's size too
+uniform float u_con;
+uniform float u_gamma;  // 1: unchanged; above 1 brightens
+in vec2 v_uv;
+out vec4 o_color;
+vec3 tap(ivec2 p) { return texelFetch(u_tex, clamp(p, ivec2(0), ivec2(u_dst) - 1), 0).rgb; }
+void main() {
+  ivec2 ip = ivec2(v_uv * u_dst);
+  //    b
+  //  d e f
+  //    h
+  vec3 b = tap(ip + ivec2(0, -1)), d = tap(ip + ivec2(-1, 0)), e = tap(ip);
+  vec3 f = tap(ip + ivec2(1, 0)), h = tap(ip + ivec2(0, 1));
+  vec3 mn4 = min(min(b, d), min(f, h)), mx4 = max(max(b, d), max(f, h));
+  vec3 hitMin = min(mn4, e) / max(4.0 * mx4, vec3(1e-5));
+  vec3 hitMax = (1.0 - max(mx4, e)) / min(4.0 * min(mn4, e) - 4.0, vec3(-1e-5));
+  vec3 lobes = max(-hitMin, hitMax);
+  float lobe = max(-(0.25 - 1.0 / 16.0), min(max(lobes.r, max(lobes.g, lobes.b)), 0.0)) * u_con;
+  vec3 c = (lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0);
+  if (u_gamma != 1.0) c = pow(max(c, vec3(0.0)), vec3(1.0 / u_gamma));
+  o_color = vec4(clamp(c, 0.0, 1.0), 1.0);
+}
+)";
+
 struct PostSettings {
     bool fxaa = false;
-    int filter = 0;        // 0 bilinear/area, 1 nearest, 2 sharp
+    int filter = 0;        // 0 bilinear/area, 1 nearest, 2 sharp, 3 fsr
     float sharpen = 0.0f;  // 0..1
     float gamma = 1.0f;
     int aspect = 0;        // 0 keep, 1 stretch, 2 integer
@@ -469,11 +592,14 @@ static GLuint s_fxaaProg, s_scaleProg, s_postTex, s_postFbo;
 static GLint s_fxaaURcp, s_fxaaUFlip, s_scaleUSrc, s_scaleUDst, s_scaleUFilter, s_scaleUSharpen, s_scaleUGamma,
     s_scaleUFlip;
 static int s_postW, s_postH;
+static GLuint s_easuProg, s_rcasProg, s_fsrTex, s_fsrFbo;
+static GLint s_easuUSrc, s_easuUFlip, s_rcasUDst, s_rcasUCon, s_rcasUGamma, s_rcasUFlip;
+static int s_fsrW, s_fsrH;
 
 static void postInit() {
     if (const char* e = getenv("SMS_FXAA")) s_post.fxaa = atoi(e) != 0;
     if (const char* e = getenv("SMS_PRESENT_FILTER"))
-        s_post.filter = !strcmp(e, "nearest") ? 1 : !strcmp(e, "sharp") ? 2 : 0;
+        s_post.filter = !strcmp(e, "nearest") ? 1 : !strcmp(e, "sharp") ? 2 : !strcmp(e, "fsr") ? 3 : 0;
     if (const char* e = getenv("SMS_SHARPEN")) s_post.sharpen = std::max(0.0f, std::min(1.0f, float(atof(e)) / 100.0f));
     if (const char* e = getenv("SMS_GAMMA")) {
         float v = float(atof(e));
@@ -494,7 +620,21 @@ static void postInit() {
     s_scaleUSharpen = glGetUniformLocation(s_scaleProg, "u_sharpen");
     s_scaleUGamma = glGetUniformLocation(s_scaleProg, "u_gamma");
     s_scaleUFlip = glGetUniformLocation(s_scaleProg, "u_flip");
-    static const char* const kFilters[] = {"bilinear", "nearest", "sharp"};
+    if (s_post.filter == 3) {
+        s_easuProg = compileProgram(kPostVs, kEasuFs);
+        glUseProgram(s_easuProg);
+        glUniform1i(glGetUniformLocation(s_easuProg, "u_tex"), 0);
+        s_easuUSrc = glGetUniformLocation(s_easuProg, "u_src");
+        s_easuUFlip = glGetUniformLocation(s_easuProg, "u_flip");
+        s_rcasProg = compileProgram(kPostVs, kRcasFs);
+        glUseProgram(s_rcasProg);
+        glUniform1i(glGetUniformLocation(s_rcasProg, "u_tex"), 0);
+        s_rcasUDst = glGetUniformLocation(s_rcasProg, "u_dst");
+        s_rcasUCon = glGetUniformLocation(s_rcasProg, "u_con");
+        s_rcasUGamma = glGetUniformLocation(s_rcasProg, "u_gamma");
+        s_rcasUFlip = glGetUniformLocation(s_rcasProg, "u_flip");
+    }
+    static const char* const kFilters[] = {"bilinear", "nearest", "sharp", "FSR 1"};
     static const char* const kAspects[] = {"keep", "stretch", "integer"};
     logmsg("post-processing: FXAA %s, scaler %s, sharpen %d%%, brightness %.2f, aspect %s", s_post.fxaa ? "on" : "off",
            kFilters[s_post.filter], int(s_post.sharpen * 100.0f + 0.5f), double(s_post.gamma), kAspects[s_post.aspect]);
@@ -537,12 +677,49 @@ static void postPresent(GLuint tex, int w, int h, int ox, int oy, int vw, int vh
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         tex = s_postTex;
     }
+    if (s_post.filter == 3 && (vw > w || vh > h)) {
+        // FSR 1: EASU upscales into a viewport-sized texture (turned the
+        // window's way up), then RCAS sharpens it into the window
+        if (!s_fsrTex || s_fsrW != vw || s_fsrH != vh) {
+            if (!s_fsrTex) glGenTextures(1, &s_fsrTex);
+            glBindTexture(GL_TEXTURE_2D, s_fsrTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vw, vh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            if (!s_fsrFbo) glGenFramebuffers(1, &s_fsrFbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, s_fsrFbo);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_fsrTex, 0);
+            s_fsrW = vw;
+            s_fsrH = vh;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, s_fsrFbo);
+        glViewport(0, 0, vw, vh);
+        glUseProgram(s_easuProg);
+        glUniform2f(s_easuUSrc, float(w), float(h));
+        glUniform1i(s_easuUFlip, 1);  // XFB row 0 is the top; the window's row 0 is its bottom
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(ox, oy, vw, vh);
+        glUseProgram(s_rcasProg);
+        glUniform2f(s_rcasUDst, float(vw), float(vh));
+        // Sharpening 0..100% is RCAS's 1 to 0 stops below its strongest
+        glUniform1f(s_rcasUCon, exp2f(-(1.0f - s_post.sharpen)));
+        glUniform1f(s_rcasUGamma, s_post.gamma);
+        glUniform1i(s_rcasUFlip, 0);
+        glBindTexture(GL_TEXTURE_2D, s_fsrTex);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(s_vao);
+        return;
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(ox, oy, vw, vh);
     glUseProgram(s_scaleProg);
     glUniform2f(s_scaleUSrc, float(w), float(h));
     glUniform2f(s_scaleUDst, float(vw), float(vh));
-    glUniform1i(s_scaleUFilter, s_post.filter);
+    glUniform1i(s_scaleUFilter, s_post.filter == 3 ? 0 : s_post.filter);  // FSR not upscaling: bilinear
     glUniform1f(s_scaleUSharpen, s_post.sharpen);
     glUniform1f(s_scaleUGamma, s_post.gamma);
     glUniform1i(s_scaleUFlip, 1);  // XFB row 0 is the top; the window's row 0 is its bottom
@@ -551,8 +728,8 @@ static void postPresent(GLuint tex, int w, int h, int ox, int oy, int vw, int vh
     glBindVertexArray(s_vao);
 }
 
-void rendererInit(int efbScale) {
-    s_scale = efbScale < 1 ? 1 : efbScale;
+void rendererInit(float efbScale) {
+    s_scale = efbScale < 1.0f ? 1.0f : efbScale;
     g_gxStats = g_gxStats || statsEnv();  // settings.txt is read after static initialisation
     const char* renderer = (const char*)glGetString(GL_RENDERER);
     logmsg("OpenGL %s, renderer %s (%s)", (const char*)glGetString(GL_VERSION), renderer,
@@ -565,7 +742,7 @@ void rendererInit(int efbScale) {
     if (const char* e = getenv("SMS_WIDESCREEN_HUD")) s_hudEdges = s_efbW != EFB_W && !strcmp(e, "edges");
     s_ox = (s_efbW - EFB_W) / 2;
     if (s_efbW != EFB_W) logmsg("widescreen: EFB %dx%d", s_efbW, EFB_H);
-    int W = s_efbW * s_scale, H = EFB_H * s_scale;
+    int W = scaled(s_efbW), H = scaled(EFB_H);
     glGenTextures(1, &s_efbColor);
     glBindTexture(GL_TEXTURE_2D, s_efbColor);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, W, H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
@@ -742,7 +919,7 @@ void glcForgetTexture(GLuint tex) {
 
 static void applyGlState() {
     GlCache& c = g_glc;
-    int W = s_efbW * s_scale, H = EFB_H * s_scale;
+    int W = scaled(s_efbW), H = scaled(EFB_H);
     if (c.fbo != s_efbFbo) {
         c.fbo = s_efbFbo;
         glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
@@ -772,7 +949,7 @@ static void applyGlState() {
             sw = r - l;
         }
     }
-    GLint sc[4] = {left * s_scale, top * s_scale, sw * s_scale, sh * s_scale};
+    GLint sc[4] = {scaled(left), scaled(top), scaled(left + sw) - scaled(left), scaled(top + sh) - scaled(top)};
     if (memcmp(sc, c.sc, sizeof sc) != 0) {
         memcpy(c.sc, sc, sizeof sc);
         glScissor(sc[0], sc[1], sc[2], sc[3]);
@@ -1191,8 +1368,7 @@ uint32_t pixMetricRead() {
     s_pixCur = poolQuery();
     s_pixCurPooled = true;
     glBeginQuery(GL_SAMPLES_PASSED, s_pixCur);
-    uint64_t S2 = uint64_t(s_scale) * uint64_t(s_scale);
-    uint64_t v = samples / S2 + uint64_t(s_pixTris) * 4;
+    uint64_t v = uint64_t(double(samples) / (double(s_scale) * double(s_scale))) + uint64_t(s_pixTris) * 4;
     return v > 0xFFFFFFFFu ? 0xFFFFFFFFu : uint32_t(v);
 }
 
@@ -1427,7 +1603,7 @@ void flushBatch() {
 // is resolved into it first. Leaves the scissor test off.
 static GLuint efbReadFbo() {
     if (!s_msaa) return s_efbFbo;
-    const int W = s_efbW * s_scale, H = EFB_H * s_scale;
+    const int W = scaled(s_efbW), H = scaled(EFB_H);
     glDisable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, s_efbFbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_efbResolveFbo);
@@ -1439,7 +1615,7 @@ static void clearRect(int x, int y, int w, int h) {
     uint32_t ar = g.bp[BP_CLEAR_AR], gb = g.bp[BP_CLEAR_GB], z = g.bp[BP_CLEAR_Z];
     glBindFramebuffer(GL_FRAMEBUFFER, s_efbFbo);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(x * s_scale, y * s_scale, w * s_scale, h * s_scale);
+    glScissor(scaled(x), scaled(y), scaled(x + w) - scaled(x), scaled(y + h) - scaled(y));
     bool hasAlpha = (g.bp[BP_PE_CONTROL] & 7) == 1;
     // Copy clears obey the PE write enables, just like ordinary EFB writes.
     // A copy clear in RGB8 must not overwrite the backing alpha used later by
@@ -1602,7 +1778,6 @@ static void copyEfb(uint32_t ctrl) {
     bool disp = (ctrl >> 14) & 1;
     bool clear = (ctrl >> 11) & 1;
     if (traceFile()) traceCopy(disp, x, y, w, h, dest, ctrl);
-    int S = s_scale;
     // widescreen: a full-width copy takes the whole EFB, others the centred 4:3 part
     int gw = w;
     if (s_efbW != EFB_W) {
@@ -1628,19 +1803,20 @@ static void copyEfb(uint32_t ctrl) {
 
     if (disp) {
         Xfb& xfb = s_xfbs[dest];
-        if (!xfb.tex || xfb.w != w * S || xfb.h != h * S) {
+        const int x0 = scaled(x), y0 = scaled(y), sw = scaled(x + w) - x0, sh = scaled(y + h) - y0;
+        if (!xfb.tex || xfb.w != sw || xfb.h != sh) {
             if (!xfb.tex) glGenTextures(1, &xfb.tex);
             glBindTexture(GL_TEXTURE_2D, xfb.tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w * S, h * S, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, sw, sh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            xfb.w = w * S;
-            xfb.h = h * S;
+            xfb.w = sw;
+            xfb.h = sh;
         }
         glBindFramebuffer(GL_READ_FRAMEBUFFER, efbReadFbo());
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_tmpFbo);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, xfb.tex, 0);
-        glBlitFramebuffer(x * S, y * S, (x + w) * S, (y + h) * S, 0, 0, w * S, h * S, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBlitFramebuffer(x0, y0, x0 + sw, y0 + sh, 0, 0, sw, sh, GL_COLOR_BUFFER_BIT, GL_NEAREST);
         s_lastXfb = dest;
         s_stats.efbCopies++;
     } else {
@@ -1648,7 +1824,11 @@ static void copyEfb(uint32_t ctrl) {
         bool intensity = ((ctrl >> 15) & 3) == 3;
         bool zcopy = (g.bp[BP_PE_CONTROL] & 7) == 3;
         bool half = (ctrl >> 9) & 1;
-        int ow = (half ? w / 2 : w) * S, oh = (half ? h / 2 : h) * S;
+        int ow = scaled(x + w) - scaled(x), oh = scaled(y + h) - scaled(y);
+        if (half) {
+            ow /= 2;
+            oh /= 2;
+        }
         int tw = half ? gw / 2 : gw, th = half ? h / 2 : h;
         if (ow < 1) ow = 1;
         if (oh < 1) oh = 1;
@@ -1715,7 +1895,7 @@ using namespace gx;
 
 extern "C" {
 
-int GXPC_Init(GXPCGetProcFn getProc, int efbScale) {
+int GXPC_Init(GXPCGetProcFn getProc, float efbScale) {
     if (!gl::load(getProc)) return 0;
     resetState();
     rendererInit(efbScale);
@@ -1781,11 +1961,11 @@ static uint32_t peekSync(int x, int y, bool depth) {
     glBindFramebuffer(GL_FRAMEBUFFER, efbReadFbo());
     if (depth) {
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        glReadPixels(x * s_scale, y * s_scale, 1, 1, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, &v);
+        glReadPixels(scaled(x), scaled(y), 1, 1, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, &v);
         return v;
     }
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(x * s_scale, y * s_scale, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glReadPixels(scaled(x), scaled(y), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
     return uint32_t(px[0]) | uint32_t(px[1]) << 8 | uint32_t(px[2]) << 16 | uint32_t(px[3]) << 24;
 }
 
@@ -1794,7 +1974,7 @@ static uint32_t peekSync(int x, int y, bool depth) {
 static GLuint s_peekFbo, s_peekColor, s_peekDepth;
 
 static GLuint peekSource() {
-    if (s_scale == 1) return efbReadFbo();
+    if (s_scale == 1.0f) return efbReadFbo();
     if (!s_peekFbo) {
         glGenRenderbuffers(1, &s_peekColor);
         glBindRenderbuffer(GL_RENDERBUFFER, s_peekColor);
@@ -1812,7 +1992,7 @@ static GLuint peekSource() {
     const GLuint src = efbReadFbo();
     glBindFramebuffer(GL_READ_FRAMEBUFFER, src);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_peekFbo);
-    glBlitFramebuffer(0, 0, s_efbW * s_scale, EFB_H * s_scale, 0, 0, s_efbW, EFB_H,
+    glBlitFramebuffer(0, 0, scaled(s_efbW), scaled(EFB_H), 0, 0, s_efbW, EFB_H,
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     return s_peekFbo;
 }
@@ -1901,7 +2081,7 @@ int GXPC_PresentXFB(const void* xfb, int winW, int winH) {
         if (float(vw) > float(vh) * aspect) vw = int(float(vh) * aspect + 0.5f);
         else vh = int(float(vw) / aspect + 0.5f);
     }
-    const int baseH = x.h / s_scale;  // the picture's height at the GameCube's resolution
+    const int baseH = int(float(x.h) / s_scale + 0.5f);  // the picture's height at the GameCube's resolution
     if (s_post.aspect == 2 && baseH > 0 && vh >= baseH) {
         vh = vh / baseH * baseH;
         vw = int(float(vh) * aspect + 0.5f);
@@ -1929,8 +2109,8 @@ void GXPC_EndPresent(void) {
 void GXPC_ReadEFB(uint8_t* rgba, int* w, int* h) {
     flushBatch();
     glcInvalidate();
-    *w = s_efbW * s_scale;
-    *h = EFB_H * s_scale;
+    *w = scaled(s_efbW);
+    *h = scaled(EFB_H);
     if (!rgba) return;
     glBindFramebuffer(GL_FRAMEBUFFER, efbReadFbo());
     glPixelStorei(GL_PACK_ALIGNMENT, 1);

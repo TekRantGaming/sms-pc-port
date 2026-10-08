@@ -150,7 +150,32 @@ WindowFailure s_windowFailure = WF_NONE;
 char s_videoDriver[32];     // the SDL video driver of the last attempt ("x11", "wayland", ...)
 char s_windowError[256];    // and its SDL error
 
-bool openWindow(int scale) {
+// SMS_FSR_MODE (with SMS_PRESENT_FILTER=fsr) sets the internal resolution
+// from the picture's width on screen (outW x outH pixels): native renders it
+// at that width, quality at 1/1.5 of it, balanced 1/1.7, performance 1/2 and
+// ultraperformance 1/3, and FSR 1 upscales the rest of the way. Never below
+// the GameCube's own resolution, nor above 8 times it.
+static float fsrScale(float scale, float outW, float outH) {
+    const char* filter = getenv("SMS_PRESENT_FILTER");
+    const char* mode = getenv("SMS_FSR_MODE");
+    if (!filter || strcmp(filter, "fsr") != 0 || !mode || !*mode) return scale;
+    static const struct { const char* name; float ratio; } kModes[] = {
+        {"native", 1.0f}, {"quality", 1.5f}, {"balanced", 1.7f}, {"performance", 2.0f}, {"ultraperformance", 3.0f}};
+    float ratio = 0.0f;
+    for (const auto& m : kModes)
+        if (!strcmp(mode, m.name)) ratio = m.ratio;
+    if (ratio <= 0.0f || outW <= 0.0f || outH <= 0.0f) return scale;
+    const float wide = GXPC_GetWidescreen();
+    const float aspect = 4.0f / 3.0f * wide;
+    const char* fit = getenv("SMS_ASPECT");
+    const float picW = fit && !strcmp(fit, "stretch") ? outW : std::min(outW, outH * aspect);
+    const float s = std::max(1.0f, std::min(8.0f, picW / (640.0f * wide * ratio)));
+    logmsg("FSR 1 %s: the picture is %d pixels wide on screen, so internal resolution scale %.2f", mode,
+           int(picW + 0.5f), double(s));
+    return s;
+}
+
+bool openWindow(float scale) {
 #ifdef SDL_HINT_WINDOWS_DPI_SCALING
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
 #endif
@@ -225,6 +250,27 @@ bool openWindow(int scale) {
     SDL_GL_MakeCurrent(s_window, s_glctx);
     // adaptive vsync (-1) tears only when a frame is late; not every driver has it
     if (SDL_GL_SetSwapInterval(s_vsync) != 0 && s_vsync < 0) SDL_GL_SetSwapInterval(1);
+    {  // the picture's size on screen, for FSR 1's modes: the window, or the display it will fill
+        int drawW = layout.w, drawH = layout.h;
+        SDL_GL_GetDrawableSize(s_window, &drawW, &drawH);
+        float outW = float(drawW), outH = float(drawH);
+        if (envTrue("SMS_FULLSCREEN")) {
+            const float dpi = layout.w > 0 ? float(drawW) / float(layout.w) : 1.0f;
+            SDL_Rect bounds;
+            if (SDL_GetDisplayBounds(display, &bounds) == 0) {
+                outW = float(bounds.w) * dpi;
+                outH = float(bounds.h) * dpi;
+            }
+            int mw = 0, mh = 0;
+            const char* fs = getenv("SMS_FULLSCREEN");
+            const char* fm = getenv("SMS_FULLSCREEN_MODE");
+            if (fs && !strcmp(fs, "exclusive") && fm && sscanf(fm, "%dx%d", &mw, &mh) == 2 && mw > 0 && mh > 0) {
+                outW = float(mw);
+                outH = float(mh);
+            }
+        }
+        scale = fsrScale(scale, outW, outH);
+    }
     if (!GXPC_Init(sdlGetProc, scale)) {
         snprintf(s_windowError, sizeof s_windowError, "the renderer could not start on this OpenGL context");
         SDL_GL_DeleteContext(s_glctx);
@@ -251,10 +297,10 @@ bool openWindow(int scale) {
     if (const char* e = getenv("SMS_FULLSCREEN")) s_exclusive = strcmp(e, "exclusive") == 0;
     if (envTrue("SMS_FULLSCREEN")) setFullscreen(true);
     if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
-        logmsg("%s fullscreen on display %d (%s), internal resolution scale %d, OpenGL context ready",
+        logmsg("%s fullscreen on display %d (%s), internal resolution scale %g, OpenGL context ready",
                s_exclusive ? "exclusive" : "desktop", display, s_videoDriver, scale);
     else
-        logmsg("window %dx%d centered on display %d (%s), internal resolution scale %d, OpenGL context ready",
+        logmsg("window %dx%d centered on display %d (%s), internal resolution scale %g, OpenGL context ready",
                layout.w, layout.h, display, s_videoDriver, scale);
     s_windowFailure = WF_NONE;
     s_mouseCamera = envTrue("SMS_MOUSE_CAMERA");
@@ -302,7 +348,7 @@ void forceVideoDriver(const char* name) {
 // openWindow, and when a display's window fails, again on its other backend
 // (Wayland and X11: a desktop session usually has both, and a driver or
 // library problem often affects only one).
-bool openWindowAnyBackend(int scale) {
+bool openWindowAnyBackend(float scale) {
 #if !defined(_WIN32) && !defined(__APPLE__)
     findDesktop();
 #endif
@@ -346,7 +392,7 @@ bool tryEglDisplay(EGLDisplay dpy) {
     return pb != EGL_NO_SURFACE && eglMakeCurrent(dpy, pb, pb, ctx);
 }
 
-bool openHeadless(int scale) {
+bool openHeadless(float scale) {
     auto getPlatformDisplay = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
     auto queryDevices = reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
     bool ok = false;
@@ -449,9 +495,9 @@ int GXPC_MouseCaptured(void) {
 int GXPC_IsHeadless(void) { return s_mode != MODE_WINDOW; }
 uint32_t GXPC_FrameCount(void) { return s_frame; }
 
-int GXPC_InitAuto(int efbScale) {
+int GXPC_InitAuto(float efbScale) {
     if (rendererReady()) return 1;
-    if (const char* e = getenv("SMS_GX_SCALE")) efbScale = atoi(e) > 0 ? atoi(e) : efbScale;
+    if (const char* e = getenv("SMS_GX_SCALE")) efbScale = atof(e) >= 1.0 ? std::min(8.0f, float(atof(e))) : efbScale;
     if (envTrue("SMS_VSYNC")) s_vsync = strcmp(getenv("SMS_VSYNC"), "adaptive") == 0 ? -1 : 1;
     bool headless;
     if (s_forceHeadless >= 0) headless = s_forceHeadless != 0;

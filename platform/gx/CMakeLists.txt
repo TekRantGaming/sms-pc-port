@@ -11,6 +11,7 @@ set(SMS_GX_SOURCES
     src/gl_loader.cpp
     src/gx_api.cpp
     src/gx_fifo.cpp
+    src/gx_hdr.cpp
     src/gx_hires.cpp
     src/gx_overlay.cpp
     src/gx_platform.cpp
@@ -100,6 +101,10 @@ if(TARGET SDL2::SDL2)
     message(STATUS "sms_gx: SDL2 window support")
 else()
     message(STATUS "sms_gx: SDL2 not found - no window support")
+endif()
+if(WIN32)
+    # HDR output: a Direct3D 11 swap chain shares the frame with OpenGL (gx_hdr.cpp)
+    target_link_libraries(sms_gx PUBLIC d3d11 dxgi)
 endif()
 if(SMS_GX_EGL_LIB AND SMS_GX_EGL_INCLUDE)
     target_compile_definitions(sms_gx PRIVATE SMS_GX_HAVE_EGL=1)

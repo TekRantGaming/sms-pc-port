@@ -36,6 +36,9 @@ typedef void* (*GXPCGetProcFn)(const char* name);
  * with GXPC_SetAutoPresent(0) if the VI layer calls GXPC_Present itself). */
 int GXPC_ParseArgs(int* argc, char** argv);  /* strips the options above; returns count removed */
 void GXPC_SetHeadless(int headless);
+/* --display-info: one line of JSON with each display's HDR state and
+ * brightness as Windows reports it (an empty list elsewhere). */
+void GXPC_PrintDisplayInfo(void);
 int GXPC_InitAuto(int efbScale);             /* 1 on success */
 int GXPC_IsHeadless(void);
 void GXPC_SetAutoPresent(int enable);

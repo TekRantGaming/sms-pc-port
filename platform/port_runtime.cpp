@@ -735,6 +735,12 @@ static const struct {
 	{ "button_prompts", "SMS_BUTTON_PROMPTS" }, // gamecube, auto, xbox, playstation, steamdeck or keyboard
 	{ "button_prompt_pad", "SMS_BUTTON_PROMPT_PAD" }, // with auto: gamecube, xbox, playstation, steamdeck, or match the controller
 	{ "button_prompt_dir", "SMS_BUTTON_PROMPT_DIR" }, // the folder of prompt images (<style>.png)
+	{ "hdr", "SMS_HDR" }, // HDR output on Windows, while Windows HDR is on
+	{ "hdr_paper_white", "SMS_HDR_PAPER_WHITE" }, // nits, or auto (Windows' SDR content brightness)
+	{ "hdr_peak", "SMS_HDR_PEAK" }, // nits, or auto (the display's peak, as calibrated)
+	{ "hdr_contrast", "SMS_HDR_CONTRAST" }, // percent, 50 to 150
+	{ "hdr_saturation", "SMS_HDR_SATURATION" }, // percent, 0 to 200
+	{ "hdr_highlights", "SMS_HDR_HIGHLIGHTS" }, // 0 to 100: how far highlights reach toward the peak
 	{ "audio", "SMS_AUDIO" },
 	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100
 	{ "soft_trigger", "SMS_SOFT_TRIGGER" }, // L_SOFT / R_SOFT press depth, percent

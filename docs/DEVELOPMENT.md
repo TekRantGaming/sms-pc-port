@@ -321,6 +321,7 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
   `framerate-02` to `framerate-35` apply those helpers to wipes, gates, timers, flocks, effects, movement animations and sound.
   Keep-alive ripple and smoke requests repeat across all intervening displayed frames, preserving their 1/30 s lifetime.
   Menu button repeats are recomputed when entering or leaving gameplay; JAI sound frame work runs once per two frames at 60 or four at 120.
+  A held sound effect (one the game requests every frame to keep playing, such as the Rocket and Turbo charge sound) is requested again on the frames in between; `framerate-38` keeps it playing where retail would restart it, which also stops the restarts' track interrupts from requeueing an SE port command and dropping the BGM volume updates queued after it (Shadow Mario's distance fade).
   JPA particles use whole 1/60 s steps; `framerate-36` runs their simulation on alternate frames at 120 while drawing every frame, avoiding truncation of the 0.5 animation rate to zero.
   VI captures, scripted input, deterministic audio DMA, tracing, virtual OS time and optional DVD timing retain native time units when the retrace rate doubles.
   `tools/framerate/check.sh` checks configuration and equal elapsed-time movement, integer counts and visual chases in both word sizes without requiring a GPU or high-refresh monitor.

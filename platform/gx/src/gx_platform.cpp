@@ -25,6 +25,9 @@
 
 #ifdef SMS_GX_HAVE_SDL2
 #include <SDL.h>
+#ifdef _WIN32
+#include <SDL_syswm.h>
+#endif
 #endif
 #ifdef SMS_GX_HAVE_EGL
 #include <EGL/egl.h>
@@ -106,10 +109,61 @@ void captureMouse(bool on) {
 // fullscreen (desktop when SMS_FULLSCREEN is unset).
 bool s_exclusive = false, s_isFullscreen = false;
 
+#ifdef _WIN32
+// Whether Windows HDR ("advanced colour") is on for the monitor showing the
+// window. An exclusive mode switch (ChangeDisplaySettingsEx) on an HDR display
+// can leave the desktop's colours wrong after the game, until HDR is turned off
+// and on again, so the game stays borderless there.
+bool windowsHdrOn() {
+    SDL_SysWMinfo wm;
+    SDL_VERSION(&wm.version);
+    if (!SDL_GetWindowWMInfo(s_window, &wm) || wm.subsystem != SDL_SYSWM_WINDOWS) return false;
+    MONITORINFOEXW monitor = {};
+    monitor.cbSize = sizeof monitor;
+    if (!GetMonitorInfoW(MonitorFromWindow(wm.info.win.window, MONITOR_DEFAULTTONEAREST), &monitor)) return false;
+    UINT32 pathCount = 0, modeCount = 0;
+    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return false;
+    std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+    std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS)
+        return false;
+    for (UINT32 i = 0; i < pathCount; i++) {
+        DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+        source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+        source.header.size = sizeof source;
+        source.header.adapterId = paths[i].sourceInfo.adapterId;
+        source.header.id = paths[i].sourceInfo.id;
+        if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS || wcscmp(source.viewGdiDeviceName, monitor.szDevice) != 0)
+            continue;
+        DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO color = {};
+        color.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
+        color.header.size = sizeof color;
+        color.header.adapterId = paths[i].targetInfo.adapterId;
+        color.header.id = paths[i].targetInfo.id;
+        if (DisplayConfigGetDeviceInfo(&color.header) == ERROR_SUCCESS && color.advancedColorEnabled) return true;
+    }
+    return false;
+}
+#else
+bool windowsHdrOn() { return false; }
+#endif
+
+// Quitting (the quit key, closing the window) leaves exclusive fullscreen
+// first, so the display returns to the desktop's mode before the process ends
+// rather than Windows restoring it after.
+void leaveFullscreenAtExit() {
+    if (s_window && s_isFullscreen) SDL_SetWindowFullscreen(s_window, 0);
+}
+
 void setFullscreen(bool on) {
     if (!s_window) return;
     Uint32 flags = 0;
-    if (on && s_exclusive) {
+    if (on && s_exclusive && windowsHdrOn()) {
+        static bool told = false;
+        if (!told) logmsg("Windows HDR is on: borderless fullscreen instead of exclusive, which can leave HDR's colours wrong");
+        told = true;
+        flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
+    } else if (on && s_exclusive) {
         SDL_DisplayMode want = {}, got = {};
         const int display = std::max(0, SDL_GetWindowDisplayIndex(s_window));
         SDL_GetDesktopDisplayMode(display, &want);
@@ -213,6 +267,8 @@ bool openWindow(int scale) {
         return false;
     }
     SDL_SetWindowMinimumSize(s_window, std::min(320, layout.w), std::min(240, layout.h));
+    static bool atExit = false;
+    if (!atExit) atExit = atexit(leaveFullscreenAtExit) == 0;
     applyIcon();
     s_glctx = SDL_GL_CreateContext(s_window);
     if (!s_glctx) {
@@ -263,10 +319,12 @@ bool openWindow(int scale) {
     // rendering quality and aspect ratio are still handled by the renderer.
     // Exclusive fullscreen switches the display to the mode asked for.
     if (const char* e = getenv("SMS_FULLSCREEN")) s_exclusive = strcmp(e, "exclusive") == 0;
+    if (windowsHdrOn()) logmsg("Windows HDR is on for this monitor");
     if (envTrue("SMS_FULLSCREEN")) setFullscreen(true);
     if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
         logmsg("%s fullscreen on display %d (%s), internal resolution scale %d, OpenGL context ready",
-               s_exclusive ? "exclusive" : "desktop", display, s_videoDriver, scale);
+               (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP ? "desktop" : "exclusive",
+               display, s_videoDriver, scale);
     else
         logmsg("window %dx%d centered on display %d (%s), internal resolution scale %d, OpenGL context ready",
                layout.w, layout.h, display, s_videoDriver, scale);

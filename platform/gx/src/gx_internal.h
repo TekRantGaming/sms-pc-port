@@ -210,6 +210,7 @@ struct ShaderProgram {
     mutable UniformCache uc;
 };
 bool shaderHasEarlyFragmentTests();
+bool earlyZWritesRejected();
 const ShaderProgram* shaderForCurrentState(bool depthOnly = false);
 
 // ---------------------------------------------------------------- util

@@ -43,6 +43,17 @@ bool shaderHasEarlyFragmentTests() {
     return s_earlyFragmentTests != 0;
 }
 
+// GXSetZCompLoc(GX_TRUE) differs from a late depth test only for a draw that
+// writes depth and whose alpha test can reject: the rejected pixels still
+// write depth. Early fragment tests are kept to those draws because they also
+// count occlusion-query samples before the alpha test's discard, and the
+// pollution counters read pixel metrics with ReInitializeGX's early Z left on.
+bool earlyZWritesRejected() {
+    uint32_t alphaFunc = (g.bp[BP_ALPHACOMPARE] >> 16) & 0xFF;
+    return (g.bp[BP_PE_CONTROL] & (1 << 6)) && (g.bp[BP_ZMODE] & 0x11) == 0x11 && alphaFunc != 0x3F &&
+           alphaFunc != 0x7F;
+}
+
 static void buildKey(ShaderKey& k) {
     memset(&k, 0, sizeof(k));
     k.numTexGens = g.xfReg[XFR_NUMTEXGENS] & 15;
@@ -74,7 +85,7 @@ static void buildKey(ShaderKey& k) {
         k.swap[t] = (g.bp[BP_TEV_KSEL + 2 * t] & 15) | (g.bp[BP_TEV_KSEL + 2 * t + 1] & 15) << 4;
     k.iref = k.numInd ? g.bp[BP_RAS1_IREF] & 0xFFFFFF : 0;
     k.alphaFunc = (g.bp[BP_ALPHACOMPARE] >> 16) & 0xFF;
-    k.earlyZ = ((g.bp[BP_PE_CONTROL] >> 6) & 1) && shaderHasEarlyFragmentTests();
+    k.earlyZ = earlyZWritesRejected() && shaderHasEarlyFragmentTests();
     k.fogType = (g.bp[BP_FOG3] >> 21) & 7;
 }
 

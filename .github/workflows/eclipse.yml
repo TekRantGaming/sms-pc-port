@@ -112,6 +112,20 @@ jobs:
           if [[ "$SMS_ECLIPSE" == 1 ]]; then grep -q 'code mods linked in but switched off' start.log
           else ! grep -q 'code mods linked in' start.log; fi
           grep -q 'not a usable GameCube disc image' start.log
+      - name: Collect the Windows executable and its DLLs
+        if: runner.os == 'Windows' && matrix.eclipse == '1'
+        run: |
+          mkdir -p windows-game
+          cp build/windows-64-eclipse/sms.exe windows-game/
+          ldd build/windows-64-eclipse/sms.exe | awk '$3 ~ /^\/mingw64\// { print $3 }' | xargs -r -I{} cp {} windows-game/
+          ls -l windows-game
+      # For testing a change on a Windows machine before it is released.
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows' && matrix.eclipse == '1'
+        with:
+          name: windows-64-eclipse
+          path: Eclipse CI with spaces/port/windows-game
+          retention-days: 7
       - name: Show the Windows executable's sections
         if: failure() && runner.os == 'Windows'
         run: |

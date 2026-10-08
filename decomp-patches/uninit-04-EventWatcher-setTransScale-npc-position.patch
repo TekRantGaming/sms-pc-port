@@ -1,0 +1,18 @@
+Reason: setTransScale is meant for map objects: it calls makeObjAppeared() and changeObjSRT() through TMapObjBase's vtable. Super Mario Eclipse's Tutorial script also calls it on an NPC (a TSpineEnemy, which is not a TMapObjBase). TSpineEnemy's virtuals in those two slots are resetToPosition(const TVec3&) and getSaveParam(), so makeObjAppeared() runs resetToPosition with whatever the second argument register holds. On the GameCube r4 holds some readable address and the NPC takes a position from it. Natively that register held text bytes, and the read faulted with an access violation in the Tutorial on Windows. Pass the script's translation as that argument. A map object's makeObjAppeared ignores it, and an NPC is reset to the position the script gave. getSaveParam() only returns a pointer, so changeObjSRT needs no change.
+--- a/src/System/EventWatcher.cpp
++++ b/src/System/EventWatcher.cpp
+@@ -1145,10 +1145,13 @@
+ 
+ 	TMapObjBase* obj = (TMapObjBase*)getNameRefPtr(interp->pop());
+ 
+-	obj->makeObjAppeared();
+ 	JGeometry::TVec3<f32> scale(sx, sy, sz);
+ 	JGeometry::TVec3<f32> rot(0.0f, 0.0f, 0.0f);
+ 	JGeometry::TVec3<f32> trans(tx, ty, tz);
++	// The object may be an NPC (a TSpineEnemy), whose virtual in this slot is
++	// resetToPosition(pos): give it a position (see the patch).
++	typedef void (TMapObjBase::*AppearAt)(const JGeometry::TVec3<f32>&);
++	(obj->*reinterpret_cast<AppearAt>(&TMapObjBase::makeObjAppeared))(trans);
+ 	obj->changeObjSRT(scale, rot, trans);
+ 
+ 	interp->push();

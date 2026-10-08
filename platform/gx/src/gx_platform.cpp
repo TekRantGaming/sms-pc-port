@@ -17,6 +17,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 #ifdef SMS_GX_HAVE_SDL2
 #include <SDL.h>
@@ -212,6 +217,19 @@ bool openWindow(int scale) {
         return false;
     }
     SDL_ShowWindow(s_window);
+#ifdef _WIN32
+    // A launcher that starts the game with its console hidden (SW_HIDE in the
+    // startup info, as SMS Launcher does) makes Windows apply that to the first
+    // ShowWindow too, which leaves the game window hidden. Windows honours the
+    // next one, so show it again.
+    STARTUPINFOW startup = {};
+    startup.cb = sizeof startup;
+    GetStartupInfoW(&startup);
+    if ((startup.dwFlags & STARTF_USESHOWWINDOW) && startup.wShowWindow == SW_HIDE) {
+        SDL_HideWindow(s_window);
+        SDL_ShowWindow(s_window);
+    }
+#endif
     // Some window managers choose their own placement when mapping a hidden
     // window. Center the decorated frame after showing it, using a conservative
     // title-bar allowance if the platform cannot report its borders yet.

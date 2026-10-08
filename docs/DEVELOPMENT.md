@@ -86,6 +86,25 @@ The plaza interior regression is `python3 tools/regress/interiors.py --disc /pat
 It uses gdb to place Mario on the real doorway triangles, lets the game perform the warps, and checks two entries and exits each for the boathouse and lighthouse at 30 and 60 fps in both word sizes.
 It checks the active map model, Mario's height and the ground plane, so a return warp that strands Mario in the interior fails even before he walks off its floor.
 
+The Turbo Nozzle pickup reproducer is `tools/regress/nozzle.py`, run under gdb on regular Sunshine.
+It breaks an enabled nozzle box through its trample message, moves Mario into the released nozzle, and checks that Turbo is equipped, its stage unlock flag is set, and the Turbo save prompt opens during ten seconds of gameplay.
+It also runs the Turbo controller in the two affected ground/swim statuses with nonzero dash speed and checks that the former out-of-bounds target stays unchanged.
+Use a fresh temporary card directory; existing unlock flags deliberately fail the test.
+Set `SMS_WARP=2,7,1` for Bianco Hills or `3,7,1` for Ricco Harbor, and vary `SMS_FRAME_RATE` and the executable to check other frame rates and word sizes.
+The script reads the frame rate from the game and continues an already attached inferior, so it can also be used with a Windows GDB remote target.
+Windows needs an SDL window, Windows paths for the disc and save directory, and a debugger built for the Windows target ABI.
+
+```sh
+nozzle_save=$(mktemp -d)
+SMS_SAVE_DIR="$nozzle_save" SMS_SETTINGS=/dev/null SMS_TEXTURE_PACKS=0 \
+SMS_HEADLESS=1 SMS_AUDIO=0 SMS_SKIP_MOVIES=1 SMS_VI_DETERMINISTIC=1 \
+SMS_FRAME_RATE=60 SMS_WARP=2,7,1 \
+SMS_AUTOPRESS='START@1400,STICK_LEFT@2000,A@2400,STICK_LEFT@3100,A@3250,A@3450,A@3800' \
+gdb -q -batch -nx -ex 'set debuginfod enabled off' \
+    -ex 'handle SIG34 nostop noprint' -x tools/regress/nozzle.py \
+    --args build/linux-64/sms /path/to/GMSE01.iso
+```
+
 ## Platform layer
 
 
@@ -229,6 +248,7 @@ The everyday options are in the [README](../README.md#options); this is the full
 | `SMS_FIELD_CLOCK=retrace` | shots/autopress count VI retraces (wall clock) instead of game fields (2 per display copy, the default) |
 | `SMS_VI_DETERMINISTIC=1` | virtual VI/OS clock: retraces fire when the game idles (or spins on `OSGetTick` for a whole field), `OSGetTime` follows them from a fixed date, AI DMA is paced by retraces (no output device); two runs with the same input give identical frames |
 | `SMS_VI_HZ=<rate>` | retrace rate override (benchmarking) |
+| `SMS_PRESENT_HZ=<rate>` | each swap also waits for the next refresh of a display at that rate, as a compositor that forces vsync does (frame pacing tests) |
 | `SMS_VI_FIELD_BASE=<n>` | the retrace counter starts at `n` (retail spends about 240 fields in IPL/apploader/DOL load before the game's first frame; 240 puts the Nintendo logo on retail's field 300) and selects game-frame parity |
 | `SMS_DVD_BPS`, `SMS_DVD_SEEK_MS`, `SMS_DVD_LOG=1` | drive timing model (reads occupy the drive for bytes/rate + seek, counted in fields; off by default) and a per-read log |
 | `SMS_MOVIE`, `SMS_TRACE_OUT` | `.dtm` movie input and retail-format field traces (`platform/trace`) |
@@ -292,7 +312,9 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
   `port_active_frame_rate` is the gameplay rate while `TMarDirector` runs, and 30 for logos, menus and movies.
   `SMSGetVSyncTimesPerSec` reports that rate, so animations and fades keep their real-time duration.
   The VI timer runs at 59.94 Hz for 30/60 configurations and 119.88 Hz for 120; the display waits two/one retraces at 30/60 and four/one for menus/gameplay with 120 configured.
-  This clock is independent of monitor refresh rate; host vsync can still limit presentation.
+  This clock is independent of monitor refresh rate.
+  Frames keep to a fixed schedule of retraces (`framerate-37`, `port_vi_frame_wait`): retail waits for one more retrace after a frame that ends past its own, which halves the game's speed wherever the host's present waits for the display (vsync, macOS, the Steam Deck's compositor), so a late frame starts the next at once instead, and one a whole frame behind is not presented (but one is at least every 0.05 s) when that lets the game keep time, i.e. presenting is slow (2 ms or more on average, `sms_gx`) and the frames' other work fits in their time, so a host too slow for the frame rate still shows every frame; a frame more than 0.1 s late starts a new schedule, and the deterministic clock keeps retail's wait.
+  `SMS_PRESENT_HZ=<rate>` makes each swap wait for a display at that rate, to try this without such a display.
   Movement keeps its 120 Hz ticks: `TMarDirector::direct` adds `600 / SMSGetVSyncTimesPerSec()` per frame and spends 5 per tick (four, two or one ticks per frame).
   The shared helpers in `src/port_include/port_framerate.h` scale visual steps by 30 / active rate, run native integer counters once per four movement ticks, and compensate tick animations by active rate / 30.
   Exponential chases use square roots at 60 and fourth roots at 120 to preserve their decay per second.
@@ -311,9 +333,18 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
 
 The launcher captures stdout and stderr separately, keeps a full session log on disk, and reports a game's actual exit code or signal. Windows game executables run directly rather than through MSYS bash, which can translate native exception statuses to 127. Ordinary resource warnings and stage context are never used as a game crash explanation.
 
-The port installs crash reporting before boot and before switching onto its low stack. On Linux and macOS, fatal signals first write their name, number, signal code, fault address when applicable, and instruction address directly to stderr. Module base/offset, registers on Intel Mac, and the existing backtrace follow as best-effort diagnostics. Game threads get an alternate signal stack so stack exhaustion can still produce the first report. Linux retains signal termination; macOS keeps the existing `128 + signal` exit to avoid the Rosetta termination hang.
+The port installs crash reporting before boot and before switching onto its low stack. Every report is written to stderr without allocating or taking a lock the crashed thread may hold, the most important lines first, and has the same sections on every platform:
 
-Windows uses a vectored exception logger before stack unwinding. Its first-chance reports include the native exception code, address, thread, PC/SP/BP, module base/offset, and access target. It returns `EXCEPTION_CONTINUE_SEARCH` and does not turn hardware exceptions into CRT signals, preserving their exit statuses. A first-chance report can be followed by successful handling; it is not proof of a fatal crash. Fast-fail and some heap-corruption termination paths can bypass in-process handlers, so the direct process exit code and Windows Event Viewer remain useful. Fully exhausted custom Windows stacks may also prevent an in-process report.
+- **What happened:** the signal and its code (Linux, macOS) or the Windows exception code, the faulting and instruction addresses, the thread, and the module and offset of the instruction.
+- **The fault address explained:** in the null page (a null pointer plus an offset), in emulated MEM1 with its GameCube address, a GameCube address past the end of MEM1, a MEM1 address with its upper 32 bits set (a pointer stored in a `u32`), or the module it falls in. Linux adds the `/proc/self/maps` lines of the fault address and the instruction (the mapping and its permissions).
+- **Registers:** every general register (x86-64, x86, arm64), and whether the fault was a read, a write or an instruction fetch, from the page-fault error code (x86), the ESR (macOS arm64) or the access-violation parameters (Windows).
+- **Backtrace:** raw frames, then the executable's frames symbolised to function, file and line, inlined calls included: `addr2line` on Linux and Windows (MSYS2's, found on `PATH`, or `SMS_ADDR2LINE`), `atos` on macOS. On Windows it runs from a thread made at start-up, and the report goes on after 10 s if it cannot finish (a crash holding the heap or loader lock).
+- **Memory:** the instruction bytes around the faulting instruction (` | ` before it) and the top 24 words of the stack.
+- **Game context:** every emulated `OSThread` (priority, state, entry function, the one owning the emulated CPU), the last eight disc files the game asked for (which show the stage being loaded), the build (compiler, architecture, Eclipse), the system (OS version, Wine if present, processors), the executable, and how long the game had run.
+
+On Linux and macOS, game threads get an alternate signal stack, so stack exhaustion can still produce a report. A fault while reporting ends the process with the original signal; a second thread crashing meanwhile waits for the first report. Linux retains signal termination; macOS keeps the existing `128 + signal` exit to avoid the Rosetta termination hang.
+
+Windows uses a vectored exception logger, which runs before the stack is unwound. It reports every error-severity exception (`0xC…`: hardware faults, heap corruption, and unwinding failures such as `0xC00000FF` `STATUS_BAD_FUNCTION_TABLE`) and C++ throws, each with a budget so exceptions a driver raises and handles itself cannot flood the log. An exception raised while another was being handled names the one it interrupted. On 64-bit Windows the backtrace unwinds with the modules' own unwind data (frame pointers do not chain there) inside the thread's stack bounds; it stops rather than guesses at a frame without unwind data, and on a game thread it ends at the entry to the low stack (`port_win64_stack_call`'s thunk). 32-bit follows the `ebp` chain. To resolve a frame by hand, run `addr2line -f -C -e <exe>` on the executable's image base (`objdump -p <exe> | grep ImageBase`) plus the printed offset. `abort()` gets the same report from the `SIGABRT` handler. A last-chance filter adds `unhandled exception …: the process ends` when nothing handled an exception; on a 64-bit game thread dispatch cannot walk past the low-stack thunk to reach it, so its absence after a game-thread report does not mean the exception was handled. The logger returns `EXCEPTION_CONTINUE_SEARCH` and does not turn hardware exceptions into CRT signals, preserving their exit statuses. A first-chance report can be followed by successful handling; it is not proof of a fatal crash. Fast-fail and some heap-corruption termination paths can bypass in-process handlers, so the direct process exit code and Windows Event Viewer remain useful. Fully exhausted custom Windows stacks may also prevent an in-process report.
 
 ROM-free Linux verification uses a configured game build's compilation settings and deliberate access violations, aborts, worker-thread faults and stack exhaustion:
 
@@ -322,4 +353,4 @@ python3 tools/test_crash_logging.py --build-directory build/linux-64 --arch 64
 python3 tools/test_crash_logging.py --build-directory build/linux-32 --arch 32
 ```
 
-For native Windows verification, compile `platform/os/tests/crash_probe.cpp` with `platform/os/windows_crash.cpp`, the `src/` include directory, and (for 64-bit) `platform/os/windows_stack.cpp`. Then run `python tools/test_crash_logging.py PATH_TO_PROBE.exe --arch 64` or `--arch 32` from native Python. The 64-bit probe includes a fault on the custom low stack. The heap probe explicitly raises that status to test the logger; it does not guarantee the logger sees real heap corruption or fast-fail.
+For native Windows verification, compile `platform/os/tests/crash_probe.cpp` with `platform/os/windows_crash.cpp`, `platform/os/crash_info.cpp`, the `src/` include directory, and (for 64-bit) `platform/os/windows_stack.cpp`. Then run `python tools/test_crash_logging.py PATH_TO_PROBE.exe --arch 64` or `--arch 32` from native Python. The 64-bit probe includes a fault on the custom low stack. The unwind probe raises `0xC00000FF` to check the logger reports unwinding failures. The report probe checks the `abort()` report without ending the process. The probe also builds with MinGW on Linux and runs under Wine (with MSYS2's `addr2line.exe` on `WINEPATH` for symbols). The heap probe explicitly raises that status to test the logger; it does not guarantee the logger sees real heap corruption or fast-fail.

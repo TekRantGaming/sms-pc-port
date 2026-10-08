@@ -44,6 +44,14 @@ enum Mode { MODE_NONE, MODE_WINDOW, MODE_HEADLESS, MODE_EXTERNAL };
 Mode s_mode = MODE_NONE;
 int s_forceHeadless = -1;  // -1: decide from the environment
 bool s_autoPresent = true;
+bool s_skipPresent = false;
+// Average seconds a present takes (drawing the XFB, the overlay and the swap).
+// A skip request (GXPC_SkipNextPresent) is only followed when presenting is
+// that slow: then the swap waits for the display and skipping one catches the
+// game up; a quick present gains nothing by being left out.
+double s_presentCost = 0;
+const double kSkipPresentCost = 0.002;
+double s_lastPresent = 0;  // the last display copy's present, 0 when skipped
 int s_vsync = 0;
 uint32_t s_frame = 0;
 
@@ -56,11 +64,7 @@ std::vector<SDL_GameController*> s_pads;
 std::vector<uint8_t> s_icon;  // GXPC_SetWindowIcon, RGBA8
 int s_iconW = 0, s_iconH = 0;
 
-double nowSeconds() {
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return double(ts.tv_sec) + double(ts.tv_nsec) * 1e-9;
-}
+double nowSeconds() { return gx::monoSeconds(); }
 
 bool envTrue(const char* name) {
     const char* v = getenv(name);
@@ -69,6 +73,21 @@ bool envTrue(const char* name) {
 
 #ifdef SMS_GX_HAVE_SDL2
 void* sdlGetProc(const char* name) { return SDL_GL_GetProcAddress(name); }
+
+// SMS_PRESENT_HZ=<rate> (testing): each swap also waits for the next refresh
+// of a display at that rate, as a compositor that forces vsync does (macOS,
+// the Steam Deck's gamescope), whatever the vsync setting.
+void waitSimulatedRefresh() {
+    static double period = -1;
+    if (period < 0) {
+        const char* e = getenv("SMS_PRESENT_HZ");
+        period = e && atof(e) > 0 ? 1.0 / atof(e) : 0;
+    }
+    if (period == 0) return;
+    const double next = (double(int64_t(nowSeconds() / period)) + 1) * period;
+    for (double now; (now = nowSeconds()) < next;)
+        if (next - now > 0.002) SDL_Delay(Uint32((next - now) * 1000) - 1);
+}
 
 // SMS_MOUSE_CAMERA=1: mouse look. The mouse is captured (relative mode) while
 // the window has focus; F10 releases it, a click in the window takes it back,
@@ -389,8 +408,14 @@ void dumpFrame(const void* xfb) {
 
 void onDisplayCopy(const void* xfb) {
     s_frame++;
+    GXPC_OverlayFrame();
     dumpFrame(xfb);
-    if (s_autoPresent) GXPC_Present(xfb);
+    const bool skip = s_skipPresent && s_presentCost >= kSkipPresentCost;
+    s_skipPresent = false;
+    s_lastPresent = 0;
+    if (!s_autoPresent) return;
+    if (skip) sms_gx_pump_events();
+    else GXPC_Present(xfb);
 }
 }  // namespace
 
@@ -426,6 +451,8 @@ void GXPC_SetWindowIcon(const uint8_t* rgba, int w, int h) {
 #endif
 }
 void GXPC_SetAutoPresent(int enable) { s_autoPresent = enable != 0; }
+void GXPC_SkipNextPresent(int skip) { s_skipPresent = skip != 0; }
+double GXPC_LastPresentSeconds(void) { return s_lastPresent; }
 int GXPC_MouseCaptured(void) {
 #ifdef SMS_GX_HAVE_SDL2
     return s_mouseCaptured;
@@ -492,9 +519,12 @@ void GXPC_Present(const void* xfb) {
         GXPC_OverlayDraw(w, h);
         double t1 = nowSeconds();
         SDL_GL_SwapWindow(s_window);
+        waitSimulatedRefresh();
         double t2 = nowSeconds();
         g_presentSeconds += t1 - t0;
         g_swapSeconds += t2 - t1;
+        s_lastPresent = t2 - t0;
+        s_presentCost += (s_lastPresent - s_presentCost) * 0.1;
         GXPC_EndPresent();
         sms_gx_pump_events();
     }

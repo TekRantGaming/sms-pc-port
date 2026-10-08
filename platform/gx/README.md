@@ -78,7 +78,7 @@ The renderer reads its state only from that register file, so API calls, GD disp
    Every `GXCopyDisp` draws the XFB into the window, letterboxed to 4:3, swaps, and pumps events.
    If VI should own presentation, call `GXPC_SetAutoPresent(0)` and then `GXPC_Present(xfb)` on retrace.
    - Command line: `GXPC_ParseArgs(&argc, argv)` strips `--headless`, `--window` and `--vsync`.
-   - Environment: `SMS_HEADLESS=1`, `SMS_GX_SCALE=n` (internal resolution), `SMS_WINDOW_SCALE=n`, `SMS_VSYNC=1`, `SMS_FULLSCREEN=1`.
+   - Environment: `SMS_HEADLESS=1`, `SMS_GX_SCALE=n` (internal resolution), `SMS_WINDOW_SCALE=n`, `SMS_VSYNC=1`, `SMS_FULLSCREEN=1`, `SMS_PRESENT_HZ=rate` (testing: swaps wait for a display at that rate).
    - `SMS_FULLSCREEN=1` starts in desktop fullscreen on the same monitor chosen for the window, without changing its display mode. Unset it or use `SMS_FULLSCREEN=0` to keep the centered, resizable window. The launcher sets this from **Settings → Visuals → Full screen**, effective on the next game launch. Headless runs ignore it. If fullscreen fails, the game logs the error and keeps its window available.
    - Windows start centered on the pointer's monitor, with a default size of up to 1280×720. The window and its borders fit within 80% of the usable desktop, leaving its title bar and resize edges accessible. Internal resolution does not enlarge the window; `SMS_WINDOW_SCALE` requests a different starting size, still fitted to the screen.
    - Frame dumps: `SMS_GX_DUMP_EVERY=n SMS_GX_DUMP_DIR=dir` writes every n-th XFB as a PPM, which is useful for headless bring-up.

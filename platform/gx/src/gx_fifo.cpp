@@ -1,6 +1,9 @@
 // Register file, command-stream parser and vertex loader.
 #include "gx_internal.h"
 #include <time.h>
+#ifdef __APPLE__
+#include <mach/mach_time.h>
+#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -17,6 +20,22 @@ extern uint32_t g_traceLastVat;
 void (*drawSyncCallback)(uint16_t) = nullptr;
 
 // ------------------------------------------------------------------ utilities
+double monoSeconds() {
+#ifdef __APPLE__
+    static double tick = 0;
+    if (tick == 0) {
+        mach_timebase_info_data_t tb;
+        mach_timebase_info(&tb);
+        tick = double(tb.numer) / double(tb.denom) * 1e-9;
+    }
+    return double(mach_absolute_time()) * tick;
+#else
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return double(ts.tv_sec) + double(ts.tv_nsec) * 1e-9;
+#endif
+}
+
 void logmsg(const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -464,17 +483,21 @@ void unpackVertex(uint32_t fmt, const uint8_t* src, const uint8_t defMtx[9], Hos
 }
 
 // ------------------------------------------------------------------ attribute readers
-// One reader per attribute, chosen once per primitive: MODE is 1 (inline),
+// One reader per attribute, chosen once per setup: MODE is 1 (inline),
 // 2 (8-bit index) or 3 (16-bit index), T the component type, N the components
 // in the data, NOUT the floats written (extra ones get the op's defaults), BE
-// whether the data is big-endian (inline data always is).
+// whether the data is big-endian (inline data always is). Every vertex of a
+// primitive has the same size in the stream and each attribute the same place
+// in it, so a reader loads its attribute for all of a primitive's vertices.
 struct DecOp;
-typedef void (*DecFn)(const DecOp& o, const uint8_t*& p, uint8_t* out);
+typedef void (*DecFn)(const DecOp& o, const uint8_t* in, uint32_t inStride, uint8_t* out, uint32_t outStride,
+                      uint32_t count);
 struct DecOp {
     DecFn fn;
     const uint8_t* base;  // array base (indexed modes)
     uint32_t stride;      // array stride
     float scale;          // 1 / 2^frac for integer components
+    uint16_t src;         // byte offset in the stream's vertex
     uint16_t dst;         // byte offset in the packed vertex
     float def[9];         // written when an indexed element has no array
 };
@@ -500,41 +523,30 @@ template <> inline float loadComp<float, false>(const uint8_t* p, float) {
     return f;
 }
 
-template <int MODE> static inline const uint8_t* fetch(const DecOp& o, const uint8_t*& p, uint32_t inlineBytes) {
-    if (MODE == 1) {
-        const uint8_t* src = p;
-        p += inlineBytes;
-        return src;
-    }
-    uint32_t idx;
-    if (MODE == 2) idx = *p++;
-    else {
-        idx = uint32_t(p[0]) << 8 | p[1];
-        p += 2;
-    }
-    return o.base ? o.base + size_t(idx) * o.stride : nullptr;
+// The attribute's data for the vertex at `in` (its place in the stream).
+template <int MODE> static inline const uint8_t* fetch(const DecOp& o, const uint8_t* in) {
+    if (MODE == 1) return in;
+    uint32_t idx = MODE == 2 ? in[0] : uint32_t(in[0]) << 8 | in[1];
+    return o.base + size_t(idx) * o.stride;
 }
 
 template <int MODE, typename T, int N, int NOUT, bool BE>
-static void readVec(const DecOp& o, const uint8_t*& p, uint8_t* out) {
-    float* d = reinterpret_cast<float*>(out + o.dst);
-    const uint8_t* src = fetch<MODE>(o, p, uint32_t(sizeof(T) * N));
-    if (!src) {
-        for (int i = 0; i < NOUT; i++) d[i] = o.def[i];
+static void readVec(const DecOp& o, const uint8_t* in, uint32_t is, uint8_t* out, uint32_t os, uint32_t count) {
+    in += o.src;
+    out += o.dst;
+    if (MODE != 1 && !o.base) {  // indexed, no array: the defaults
+        for (uint32_t v = 0; v < count; v++, out += os) memcpy(out, o.def, NOUT * 4);
         return;
     }
-    for (int i = 0; i < N; i++) d[i] = loadComp<T, BE>(src + i * sizeof(T), o.scale);
-    for (int i = N; i < NOUT; i++) d[i] = o.def[i];
+    for (uint32_t v = 0; v < count; v++, in += is, out += os) {
+        float* d = reinterpret_cast<float*>(out);
+        const uint8_t* src = fetch<MODE>(o, in);
+        for (int i = 0; i < N; i++) d[i] = loadComp<T, BE>(src + i * sizeof(T), o.scale);
+        for (int i = N; i < NOUT; i++) d[i] = o.def[i];
+    }
 }
 
-template <int MODE, int TYPE, bool BE> static void readClr(const DecOp& o, const uint8_t*& p, uint8_t* out) {
-    static const uint8_t kBytes[6] = {2, 3, 4, 2, 3, 4};
-    uint8_t* c = out + o.dst;
-    const uint8_t* src = fetch<MODE>(o, p, kBytes[TYPE]);
-    if (!src) {
-        c[0] = c[1] = c[2] = c[3] = 255;
-        return;
-    }
+template <int MODE, int TYPE, bool BE> static inline void readClr1(const uint8_t* src, uint8_t* c) {
     switch (TYPE) {
     case 0: {  // RGB565
         uint16_t v = BE ? uint16_t(src[0] << 8 | src[1]) : uint16_t(src[1] << 8 | src[0]);
@@ -572,6 +584,17 @@ template <int MODE, int TYPE, bool BE> static void readClr(const DecOp& o, const
         memcpy(c, src, 4);
         break;
     }
+}
+
+template <int MODE, int TYPE, bool BE>
+static void readClr(const DecOp& o, const uint8_t* in, uint32_t is, uint8_t* out, uint32_t os, uint32_t count) {
+    in += o.src;
+    out += o.dst;
+    if (MODE != 1 && !o.base) {
+        for (uint32_t v = 0; v < count; v++, out += os) memset(out, 255, 4);
+        return;
+    }
+    for (uint32_t v = 0; v < count; v++, in += is, out += os) readClr1<MODE, TYPE, BE>(fetch<MODE>(o, in), out);
 }
 
 // Picks readVec<MODE, T, N, NOUT, BE> for the runtime values.
@@ -618,17 +641,22 @@ static DecFn pickClr(uint8_t mode, uint8_t type, bool be) {
 // u8 each): the defaults from the XF registers, overwritten by the present ones.
 static uint8_t s_mtxDefault[12];
 static uint16_t s_mtxPresent;  // bit k: slot k is in the stream
-static void readMtx(const DecOp& o, const uint8_t*& p, uint8_t* out) {
-    uint8_t* m = out + o.dst;
-    memcpy(m, s_mtxDefault, 12);
-    for (int k = 0; k < 9; k++)
-        if (s_mtxPresent & (1u << k)) m[k] = *p++ & 63;
+static void readMtx(const DecOp& o, const uint8_t* in, uint32_t is, uint8_t* out, uint32_t os, uint32_t count) {
+    in += o.src;
+    out += o.dst;
+    for (uint32_t v = 0; v < count; v++, in += is, out += os) {
+        memcpy(out, s_mtxDefault, 12);
+        const uint8_t* q = in;
+        for (int k = 0; k < 9; k++)
+            if (s_mtxPresent & (1u << k)) out[k] = *q++ & 63;
+    }
 }
 
-static void attrOp(DecOp& op, int slot, uint8_t mode, float scale, uint16_t dst) {
+static void attrOp(DecOp& op, int slot, uint8_t mode, float scale, uint16_t src, uint16_t dst) {
     op.base = mode >= 2 ? g.arrayBase[slot] : nullptr;
     op.stride = g.arrayStride[slot];
     op.scale = scale;
+    op.src = src;
     op.dst = dst;
     memset(op.def, 0, sizeof(op.def));
 }
@@ -672,17 +700,24 @@ static void buildSetup(DecSetup& S, const VtxLayout& L) {
     S.fmt = fmt;
     S.stride = lay.stride;
 
-    // ops in stream order: matrix indices, position, normal/NBT, colours, texcoords
+    // ops in stream order: matrix indices, position, normal/NBT, colours,
+    // texcoords; `at` is where each one's data starts in the stream's vertex
+    auto idxSize = [](uint8_t mode) -> uint16_t { return mode == 2 ? 1 : mode == 3 ? 2 : 0; };
+    auto comp = [](uint8_t type) -> uint16_t { return type < 5 ? kCompSize[type] : 4; };
     DecOp* ops = S.ops;
     int nops = 0;
+    uint16_t at = 0;
     if (fmt & VF_MTX) {
         ops[nops].fn = &readMtx;
+        ops[nops].src = 0;
         ops[nops].dst = lay.mtx;
         nops++;
+        for (int k = 0; k < 9; k++) at += (S.mtxPresent >> k) & 1;
     }
     if (L.pos.mode) {
         DecOp& op = ops[nops++];
-        attrOp(op, ARR_POS, L.pos.mode, 1.0f / float(1u << L.pos.frac), 0);
+        attrOp(op, ARR_POS, L.pos.mode, 1.0f / float(1u << L.pos.frac), at, 0);
+        at += L.pos.mode == 1 ? uint16_t(comp(L.pos.type) * (L.pos.cnt ? 3 : 2)) : idxSize(L.pos.mode);
         bool be = L.pos.mode == 1 || g.arrayBigEndian[ARR_POS];
         op.fn = L.pos.cnt ? pickVecN<3, 3>(L.pos.mode, L.pos.type, be) : pickVecN<2, 3>(L.pos.mode, L.pos.type, be);
     }
@@ -693,13 +728,15 @@ static void buildSetup(DecSetup& S, const VtxLayout& L) {
         if (L.nbt3 && L.nrm.mode != 1) {  // three indices, one per vector
             for (int k = 0; k < 3; k++) {
                 DecOp& op = ops[nops++];
-                attrOp(op, ARR_NRM, L.nrm.mode, sc, uint16_t(lay.nrm + 12 * k));
+                attrOp(op, ARR_NRM, L.nrm.mode, sc, at, uint16_t(lay.nrm + 12 * k));
+                at += idxSize(L.nrm.mode);
                 if (k == 0) op.def[2] = 1.0f;
                 op.fn = pickVecN<3, 3>(L.nrm.mode, t, be);
             }
         } else {
             DecOp& op = ops[nops++];
-            attrOp(op, ARR_NRM, L.nrm.mode, sc, lay.nrm);
+            attrOp(op, ARR_NRM, L.nrm.mode, sc, at, lay.nrm);
+            at += L.nrm.mode == 1 ? uint16_t(comp(t) * (L.nbt ? 9 : 3)) : idxSize(L.nrm.mode);
             op.def[2] = 1.0f;
             op.fn = L.nbt ? pickVecN<9, 9>(L.nrm.mode, t, be) : pickVecN<3, 3>(L.nrm.mode, t, be);
         }
@@ -707,18 +744,22 @@ static void buildSetup(DecSetup& S, const VtxLayout& L) {
     for (int c = 0; c < 2; c++)
         if (L.clr[c].mode) {
             DecOp& op = ops[nops++];
-            attrOp(op, ARR_CLR0 + c, L.clr[c].mode, 1.0f, lay.clr[c]);
+            attrOp(op, ARR_CLR0 + c, L.clr[c].mode, 1.0f, at, lay.clr[c]);
+            at += L.clr[c].mode == 1 ? uint16_t(L.clr[c].type < 6 ? kColorSize[L.clr[c].type] : 4)
+                                     : idxSize(L.clr[c].mode);
             op.fn = pickClr(L.clr[c].mode, L.clr[c].type, L.clr[c].mode == 1 || g.arrayBigEndian[ARR_CLR0 + c]);
         }
     for (int t = 0; t < 8; t++)
         if (L.tex[t].mode) {
             const AttrFmt& a = L.tex[t];
             DecOp& op = ops[nops++];
-            attrOp(op, ARR_TEX0 + t, a.mode, 1.0f / float(1u << a.frac), lay.tex[t]);
+            attrOp(op, ARR_TEX0 + t, a.mode, 1.0f / float(1u << a.frac), at, lay.tex[t]);
+            at += a.mode == 1 ? uint16_t(comp(a.type) * (a.cnt ? 2 : 1)) : idxSize(a.mode);
             bool be = a.mode == 1 || g.arrayBigEndian[ARR_TEX0 + t];
             op.fn = a.cnt ? pickVecN<2, 2>(a.mode, a.type, be) : pickVecN<1, 2>(a.mode, a.type, be);
         }
     S.nops = nops;
+    if (at != L.size) fatal("vertex loader: attributes take %u of the vertex's %u bytes", at, L.size);
 }
 
 static const uint8_t* decodeVertices(uint8_t opcode, const uint8_t* p, uint32_t count, const VtxLayout& L, int vat) {
@@ -738,10 +779,9 @@ static const uint8_t* decodeVertices(uint8_t opcode, const uint8_t* p, uint32_t 
     const DecOp* ops = S.ops;
     uint8_t* out = primitiveBegin(opcode, count, S.fmt, stride);
     if (!L.pos.mode) memset(out, 0, size_t(count) * stride);  // no position: keep the slot defined
-    for (uint32_t v = 0; v < count; v++, out += stride)
-        for (int k = 0; k < nops; k++) ops[k].fn(ops[k], p, out);
+    for (int k = 0; k < nops; k++) ops[k].fn(ops[k], p, L.size, out, stride, count);
     primitiveEnd(opcode, count);
-    return p;
+    return p + size_t(count) * L.size;
 }
 
 // ------------------------------------------------------------------ command parser
@@ -816,13 +856,10 @@ static uint32_t parse(const uint8_t* p, uint32_t n, uint32_t* need) {
             if (avail < len) break;
             g_traceLastVat = op & 7;
             if (g_gxStats) {
-                timespec t0, t1;
                 double f0 = g_flushSeconds;  // a batch flushed inside counts as drawing
-                clock_gettime(CLOCK_MONOTONIC, &t0);
+                double t0 = monoSeconds();
                 decodeVertices(op & 0xF8, p + 3, cnt, L, op & 7);
-                clock_gettime(CLOCK_MONOTONIC, &t1);
-                g_decodeSeconds += double(t1.tv_sec - t0.tv_sec) + double(t1.tv_nsec - t0.tv_nsec) * 1e-9 -
-                                   (g_flushSeconds - f0);
+                g_decodeSeconds += monoSeconds() - t0 - (g_flushSeconds - f0);
             } else {
                 decodeVertices(op & 0xF8, p + 3, cnt, L, op & 7);
             }

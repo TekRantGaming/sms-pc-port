@@ -30,7 +30,8 @@ typedef void* (*GXPCGetProcFn)(const char* name);
  * the pointer's display; render scale does not change its size.
  * SMS_VSYNC=1 or --vsync (swap interval 1),
  * SMS_OVERLAY=1 (open the debug overlay at start),
- * SMS_GX_DUMP_EVERY=n + SMS_GX_DUMP_DIR=dir (write every n-th XFB as PPM).
+ * SMS_GX_DUMP_EVERY=n + SMS_GX_DUMP_DIR=dir (write every n-th XFB as PPM),
+ * SMS_PRESENT_HZ=rate (testing: each swap also waits for a display at that rate).
  * Every GXCopyDisp presents the copied XFB to the window and swaps (disable
  * with GXPC_SetAutoPresent(0) if the VI layer calls GXPC_Present itself). */
 int GXPC_ParseArgs(int* argc, char** argv);  /* strips the options above; returns count removed */
@@ -39,6 +40,8 @@ int GXPC_InitAuto(int efbScale);             /* 1 on success */
 int GXPC_IsHeadless(void);
 void GXPC_SetAutoPresent(int enable);
 void GXPC_Present(const void* xfb);          /* window mode: draw XFB, swap, pump events */
+void GXPC_SkipNextPresent(int skip);         /* the next GXCopyDisp is not presented (events still pumped), if presenting is slow */
+double GXPC_LastPresentSeconds(void);        /* the last GXCopyDisp's present, 0 if it was not presented */
 uint32_t GXPC_FrameCount(void);              /* display copies so far */
 /* Window (taskbar / Dock) icon: w x h RGBA8 pixels, copied. Applied to the
  * SDL window now, or when it opens; ignored without a window. */
@@ -159,6 +162,7 @@ void GXPC_DrawOverlay(const uint8_t* rgba, int w, int h, int x, int y, int scale
 /* Debug overlay (backtick in the window): toggle, and draw it before a swap. */
 void GXPC_OverlayToggle(void);
 void GXPC_OverlayDraw(int winW, int winH);
+void GXPC_OverlayFrame(void);  /* every display copy, presented or not: the overlay's frame clock */
 int GXPC_OverlayVisible(void);
 /* Game speed multiplier (F7 while the overlay is open cycles 1, 2, 4, 10);
  * VI retraces and host audio advance at this rate, including THP movies. */

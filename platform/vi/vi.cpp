@@ -24,6 +24,8 @@
 extern "C" __attribute__((weak)) int GXPC_ReadXFB(const void* xfb, void* rgba, int* w, int* h);
 extern "C" __attribute__((weak)) u32 GXPC_FrameCount(void);
 extern "C" __attribute__((weak)) void GXPC_SetIdleClock(double (*idleSeconds)(void));
+extern "C" __attribute__((weak)) void GXPC_SkipNextPresent(int skip);
+extern "C" __attribute__((weak)) double GXPC_LastPresentSeconds(void);
 extern "C" double port_idle_seconds(void);
 extern "C" void port_pad_autopress_field(u32 field);
 extern "C" __attribute__((weak)) void port_trace_on_retrace(uint32_t retrace_count);
@@ -53,6 +55,14 @@ std::vector<u32> g_shots;
 size_t g_next_shot;
 std::string g_shot_dir;
 pthread_t g_gx_thread;
+long g_period_ns = 16683350; // the retrace period (timer_thread)
+
+double seconds_now()
+{
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return t.tv_sec + t.tv_nsec * 1e-9;
+}
 
 // The clock for SMS_SHOTS / SMS_AUTOPRESS "fields". By default it is game
 // time: two fields per copy at 30 fps, one at 60, and half at 120, so captures
@@ -127,6 +137,7 @@ void* timer_thread(void*)
 	if (const char* hz = getenv("SMS_VI_HZ"))
 		if (atof(hz) > 0)
 			period_ns = (long)(1e9 / atof(hz));
+	g_period_ns = period_ns;
 	struct timespec t;
 	clock_gettime(CLOCK_MONOTONIC, &t);
 	for (;;) {
@@ -271,4 +282,48 @@ extern "C" void VIWaitForRetrace(void)
 		OSSleepThread(&g_retrace_queue);
 	OSRestoreInterrupts(lvl);
 }
+
+// The end of JDrama::TVideo::waitForRetrace (framerate-37): waits for the
+// retrace `due` this frame is shown at and returns the one the next frame is
+// due at, `frames` later. Retail waits for the next retrace after each frame
+// and counts the next frame from there, so a frame that ends just past its
+// retrace costs a whole extra one: where the host's present waits for the
+// display (vsync, macOS, the Steam Deck's compositor, at any refresh rate),
+// frames at 60 or 120 fps kept missing and gameplay ran at half speed. Here
+// frames keep to the schedule instead: a late frame starts the next at once,
+// and one a whole frame behind is not presented (but one is at least every
+// 0.05 s), so the game keeps time when the display takes fewer frames than it
+// makes. That is only asked when the frames' own work fits in their time and
+// presenting is slow (sms_gx), so a host too slow for the frame rate shows
+// every frame. A frame more than 0.1 s late (a load) starts a new schedule.
+// The deterministic clock keeps retail's wait.
+extern "C" s32 port_vi_frame_wait(s32 due, u16 frames)
+{
+	const s32 max_behind = 6 * g_retrace_multiplier; // native fields: 0.1 s
+	const s32 max_unshown = 3 * g_retrace_multiplier; // 0.05 s
+	static s32 shown; // the retrace the last presented frame ended at
+	static double ready, work; // when the last wait ended; seconds per frame, presenting aside
+	if (g_det) {
+		VIWaitForRetrace();
+		return (s32)VIGetRetraceCount() + frames;
+	}
+	const double entry = seconds_now();
+	if (ready > 0)
+		work += (entry - ready - (GXPC_LastPresentSeconds ? GXPC_LastPresentSeconds() : 0) - work) * 0.1;
+	while ((s32)(VIGetRetraceCount() - due) < 0)
+		VIWaitForRetrace();
+	const s32 now = (s32)VIGetRetraceCount();
+	if (now - due > max_behind)
+		due = now;
+	const int speed = GXPC_GetSpeed ? GXPC_GetSpeed() : 1;
+	const double period = frames * g_period_ns * 1e-9 / (speed > 0 ? speed : 1);
+	const bool skip = now - due >= frames && now - shown < max_unshown && work < period;
+	if (!skip)
+		shown = now;
+	if (GXPC_SkipNextPresent)
+		GXPC_SkipNextPresent(skip);
+	ready = seconds_now();
+	return due + frames;
+}
+
 extern "C" void* port_vi_current_fb(void) { return g_cur_fb; }

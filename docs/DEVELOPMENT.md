@@ -229,6 +229,7 @@ The everyday options are in the [README](../README.md#options); this is the full
 | `SMS_FIELD_CLOCK=retrace` | shots/autopress count VI retraces (wall clock) instead of game fields (2 per display copy, the default) |
 | `SMS_VI_DETERMINISTIC=1` | virtual VI/OS clock: retraces fire when the game idles (or spins on `OSGetTick` for a whole field), `OSGetTime` follows them from a fixed date, AI DMA is paced by retraces (no output device); two runs with the same input give identical frames |
 | `SMS_VI_HZ=<rate>` | retrace rate override (benchmarking) |
+| `SMS_PRESENT_HZ=<rate>` | each swap also waits for the next refresh of a display at that rate, as a compositor that forces vsync does (frame pacing tests) |
 | `SMS_VI_FIELD_BASE=<n>` | the retrace counter starts at `n` (retail spends about 240 fields in IPL/apploader/DOL load before the game's first frame; 240 puts the Nintendo logo on retail's field 300) and selects game-frame parity |
 | `SMS_DVD_BPS`, `SMS_DVD_SEEK_MS`, `SMS_DVD_LOG=1` | drive timing model (reads occupy the drive for bytes/rate + seek, counted in fields; off by default) and a per-read log |
 | `SMS_MOVIE`, `SMS_TRACE_OUT` | `.dtm` movie input and retail-format field traces (`platform/trace`) |
@@ -292,7 +293,9 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
   `port_active_frame_rate` is the gameplay rate while `TMarDirector` runs, and 30 for logos, menus and movies.
   `SMSGetVSyncTimesPerSec` reports that rate, so animations and fades keep their real-time duration.
   The VI timer runs at 59.94 Hz for 30/60 configurations and 119.88 Hz for 120; the display waits two/one retraces at 30/60 and four/one for menus/gameplay with 120 configured.
-  This clock is independent of monitor refresh rate; host vsync can still limit presentation.
+  This clock is independent of monitor refresh rate.
+  Frames keep to a fixed schedule of retraces (`framerate-37`, `port_vi_frame_wait`): retail waits for one more retrace after a frame that ends past its own, which halves the game's speed wherever the host's present waits for the display (vsync, macOS, the Steam Deck's compositor), so a late frame starts the next at once instead, and one a whole frame behind is not presented (but one is at least every 0.05 s) when that lets the game keep time, i.e. presenting is slow (2 ms or more on average, `sms_gx`) and the frames' other work fits in their time, so a host too slow for the frame rate still shows every frame; a frame more than 0.1 s late starts a new schedule, and the deterministic clock keeps retail's wait.
+  `SMS_PRESENT_HZ=<rate>` makes each swap wait for a display at that rate, to try this without such a display.
   Movement keeps its 120 Hz ticks: `TMarDirector::direct` adds `600 / SMSGetVSyncTimesPerSec()` per frame and spends 5 per tick (four, two or one ticks per frame).
   The shared helpers in `src/port_include/port_framerate.h` scale visual steps by 30 / active rate, run native integer counters once per four movement ticks, and compensate tick animations by active rate / 30.
   Exponential chases use square roots at 60 and fourth roots at 120 to preserve their decay per second.

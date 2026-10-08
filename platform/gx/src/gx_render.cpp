@@ -1692,7 +1692,7 @@ static void copyEfb(uint32_t ctrl) {
         traceFrameAdvance();
         statsFrame();
         s_lastFrameStats = s_stats;
-        s_stats.draws = s_stats.vertices = 0;
+        s_stats.draws = s_stats.vertices = s_stats.efbCopies = 0;
     }
 }
 

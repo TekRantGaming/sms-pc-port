@@ -1,0 +1,28 @@
+Reason: port: a frame that ends just past its retrace waits for the next one and the next frame is counted from there, so where the host's present waits for the display (vsync, macOS, the Steam Deck's compositor) gameplay at 60 or 120 fps fell to half speed; frames keep to a fixed schedule instead (port_vi_frame_wait)
+--- a/libs/JSystem/src/JDrama/JDRVideo.cpp
++++ b/libs/JSystem/src/JDrama/JDRVideo.cpp
+@@ -6,6 +6,10 @@
+ 
+ using namespace JDrama;
+ 
++#ifdef TARGET_PC
++extern "C" s32 port_vi_frame_wait(s32 due, u16 frames);
++#endif
++
+ void InitRenderModeVIParams(GXRenderModeObj* obj)
+ {
+ 	obj->viTVmode  = (VITVMode)-1;
+@@ -77,7 +81,13 @@
+ 	mCurRenderMode  = mNextRenderMode;
+ 	mCurFrameBuffer = mNextFrameBuffer;
+ 	VIFlush();
++#ifdef TARGET_PC
++	// Port: a late frame does not wait for one more retrace (platform/vi).
++	mNextRetraceIndex = port_vi_frame_wait(mNextRetraceIndex, param_1);
++	mLastRetraceTime  = OSGetTick();
++#else
+ 	VIWaitForRetrace();
+ 	mLastRetraceTime  = OSGetTick();
+ 	mNextRetraceIndex = param_1 + VIGetRetraceCount();
++#endif
+ }

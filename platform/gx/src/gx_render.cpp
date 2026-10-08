@@ -533,7 +533,7 @@ static void postPresent(GLuint tex, int w, int h, int ox, int oy, int vw, int vh
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         tex = s_postTex;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_presentFbo);
     glViewport(ox, oy, vw, vh);
     glUseProgram(s_scaleProg);
     glUniform2f(s_scaleUSrc, float(w), float(h));
@@ -545,6 +545,72 @@ static void postPresent(GLuint tex, int w, int h, int ox, int oy, int vw, int vh
     glBindTexture(GL_TEXTURE_2D, tex);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glBindVertexArray(s_vao);
+}
+
+// HDR (gx_hdr.cpp): the presented SDR picture (srcTex, w x h) to scRGB in
+// dstFbo, linear BT.709 with 1.0 at 80 nits, turned top side down for
+// Direct3D. The picture is decoded with a 2.2 gamma (the TVs the game was made
+// for, and darker shadows than Windows' sRGB curve for SDR) after a dither of
+// half an 8-bit step, so stretching it does not band. Contrast pivots on
+// middle grey (18%); saturation keeps BT.709 luminance. Middle grey and below
+// stay where SDR puts them (the paper white); brighter tones gain gradually,
+// smoothly over the stops from middle grey to white, until SDR white is
+// u_whiteGain times the paper white, so no narrow band of tones is stretched.
+// The gain follows luminance, not the strongest channel, so a vivid colour (a
+// blue menu panel) is not lifted as if it were white.
+// Highlights (0..1) sets that gain in stops: 0 keeps SDR white at the paper
+// white, 1 puts it at the peak. Each pixel is scaled as a whole, so its hue
+// stays.
+static const char* kHdrFs = R"(#version 330 core
+uniform sampler2D u_tex;
+uniform vec4 u_hdr;         // paper white, peak (scRGB units), contrast, saturation
+uniform float u_whiteGain;  // SDR white over the paper white, at least 1
+in vec2 v_uv;
+out vec4 o_color;
+void main() {
+  float dither = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+  vec3 c = pow(clamp(texture(u_tex, v_uv).rgb + dither / 255.0, 0.0, 1.0), vec3(2.2));
+  c = 0.18 * pow(max(c, vec3(0.0)) / 0.18, vec3(u_hdr.z));
+  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = max(mix(vec3(y), c, u_hdr.w), vec3(0.0));
+  float s = smoothstep(log2(0.18), 0.0, log2(max(y, 1e-6)));
+  vec3 o = c * (u_hdr.x * exp2(log2(u_whiteGain) * s));
+  o_color = vec4(min(o, vec3(u_hdr.y)), 1.0);
+}
+)";
+static GLuint s_hdrProg;
+static GLint s_hdrUParams, s_hdrUWhiteGain, s_hdrUFlip;
+
+void hdrPass(unsigned srcTex, int w, int h, unsigned dstFbo, float paperNits, float peakNits, float contrast, float saturation,
+             float highlights) {
+    if (!s_hdrProg) {
+        s_hdrProg = compileProgram(kPostVs, kHdrFs);
+        glUseProgram(s_hdrProg);
+        glUniform1i(glGetUniformLocation(s_hdrProg, "u_tex"), 0);
+        s_hdrUParams = glGetUniformLocation(s_hdrProg, "u_hdr");
+        s_hdrUWhiteGain = glGetUniformLocation(s_hdrProg, "u_whiteGain");
+        s_hdrUFlip = glGetUniformLocation(s_hdrProg, "u_flip");
+    }
+    glDisable(GL_BLEND);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_COLOR_LOGIC_OP);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glBindFramebuffer(GL_FRAMEBUFFER, dstFbo);
+    glViewport(0, 0, w, h);
+    glUseProgram(s_hdrProg);
+    const float params[4] = {paperNits / 80.0f, peakNits / 80.0f, contrast, saturation};
+    glUniform4fv(s_hdrUParams, 1, params);
+    glUniform1f(s_hdrUWhiteGain, peakNits > paperNits ? powf(peakNits / paperNits, highlights) : 1.0f);
+    glUniform1i(s_hdrUFlip, 1);  // GL draws row 0 at the bottom; Direct3D reads row 0 as the top
+    glBindSampler(0, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, srcTex);
+    glBindVertexArray(s_copyVao);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(s_vao);
+    glcInvalidate();
 }
 
 void rendererInit(int efbScale) {
@@ -1904,7 +1970,7 @@ int GXPC_PresentXFB(const void* xfb, int winW, int winH) {
     }
     int ox = (winW - vw) / 2, oy = (winH - vh) / 2;
     glDisable(GL_SCISSOR_TEST);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_presentFbo);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -1913,7 +1979,7 @@ int GXPC_PresentXFB(const void* xfb, int winW, int winH) {
     // Framebuffer 0 stays bound through the swap: macOS presents nothing
     // (a black window) if an FBO is bound at SDL_GL_SwapWindow.
     // GXPC_EndPresent restores the EFB.
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_presentFbo);
     memset(&s_stats, 0, sizeof(s_stats));
     return 1;
 }
@@ -2106,7 +2172,7 @@ void main() { o_color = texture(u_color, v_uv); }
     glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
     glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_presentFbo);
     glViewport(0, 0, winW, winH);
     glUseProgram(s_overlayProg);
     glUniform1i(glGetUniformLocation(s_overlayProg, "u_color"), 0);

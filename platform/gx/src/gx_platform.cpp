@@ -321,6 +321,15 @@ bool openWindow(int scale) {
     if (const char* e = getenv("SMS_FULLSCREEN")) s_exclusive = strcmp(e, "exclusive") == 0;
     if (windowsHdrOn()) logmsg("Windows HDR is on for this monitor");
     if (envTrue("SMS_FULLSCREEN")) setFullscreen(true);
+#ifdef _WIN32
+    {  // SMS_HDR: present in HDR through Direct3D (gx_hdr.cpp)
+        SDL_SysWMinfo wm;
+        SDL_VERSION(&wm.version);
+        if (SDL_GetWindowWMInfo(s_window, &wm) && wm.subsystem == SDL_SYSWM_WINDOWS) hdrInit(wm.info.win.window);
+    }
+#else
+    hdrInit(nullptr);
+#endif
     if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
         logmsg("%s fullscreen on display %d (%s), internal resolution scale %d, OpenGL context ready",
                (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP ? "desktop" : "exclusive",
@@ -486,6 +495,10 @@ int GXPC_ParseArgs(int* argc, char** argv) {
         if (strcmp(a, "--headless") == 0) s_forceHeadless = 1;
         else if (strcmp(a, "--window") == 0) s_forceHeadless = 0;
         else if (strcmp(a, "--vsync") == 0) s_vsync = 1;
+        else if (strcmp(a, "--display-info") == 0) {  // for the launcher: what Windows reports for each display
+            GXPC_PrintDisplayInfo();
+            exit(0);
+        }
         else {
             argv[out++] = argv[i];
             continue;
@@ -573,10 +586,13 @@ void GXPC_Present(const void* xfb) {
         int w = 0, h = 0;
         SDL_GL_GetDrawableSize(s_window, &w, &h);
         double t0 = nowSeconds();
+        const bool hdr = hdrActive();
+        if (hdr && !hdrFrameBegin(w, h)) return;  // minimised: nothing to show
         GXPC_PresentXFB(xfb, w, h);
         GXPC_OverlayDraw(w, h);
         double t1 = nowSeconds();
-        SDL_GL_SwapWindow(s_window);
+        if (hdr) hdrFramePresent(s_vsync != 0);
+        else SDL_GL_SwapWindow(s_window);
         waitSimulatedRefresh();
         double t2 = nowSeconds();
         g_presentSeconds += t1 - t0;

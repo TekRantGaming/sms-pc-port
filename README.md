@@ -87,6 +87,11 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `SMS_BUTTON_PROMPTS=style` | the buttons shown in the game's text and on the FLUDD gauge: `gamecube` (the game's own, the default), `xbox`, `playstation`, `steamdeck`, `keyboard`, or `auto` (keyboard and mouse or the controller in use) |
 | `SMS_BUTTON_PROMPT_PAD=style` | with `auto`, how every controller's prompts look: `xbox`, `playstation`, `steamdeck` or `gamecube` (default: match the controller) |
 | `SMS_BUTTON_PROMPT_DIR=dir` | the prompt images, `<style>.png` (eight 64x64 icons in a row: A B X Y Z L R C-stick); SMS Launcher draws them from your bindings |
+| `SMS_HDR=1` | HDR output on Windows while Windows HDR is on: the SDR picture is expanded to HDR and presented through a Direct3D 11 swap chain (scRGB). `--display-info` prints what Windows reports for each display (HDR, peak and full-frame nits, SDR content brightness, calibration profile) as JSON |
+| `SMS_HDR_PAPER_WHITE=nits` | how bright ordinary whites, menus and text are in HDR; `auto` (default) uses Windows' SDR content brightness |
+| `SMS_HDR_PEAK=nits` | the brightest an HDR highlight reaches; `auto` (default) uses the display's peak as Windows reports it, which follows a Windows HDR Calibration profile |
+| `SMS_HDR_CONTRAST=n`, `SMS_HDR_SATURATION=n` | HDR contrast (50 to 150) and saturation (0 to 200), percent; 100 leaves them as they are |
+| `SMS_HDR_HIGHLIGHTS=n` | 0 to 100 (default 40): how far the brightest parts climb toward the peak, in stops; 0 keeps SDR white at the paper white, 100 puts it at the peak |
 | `SMS_AUDIO=0` | no sound |
 | `SMS_VOLUME=n` | master volume, 0 to 100 (default 100) |
 | `SMS_SAVE_DIR=dir` | memory card folder |

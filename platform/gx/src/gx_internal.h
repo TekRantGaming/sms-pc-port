@@ -171,6 +171,15 @@ uint32_t pixMetricRead();
 // ---------------------------------------------------------------- textures (gx_texture.cpp)
 struct TexKey;
 unsigned bindTextureMap(int map, float* outW, float* outH);  // returns GL name
+// HDR output (gx_hdr.cpp). Presenting draws into g_presentFbo: 0 (the window),
+// or, while HDR is on, the SDR texture hdrPass turns into the HDR picture.
+extern unsigned g_presentFbo;
+bool hdrActive();
+bool hdrInit(void* window);  // the window's native handle (an HWND on Windows)
+bool hdrFrameBegin(int w, int h);
+void hdrFramePresent(int vsync);
+void hdrPass(unsigned srcTex, int w, int h, unsigned dstFbo, float paperNits, float peakNits, float contrast, float saturation,
+             float highlights);
 void textureInvalidateAll();
 void textureInvalidateRange(const void* p, uint32_t size);
 void textureShutdown();

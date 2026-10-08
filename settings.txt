@@ -74,6 +74,19 @@ frame_rate = 60
 # or gamecube; match follows the controller.
 # button_prompt_pad = match
 # button_prompt_dir =
+# HDR output on Windows (while Windows HDR is on): the game's SDR picture is
+# expanded to HDR. hdr_paper_white is how bright ordinary whites are, hdr_peak
+# the brightest a highlight gets, in nits, or auto: Windows' SDR content
+# brightness and the display's peak (as the Windows HDR Calibration app set
+# it). hdr_contrast and hdr_saturation are percent (100 unchanged);
+# hdr_highlights (0 to 100) is how far the brightest parts reach toward the
+# peak, in stops.
+# hdr = off
+# hdr_paper_white = auto
+# hdr_peak = auto
+# hdr_contrast = 100
+# hdr_saturation = 100
+# hdr_highlights = 40
 # audio = on
 # Master volume, 0 (silent) to 100 (full).
 # volume = 100

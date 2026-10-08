@@ -1,0 +1,48 @@
+Reason: port: with frame_rate = 60 or 120 a held sound effect is requested on every displayed frame but JAI's frame work runs on one in two or four, and a second request in one frame work stopped and restarted the sound (the Rocket and Turbo charge sound was never heard); the stops also queued an SE track's port command twice, which dropped the BGM volume updates queued after it (Shadow Mario's music stayed loud everywhere)
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIEntrySe.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIEntrySe.cpp
+@@ -3,6 +3,28 @@
+ #include <JSystem/JAudio/JAInterface/JAIBasic.hpp>
+ #include <JSystem/JAudio/JAInterface/JAIConst.hpp>
+ 
++#ifdef TARGET_PC
++// At 60 or 120 fps MSound::mainLoop does JAI's frame work on one displayed
++// frame of each two or four (framerate-35), so a held sound (no 0xC00 bits),
++// which the game asks for again on every displayed frame to keep it going, is
++// asked for more than once per frame work. The first request re-arms it
++// (Stopping -> Playing, below); retail treats a second one as a new start and
++// stops the playing sound. Retail never sends two: TMarDirector::direct clears
++// the continuous SE gate on every simulation tick but the last. So the charge
++// sound (MSD_SE_SY_NEWP_AIR_TAME) restarted every other frame work and was
++// never heard, and each stop raised its track's interrupt switch, whose port
++// command, queued a second time in the same frame work, cut the commands
++// queued after it off cmd_once, among them the BGM volume and pan updates
++// (Shadow Mario's distance fade). A held sound already re-armed since the last
++// frame work keeps playing.
++#include "port_framerate.h"
++static inline bool JAISeEntryPortRearmed(const JAISound* sound, u32 sound_id)
++{
++	return port_high_fps_active && (sound_id & 0xC00) == 0
++	    && sound->mState == SOUNDSTATE_Playing;
++}
++#endif
++
+ void JAISeEntry::storeBuffer(JAISoundHandle* out_handle, JAIActor* actor,
+                              u32 sound_id, u32 fade, u8 camera_idx, void* info)
+ {
+@@ -34,6 +56,15 @@
+ 		if (it->mActor == uVar14) {
+ 			if (it->mSoundID == sound_id
+ 			    && (unk0->getSoundSwBit(info) & JAISeSwBit_Multi) == 0) {
++#ifdef TARGET_PC
++				if (JAISeEntryPortRearmed(it, sound_id)) {
++					if (out_handle == nullptr || *out_handle != nullptr)
++						return;
++					it->mMainSoundPPointer = out_handle;
++					*out_handle            = it;
++					return;
++				}
++#endif
+ 				if ((sound_id & 0x800) == 0
+ 				    && it->mState == SOUNDSTATE_Stopping) {
+ 					it->mState = SOUNDSTATE_Playing;

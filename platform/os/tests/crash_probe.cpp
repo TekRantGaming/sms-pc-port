@@ -52,6 +52,14 @@ int main(int argc, char** argv)
 	if (!strcmp(argv[1], "access")) fault(NULL);
 #ifdef _WIN32
 	if (!strcmp(argv[1], "heap")) RaiseException(0xC0000374, EXCEPTION_NONCONTINUABLE, 0, NULL);
+	// What Windows raises when an unwind cannot follow the stack; the logger
+	// once skipped it, so the Eclipse stage-exit crash printed nothing.
+	if (!strcmp(argv[1], "unwind")) RaiseException(0xC00000FF, EXCEPTION_NONCONTINUABLE, 0, NULL);
+	// The report abort() gets, without ending the probe.
+	if (!strcmp(argv[1], "report")) {
+		port_windows_report_current("probe report");
+		return 0;
+	}
 #ifdef _WIN64
 	if (!strcmp(argv[1], "low-stack")) {
 		void* stack = VirtualAlloc((void*)0x10000000, 1 << 20, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);

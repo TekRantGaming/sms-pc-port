@@ -1,0 +1,107 @@
+Reason: port: SMS_BUTTON_PROMPTS draws the system font's button glyphs (A B X Y Z L R C-stick) as the buttons of another controller or the bound keys; platform gx_prompts.cpp supplies the images (port_button_glyph)
+--- a/libs/JSystem/src/JUtility/JUTResFont.cpp
++++ b/libs/JSystem/src/JUtility/JUTResFont.cpp
+@@ -3,6 +3,24 @@
+ #include <dolphin/gx.h>
+ #include <dolphin/types.h>
+ 
++#ifdef TARGET_PC
++// Button prompts (platform gx_prompts.cpp): an RGBA8 64x64 image to draw for a
++// system-font button glyph (A B X Y Z L R C-stick) in the style of the
++// controller in use, or null to keep the font's own glyph.
++extern "C" const void* port_button_glyph(int chr);
++extern JUTResFont* gpSystemFont;
++// setGX(col1, col2) set up the two-colour TEV, which maps the texture's
++// intensity between two colours; the prompt images are drawn in their own
++// colours, so drawChar_scale switches to plain modulate for them and back.
++static bool sPortTwoColour;
++static JUtility::TColor sPortCol1, sPortCol2;
++static u32 portPromptColour(u32 c)
++{
++	u32 sum = (c >> 24) + ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF);
++	return sum < 3 * 0x60 ? c : (c & 0xFF) | 0xFFFFFF00;
++}
++#endif
++
+ IsLeadByte_func const JUTResFont::saoAboutEncoding_[3] = {
+ 	isLeadByte_1Byte,
+ 	isLeadByte_2Byte,
+@@ -161,6 +179,11 @@
+ 
+ void JUTResFont::setGX(JUtility::TColor col1, JUtility::TColor col2)
+ {
++#ifdef TARGET_PC
++	sPortTwoColour = !(col1 == 0 && col2 == -1);
++	sPortCol1      = col1;
++	sPortCol2      = col2;
++#endif
+ 	if (col1 == 0 && col2 == -1) {
+ 		setGX();
+ 	} else {
+@@ -249,31 +272,62 @@
+ 	int v2 = ((mHeight + getHeight()) * 0x8000)
+ 	         / mpGlyphBlocks[field_0x62]->textureHeight;
+ 
++	u32 c1 = mColor1, c2 = mColor2, c3 = mColor3, c4 = mColor4;
++#ifdef TARGET_PC
++	const void* prompt = this == gpSystemFont ? port_button_glyph(chr) : nullptr;
++	if (prompt) {
++		// the whole prompt image in its own colours (the text's alpha still
++		// fades it); a dark colour is the text's drop shadow, kept as it is
++		GXTexObj obj;
++		GXInitTexObj(&obj, (void*)prompt, 64, 64, GX_TF_RGBA8, GX_CLAMP,
++		             GX_CLAMP, 0);
++		GXInitTexObjLOD(&obj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, 0U, 0U,
++		                GX_ANISO_1);
++		GXLoadTexObj(&obj, GX_TEXMAP0);
++		mTexPageIdx = -1; // the next glyph reloads the font page
++		u1 = v1 = 0;
++		u2 = v2 = 0x8000;
++		c1 = portPromptColour(c1);
++		c2 = portPromptColour(c2);
++		c3 = portPromptColour(c3);
++		c4 = portPromptColour(c4);
++		if (sPortTwoColour) {
++			GXSetNumTevStages(1);
++			GXSetTevOp(GX_TEVSTAGE0, GX_MODULATE);
++		}
++	}
++#endif
++
+ 	GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_CLR_RGBA, GX_F32, 0);
+ 	GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+ 
+ 	// Bottom Left
+ 	GXPosition3f32(x1, y1, 0.0f);
+-	GXColor1u32(mColor1);
++	GXColor1u32(c1);
+ 	GXTexCoord2u16(u1, v1);
+ 
+ 	// Bottom Right
+ 	GXPosition3f32(x2, y1, 0.0f);
+-	GXColor1u32(mColor2);
++	GXColor1u32(c2);
+ 	GXTexCoord2u16(u2, v1);
+ 
+ 	// Top Right
+ 	GXPosition3f32(x2, y2, 0.0f);
+-	GXColor1u32(mColor4);
++	GXColor1u32(c4);
+ 	GXTexCoord2u16(u2, v2);
+ 
+ 	// Top Left
+ 	GXPosition3f32(x1, y2, 0.0f);
+-	GXColor1u32(mColor3);
++	GXColor1u32(c3);
+ 	GXTexCoord2u16(u1, v2);
+ 
+ 	GXEnd();
+ 
++#ifdef TARGET_PC
++	if (prompt && sPortTwoColour)
++		setGX(sPortCol1, sPortCol2);
++#endif
++
+ 	GXSetVtxAttrFmt(GX_VTXFMT0, GX_VA_POS, GX_POS_XYZ, GX_S16, 0);
+ 
+ 	return retval;

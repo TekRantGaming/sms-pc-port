@@ -59,11 +59,7 @@ std::vector<SDL_GameController*> s_pads;
 std::vector<uint8_t> s_icon;  // GXPC_SetWindowIcon, RGBA8
 int s_iconW = 0, s_iconH = 0;
 
-double nowSeconds() {
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return double(ts.tv_sec) + double(ts.tv_nsec) * 1e-9;
-}
+double nowSeconds() { return gx::monoSeconds(); }
 
 bool envTrue(const char* name) {
     const char* v = getenv(name);

@@ -23,11 +23,7 @@ bool s_panelDirty = true;
 const int kSpeeds[] = {1, 2, 4, 10};
 std::atomic<int> s_speedIndex(0);
 
-double nowSeconds() {
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return double(ts.tv_sec) + double(ts.tv_nsec) * 1e-9;
-}
+double nowSeconds() { return gx::monoSeconds(); }
 
 // Frame timing over a sliding one-second window, refreshed once a second so
 // the numbers are readable, with where the game thread's time went. It counts

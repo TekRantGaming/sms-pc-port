@@ -86,6 +86,25 @@ The plaza interior regression is `python3 tools/regress/interiors.py --disc /pat
 It uses gdb to place Mario on the real doorway triangles, lets the game perform the warps, and checks two entries and exits each for the boathouse and lighthouse at 30 and 60 fps in both word sizes.
 It checks the active map model, Mario's height and the ground plane, so a return warp that strands Mario in the interior fails even before he walks off its floor.
 
+The Turbo Nozzle pickup reproducer is `tools/regress/nozzle.py`, run under gdb on regular Sunshine.
+It breaks an enabled nozzle box through its trample message, moves Mario into the released nozzle, and checks that Turbo is equipped, its stage unlock flag is set, and the Turbo save prompt opens during ten seconds of gameplay.
+It also runs the Turbo controller in the two affected ground/swim statuses with nonzero dash speed and checks that the former out-of-bounds target stays unchanged.
+Use a fresh temporary card directory; existing unlock flags deliberately fail the test.
+Set `SMS_WARP=2,7,1` for Bianco Hills or `3,7,1` for Ricco Harbor, and vary `SMS_FRAME_RATE` and the executable to check other frame rates and word sizes.
+The script reads the frame rate from the game and continues an already attached inferior, so it can also be used with a Windows GDB remote target.
+Windows needs an SDL window, Windows paths for the disc and save directory, and a debugger built for the Windows target ABI.
+
+```sh
+nozzle_save=$(mktemp -d)
+SMS_SAVE_DIR="$nozzle_save" SMS_SETTINGS=/dev/null SMS_TEXTURE_PACKS=0 \
+SMS_HEADLESS=1 SMS_AUDIO=0 SMS_SKIP_MOVIES=1 SMS_VI_DETERMINISTIC=1 \
+SMS_FRAME_RATE=60 SMS_WARP=2,7,1 \
+SMS_AUTOPRESS='START@1400,STICK_LEFT@2000,A@2400,STICK_LEFT@3100,A@3250,A@3450,A@3800' \
+gdb -q -batch -nx -ex 'set debuginfod enabled off' \
+    -ex 'handle SIG34 nostop noprint' -x tools/regress/nozzle.py \
+    --args build/linux-64/sms /path/to/GMSE01.iso
+```
+
 ## Platform layer
 
 

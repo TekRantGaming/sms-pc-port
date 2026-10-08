@@ -38,7 +38,9 @@ frame_rate = 60
 # too, but shows a late frame at once instead of holding it a whole refresh).
 # vsync = off
 # Fullscreen: off, on (borderless at the desktop's resolution) or exclusive
-# (the display switches to fullscreen_mode, WxH@Hz, else the desktop's mode).
+# (the display switches to fullscreen_mode, WxH@Hz, else the desktop's mode;
+# with Windows HDR on, exclusive stays borderless: a mode switch can leave
+# HDR's colours wrong).
 # F11 or Alt+Enter switches between the window and fullscreen while playing.
 # fullscreen = off
 # fullscreen_mode = 1920x1080@144
@@ -68,6 +70,29 @@ frame_rate = 60
 # skip_movies = off
 # The heat-wave shimmer that distorts the picture in sunny areas.
 # heat_haze = on
+# The buttons shown in the game's text and on the FLUDD gauge: gamecube (the
+# game's own), xbox, playstation, steamdeck, keyboard, or auto (keyboard and
+# mouse, or the controller in use). Other than gamecube, they need the images
+# in button_prompt_dir (<style>.png: eight 64x64 icons in a row, A B X Y Z L R
+# C-stick), which SMS Launcher draws from your bindings.
+# button_prompts = gamecube
+# With auto, how every controller's prompts look: xbox, playstation, steamdeck
+# or gamecube; match follows the controller.
+# button_prompt_pad = match
+# button_prompt_dir =
+# HDR output on Windows (while Windows HDR is on): the game's SDR picture is
+# expanded to HDR. hdr_paper_white is how bright ordinary whites are, hdr_peak
+# the brightest a highlight gets, in nits, or auto: Windows' SDR content
+# brightness and the display's peak (as the Windows HDR Calibration app set
+# it). hdr_contrast and hdr_saturation are percent (100 unchanged);
+# hdr_highlights (0 to 100) is how far the brightest parts reach toward the
+# peak, in stops.
+# hdr = off
+# hdr_paper_white = auto
+# hdr_peak = auto
+# hdr_contrast = 100
+# hdr_saturation = 100
+# hdr_highlights = 40
 # audio = on
 # Master volume, 0 (silent) to 100 (full).
 # volume = 100

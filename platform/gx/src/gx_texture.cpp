@@ -198,6 +198,7 @@ struct TexEntry {
     uint32_t checkedGen = 0;
     uint32_t bytes = 0;
     std::string hires;  // the texture pack's replacement for the current data, if any
+    int prompt = -1;    // the button prompt glyph this picture shows (promptGlyph), or -1
 };
 
 static std::unordered_map<TexKey, TexEntry, TexKeyHash> s_cache;
@@ -459,6 +460,42 @@ static GLuint samplerFor(uint32_t mode0, uint32_t mode1, uint32_t levels, int hi
 
 static GLuint s_whiteTex = 0;
 
+// The HUD's pictures of a GameCube button, by their data (the hashes texture
+// packs name them by), and the button prompt glyph each shows; -1 for others.
+static int promptGlyph(const uint8_t* ptr, uint32_t fmt, uint32_t w, uint32_t h) {
+    if (fmt == 2 && w == 34 && h == 44 && xxh64(ptr, texLevelBytes(fmt, w, h), 0) == 0xc9717b966554213full)
+        return 2;  // the FLUDD gauge's X (water_button_x)
+    return -1;
+}
+
+// The button prompt in place of such a picture: the glyph's 64x64 image centred
+// on a canvas twice the picture's size, one GL texture per style and glyph.
+// 0 while the game's own pictures are shown.
+static GLuint promptTexture(int glyph, int map, uint32_t w, uint32_t h) {
+    int style = 0;
+    const uint8_t* img = promptImage(glyph, &style);
+    if (!img) return 0;
+    static std::unordered_map<int, GLuint> s_prompts;
+    GLuint& t = s_prompts[style * 8 + glyph];
+    if (t) return t;
+    const int cw = int(w) * 2, ch = int(h) * 2, ox = (cw - 64) / 2, oy = (ch - 64) / 2;
+    std::vector<uint8_t> canvas(size_t(cw) * ch * 4, 0);
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++) {
+            const int cx = ox + x, cy = oy + y;
+            if (cx >= 0 && cy >= 0 && cx < cw && cy < ch) memcpy(&canvas[(size_t(cy) * cw + cx) * 4], img + (y * 64 + x) * 4, 4);
+        }
+    glGenTextures(1, &t);
+    glcActiveUnit(map);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glcNoteBound(map, t);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, cw, ch, 0, GL_RGBA, GL_UNSIGNED_BYTE, canvas.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    return t;
+}
+
 unsigned bindTextureMap(int map, float* outW, float* outH) {
     drainDeletedCopies();
     uint32_t mode0 = g.bp[bpTexReg(BP_TX_MODE0, map)];
@@ -566,6 +603,14 @@ unsigned bindTextureMap(int map, float* outW, float* outH) {
         }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, GLint(levels - 1));
+    }
+    if (upload) e.prompt = promptGlyph(ptr, fmt, w, h);
+    if (e.prompt >= 0) {  // a button picture, drawn as the button prompt in use
+        if (GLuint t = promptTexture(e.prompt, map, w, h)) {
+            glcBindTexture(map, t);
+            glcBindSampler(map, samplerFor(mode0, mode1, 1, 1));
+            return t;
+        }
     }
     if (!e.hires.empty()) {  // the replacement, once decoded (the original meanwhile)
         int scale = 0;

@@ -17,9 +17,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 #ifdef SMS_GX_HAVE_SDL2
 #include <SDL.h>
+#ifdef _WIN32
+#include <SDL_syswm.h>
+#endif
 #endif
 #ifdef SMS_GX_HAVE_EGL
 #include <EGL/egl.h>
@@ -59,11 +67,7 @@ std::vector<SDL_GameController*> s_pads;
 std::vector<uint8_t> s_icon;  // GXPC_SetWindowIcon, RGBA8
 int s_iconW = 0, s_iconH = 0;
 
-double nowSeconds() {
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return double(ts.tv_sec) + double(ts.tv_nsec) * 1e-9;
-}
+double nowSeconds() { return gx::monoSeconds(); }
 
 bool envTrue(const char* name) {
     const char* v = getenv(name);
@@ -105,10 +109,61 @@ void captureMouse(bool on) {
 // fullscreen (desktop when SMS_FULLSCREEN is unset).
 bool s_exclusive = false, s_isFullscreen = false;
 
+#ifdef _WIN32
+// Whether Windows HDR ("advanced colour") is on for the monitor showing the
+// window. An exclusive mode switch (ChangeDisplaySettingsEx) on an HDR display
+// can leave the desktop's colours wrong after the game, until HDR is turned off
+// and on again, so the game stays borderless there.
+bool windowsHdrOn() {
+    SDL_SysWMinfo wm;
+    SDL_VERSION(&wm.version);
+    if (!SDL_GetWindowWMInfo(s_window, &wm) || wm.subsystem != SDL_SYSWM_WINDOWS) return false;
+    MONITORINFOEXW monitor = {};
+    monitor.cbSize = sizeof monitor;
+    if (!GetMonitorInfoW(MonitorFromWindow(wm.info.win.window, MONITOR_DEFAULTTONEAREST), &monitor)) return false;
+    UINT32 pathCount = 0, modeCount = 0;
+    if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS) return false;
+    std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+    std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+    if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathCount, paths.data(), &modeCount, modes.data(), nullptr) != ERROR_SUCCESS)
+        return false;
+    for (UINT32 i = 0; i < pathCount; i++) {
+        DISPLAYCONFIG_SOURCE_DEVICE_NAME source = {};
+        source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+        source.header.size = sizeof source;
+        source.header.adapterId = paths[i].sourceInfo.adapterId;
+        source.header.id = paths[i].sourceInfo.id;
+        if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS || wcscmp(source.viewGdiDeviceName, monitor.szDevice) != 0)
+            continue;
+        DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO color = {};
+        color.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
+        color.header.size = sizeof color;
+        color.header.adapterId = paths[i].targetInfo.adapterId;
+        color.header.id = paths[i].targetInfo.id;
+        if (DisplayConfigGetDeviceInfo(&color.header) == ERROR_SUCCESS && color.advancedColorEnabled) return true;
+    }
+    return false;
+}
+#else
+bool windowsHdrOn() { return false; }
+#endif
+
+// Quitting (the quit key, closing the window) leaves exclusive fullscreen
+// first, so the display returns to the desktop's mode before the process ends
+// rather than Windows restoring it after.
+void leaveFullscreenAtExit() {
+    if (s_window && s_isFullscreen) SDL_SetWindowFullscreen(s_window, 0);
+}
+
 void setFullscreen(bool on) {
     if (!s_window) return;
     Uint32 flags = 0;
-    if (on && s_exclusive) {
+    if (on && s_exclusive && windowsHdrOn()) {
+        static bool told = false;
+        if (!told) logmsg("Windows HDR is on: borderless fullscreen instead of exclusive, which can leave HDR's colours wrong");
+        told = true;
+        flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
+    } else if (on && s_exclusive) {
         SDL_DisplayMode want = {}, got = {};
         const int display = std::max(0, SDL_GetWindowDisplayIndex(s_window));
         SDL_GetDesktopDisplayMode(display, &want);
@@ -237,6 +292,8 @@ bool openWindow(float scale) {
         return false;
     }
     SDL_SetWindowMinimumSize(s_window, std::min(320, layout.w), std::min(240, layout.h));
+    static bool atExit = false;
+    if (!atExit) atExit = atexit(leaveFullscreenAtExit) == 0;
     applyIcon();
     s_glctx = SDL_GL_CreateContext(s_window);
     if (!s_glctx) {
@@ -281,6 +338,19 @@ bool openWindow(float scale) {
         return false;
     }
     SDL_ShowWindow(s_window);
+#ifdef _WIN32
+    // A launcher that starts the game with its console hidden (SW_HIDE in the
+    // startup info, as SMS Launcher does) makes Windows apply that to the first
+    // ShowWindow too, which leaves the game window hidden. Windows honours the
+    // next one, so show it again.
+    STARTUPINFOW startup = {};
+    startup.cb = sizeof startup;
+    GetStartupInfoW(&startup);
+    if ((startup.dwFlags & STARTF_USESHOWWINDOW) && startup.wShowWindow == SW_HIDE) {
+        SDL_HideWindow(s_window);
+        SDL_ShowWindow(s_window);
+    }
+#endif
     // Some window managers choose their own placement when mapping a hidden
     // window. Center the decorated frame after showing it, using a conservative
     // title-bar allowance if the platform cannot report its borders yet.
@@ -295,10 +365,21 @@ bool openWindow(float scale) {
     // rendering quality and aspect ratio are still handled by the renderer.
     // Exclusive fullscreen switches the display to the mode asked for.
     if (const char* e = getenv("SMS_FULLSCREEN")) s_exclusive = strcmp(e, "exclusive") == 0;
+    if (windowsHdrOn()) logmsg("Windows HDR is on for this monitor");
     if (envTrue("SMS_FULLSCREEN")) setFullscreen(true);
+#ifdef _WIN32
+    {  // SMS_HDR: present in HDR through Direct3D (gx_hdr.cpp)
+        SDL_SysWMinfo wm;
+        SDL_VERSION(&wm.version);
+        if (SDL_GetWindowWMInfo(s_window, &wm) && wm.subsystem == SDL_SYSWM_WINDOWS) hdrInit(wm.info.win.window);
+    }
+#else
+    hdrInit(nullptr);
+#endif
     if (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN)
         logmsg("%s fullscreen on display %d (%s), internal resolution scale %g, OpenGL context ready",
-               s_exclusive ? "exclusive" : "desktop", display, s_videoDriver, scale);
+               (SDL_GetWindowFlags(s_window) & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP ? "desktop" : "exclusive",
+               display, s_videoDriver, scale);
     else
         logmsg("window %dx%d centered on display %d (%s), internal resolution scale %g, OpenGL context ready",
                layout.w, layout.h, display, s_videoDriver, scale);
@@ -460,6 +541,10 @@ int GXPC_ParseArgs(int* argc, char** argv) {
         if (strcmp(a, "--headless") == 0) s_forceHeadless = 1;
         else if (strcmp(a, "--window") == 0) s_forceHeadless = 0;
         else if (strcmp(a, "--vsync") == 0) s_vsync = 1;
+        else if (strcmp(a, "--display-info") == 0) {  // for the launcher: what Windows reports for each display
+            GXPC_PrintDisplayInfo();
+            exit(0);
+        }
         else {
             argv[out++] = argv[i];
             continue;
@@ -547,10 +632,13 @@ void GXPC_Present(const void* xfb) {
         int w = 0, h = 0;
         SDL_GL_GetDrawableSize(s_window, &w, &h);
         double t0 = nowSeconds();
+        const bool hdr = hdrActive();
+        if (hdr && !hdrFrameBegin(w, h)) return;  // minimised: nothing to show
         GXPC_PresentXFB(xfb, w, h);
         GXPC_OverlayDraw(w, h);
         double t1 = nowSeconds();
-        SDL_GL_SwapWindow(s_window);
+        if (hdr) hdrFramePresent(s_vsync != 0);
+        else SDL_GL_SwapWindow(s_window);
         waitSimulatedRefresh();
         double t2 = nowSeconds();
         g_presentSeconds += t1 - t0;
@@ -573,11 +661,36 @@ void sms_gx_set_event_callback(void (*cb)(const union SDL_Event*)) {
 #endif
 }
 
+#ifdef SMS_GX_HAVE_SDL2
+extern "C" void GXPC_NoteInputDevice(int controller, int sdlType, const char* name);
+
+// Tell the button prompts which device the player last used: a key, mouse
+// click or mouse movement means keyboard and mouse; a button or a stick pushed
+// well off centre means that controller.
+static void noteInputDevice(const SDL_Event& ev) {
+    SDL_JoystickID which = -1;
+    if (ev.type == SDL_CONTROLLERBUTTONDOWN) which = ev.cbutton.which;
+    else if (ev.type == SDL_CONTROLLERAXISMOTION && (ev.caxis.value > 16000 || ev.caxis.value < -16000))
+        which = ev.caxis.which;
+    else if (ev.type == SDL_KEYDOWN || ev.type == SDL_MOUSEBUTTONDOWN ||
+             (ev.type == SDL_MOUSEMOTION && ev.motion.xrel * ev.motion.xrel + ev.motion.yrel * ev.motion.yrel > 25)) {
+        GXPC_NoteInputDevice(0, 0, "");
+        return;
+    }
+    if (which < 0) return;
+    SDL_GameController* c = SDL_GameControllerFromInstanceID(which);
+    if (!c) return;
+    const char* name = SDL_GameControllerName(c);
+    GXPC_NoteInputDevice(1, int(SDL_GameControllerGetType(c)), name ? name : "");
+}
+#endif
+
 void sms_gx_pump_events(void) {
 #ifdef SMS_GX_HAVE_SDL2
     if (s_mode != MODE_WINDOW) return;
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
+        noteInputDevice(ev);
         switch (ev.type) {
         case SDL_CONTROLLERDEVICEADDED:
             if (SDL_IsGameController(ev.cdevice.which)) {

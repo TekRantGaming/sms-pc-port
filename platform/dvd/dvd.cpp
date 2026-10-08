@@ -2,6 +2,7 @@
 // (<root>/files, with the disc's own FST at <root>/../sys/fst.bin so entry
 // numbers match the real disc). Reads are synchronous host preads; async
 // completions are delivered as interrupts at the next check point.
+#include "os/crash.h"
 #include "port_compat.h"
 #include "port_os.h"
 #include "port_platform.h"
@@ -497,6 +498,7 @@ extern "C" void DVDInit(void) {}
 extern "C" s32 DVDConvertPathToEntrynum(char* path)
 {
 	s32 r = lookup(path);
+	port_crash_note_file(path);
 	if (r < 0)
 		port_log("[dvd] path not found: %s\n", path);
 	return r;

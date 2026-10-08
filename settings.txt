@@ -62,6 +62,16 @@ frame_rate = 60
 # skip_movies = off
 # The heat-wave shimmer that distorts the picture in sunny areas.
 # heat_haze = on
+# The buttons shown in the game's text and on the FLUDD gauge: gamecube (the
+# game's own), xbox, playstation, steamdeck, keyboard, or auto (keyboard and
+# mouse, or the controller in use). Other than gamecube, they need the images
+# in button_prompt_dir (<style>.png: eight 64x64 icons in a row, A B X Y Z L R
+# C-stick), which SMS Launcher draws from your bindings.
+# button_prompts = gamecube
+# With auto, how every controller's prompts look: xbox, playstation, steamdeck
+# or gamecube; match follows the controller.
+# button_prompt_pad = match
+# button_prompt_dir =
 # audio = on
 # Master volume, 0 (silent) to 100 (full).
 # volume = 100

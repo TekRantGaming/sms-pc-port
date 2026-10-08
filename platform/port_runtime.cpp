@@ -732,6 +732,9 @@ static const struct {
 	{ "present_filter", "SMS_PRESENT_FILTER" }, // bilinear, sharp or nearest
 	{ "skip_movies", "SMS_SKIP_MOVIES" },
 	{ "heat_haze", "SMS_HEAT_HAZE" }, // the heat-wave shimmer, on by default
+	{ "button_prompts", "SMS_BUTTON_PROMPTS" }, // gamecube, auto, xbox, playstation, steamdeck or keyboard
+	{ "button_prompt_pad", "SMS_BUTTON_PROMPT_PAD" }, // with auto: gamecube, xbox, playstation, steamdeck, or match the controller
+	{ "button_prompt_dir", "SMS_BUTTON_PROMPT_DIR" }, // the folder of prompt images (<style>.png)
 	{ "audio", "SMS_AUDIO" },
 	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100
 	{ "soft_trigger", "SMS_SOFT_TRIGGER" }, // L_SOFT / R_SOFT press depth, percent

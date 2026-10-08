@@ -481,7 +481,11 @@ static std::string genFS(const ShaderKey& k) {
         s += "  }\n";
     }
     (void)lastAlphaDest;
-    snprintf(buf, sizeof buf, "  ivec4 outc = clamp(ivec4(%s.rgb, %s.a), 0, 255);\n", kRegName[lastDest], kRegName[lastA]);
+    // The last stage's output keeps its low 8 bits, as on the console (and in
+    // Dolphin): an unclamped stage can wrap. Bianco Hills' river surface
+    // computes its alpha as (1 + a) * 2 and relies on the wrap to get 2a back;
+    // clamped, it is 255 and the additive layer washes the water out.
+    snprintf(buf, sizeof buf, "  ivec4 outc = ivec4(%s.rgb, %s.a) & 255;\n", kRegName[lastDest], kRegName[lastA]);
     s += buf;
 
     // alpha compare

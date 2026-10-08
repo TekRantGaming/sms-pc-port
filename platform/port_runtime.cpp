@@ -741,6 +741,7 @@ static const struct {
 	{ "hdr_contrast", "SMS_HDR_CONTRAST" }, // percent, 50 to 150
 	{ "hdr_saturation", "SMS_HDR_SATURATION" }, // percent, 0 to 200
 	{ "hdr_highlights", "SMS_HDR_HIGHLIGHTS" }, // 0 to 100: how far highlights reach toward the peak
+	{ "hdr_copy", "SMS_HDR_COPY" }, // 1: frames reach Direct3D through system memory, not a shared texture
 	{ "audio", "SMS_AUDIO" },
 	{ "volume", "SMS_VOLUME" }, // master volume, 0 to 100
 	{ "soft_trigger", "SMS_SOFT_TRIGGER" }, // L_SOFT / R_SOFT press depth, percent

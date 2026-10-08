@@ -135,7 +135,7 @@ struct HostVertex {
 enum PrimClass { PRIM_TRIS, PRIM_LINES, PRIM_POINTS };
 
 // ---------------------------------------------------------------- renderer (gx_render.cpp)
-void rendererInit(int efbScale);
+void rendererInit(float efbScale);
 void flushBatch();
 // adds a primitive; vertices already decoded
 // Packed vertex formats: a vertex holds only the attributes its GX vertex

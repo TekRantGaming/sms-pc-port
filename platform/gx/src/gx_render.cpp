@@ -865,14 +865,15 @@ static void postPresent(GLuint tex, int w, int h, int ox, int oy, int vw, int vh
         tex = s_postTex;
     }
     if (s_post.filter == 4 && (vw > w || vh > h)) {
-        // NIS: one pass straight into the window. NVScalerUpdateConfig's SDR
-        // sharpness ramps, with Sharpening 0..100% as NIS's 50 to 100%
-        // sharpness (50% is NVIDIA's default)
+        // NIS: one pass into the present framebuffer (the window, or HDR's
+        // SDR texture). NVScalerUpdateConfig's SDR sharpness ramps, with
+        // Sharpening 0..100% as NIS's 50 to 100% sharpness (50% is NVIDIA's
+        // default)
         const float slider = 0.5f * s_post.sharpen;
         const float maxScale = 1.25f, minScale = 1.25f, limitScale = 1.25f;
         const float strengthMin = std::max(0.0f, 0.4f + slider * minScale * 1.2f), strengthMax = 1.6f + slider * maxScale * 1.8f;
         const float limitMin = std::max(0.1f, 0.14f + slider * limitScale * 0.32f), limitMax = 0.5f + slider * limitScale * 0.6f;
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_presentFbo);
         glViewport(ox, oy, vw, vh);
         glUseProgram(s_nisProg);
         glUniform2f(s_nisUSrc, float(w), float(h));

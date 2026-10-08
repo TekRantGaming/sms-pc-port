@@ -15,6 +15,8 @@
 #include <execinfo.h>
 #include "port_host.h"
 #include "disc/gcdisc.h"
+#include "os/crash.h"
+#include "os/crash_line.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <io.h>
@@ -23,6 +25,9 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
+#ifndef __APPLE__
+#include <ucontext.h>
+#endif
 #ifdef __APPLE__
 #include <sys/ucontext.h>
 #endif
@@ -178,7 +183,43 @@ static void crash_handler(int sig)
 #else
 static void crash_handler(int sig, siginfo_t* si, void* uc)
 {
-	port_log("\n[port] fatal signal %d (%s) at address %p\n", sig, strsignal(sig), si ? si->si_addr : nullptr);
+	// Write the actual signal, fault address and instruction address first,
+	// without stdio locks or allocation. Symbolisation below is best effort.
+	PortCrashLine line;
+	line.text("\n[port] fatal signal ");
+	const char* name = sig == SIGSEGV ? "SIGSEGV" : sig == SIGBUS ? "SIGBUS" : sig == SIGFPE ? "SIGFPE"
+	                 : sig == SIGILL ? "SIGILL" : sig == SIGABRT ? "SIGABRT" : "unknown";
+	line.text(name); line.text(" ("); line.number(sig, 10); line.text(")");
+	// For user-raised signals si_addr aliases the sender's PID, not a fault.
+	if (si && si->si_code > 0 && sig != SIGABRT) {
+		line.text(" at address "); line.hex((uintptr_t)si->si_addr);
+	}
+	if (si) {
+		line.text(" si_code ");
+		if (si->si_code < 0) line.text("-");
+		line.number(si->si_code < 0 ? -(int64_t)si->si_code : si->si_code, 10);
+	}
+	uintptr_t pc = 0;
+	if (uc) {
+#if defined(__APPLE__) && defined(__x86_64__)
+		pc = ((ucontext_t*)uc)->uc_mcontext->__ss.__rip;
+#elif defined(__APPLE__) && defined(__aarch64__)
+		pc = ((ucontext_t*)uc)->uc_mcontext->__ss.__pc;
+#elif defined(__linux__) && defined(__x86_64__)
+		pc = ((ucontext_t*)uc)->uc_mcontext.gregs[REG_RIP];
+#elif defined(__linux__) && defined(__i386__)
+		pc = ((ucontext_t*)uc)->uc_mcontext.gregs[REG_EIP];
+#elif defined(__linux__) && defined(__aarch64__)
+		pc = ((ucontext_t*)uc)->uc_mcontext.pc;
+#endif
+	}
+	line.text(" pc "); line.hex(pc); line.text("\n");
+	(void)write(STDERR_FILENO, line.bytes, line.length);
+	Dl_info fault_module;
+	if (pc && dladdr((void*)pc, &fault_module) && fault_module.dli_fbase)
+		port_log("[port] exception module %s base %p offset 0x%llx\n",
+		         fault_module.dli_fname ? fault_module.dli_fname : "<unknown>", fault_module.dli_fbase,
+		         (unsigned long long)(pc - (uintptr_t)fault_module.dli_fbase));
 #if defined(__APPLE__) && defined(__x86_64__)
 	if (uc) {
 		// No gdb on macOS and lldb needs developer-mode approval: print the
@@ -207,6 +248,36 @@ static void crash_handler(int sig, siginfo_t* si, void* uc)
 #endif
 }
 #endif
+
+void port_crash_thread_init()
+{
+#ifndef _WIN32
+	// A separate stack allows the first diagnostic to survive stack exhaustion.
+	alignas(16) static thread_local unsigned char crash_stack[64 * 1024];
+	stack_t stack = {};
+	stack.ss_sp = crash_stack;
+	stack.ss_size = sizeof crash_stack;
+	if (sigaltstack(&stack, nullptr) != 0)
+		port_log("[port] cannot install alternate crash stack\n");
+#endif
+}
+
+void port_install_crash_handlers()
+{
+#ifdef _WIN32
+	port_install_windows_exception_logger();
+	// Native hardware exceptions keep their Windows status. Translating them
+	// through a CRT signal handler would replace it with a generic abort code.
+	signal(SIGABRT, crash_handler);
+#else
+	struct sigaction sa = {};
+	sa.sa_sigaction = crash_handler;
+	sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+	for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
+		if (sigaction(sig, &sa, nullptr) != 0) port_log("[port] cannot install crash handler for signal %d\n", sig);
+#endif
+	port_crash_thread_init();
+}
 
 // Emulated MEM1: the game's arena lives at the GameCube's own cached
 // addresses (0x80000000..), so OSPhysicalToCached/OSCachedToPhysical and the
@@ -587,17 +658,6 @@ extern "C" void port_init(int argc, char** argv)
 			port_disc_root     = argv[i];
 			port_disc_explicit = 1;
 		}
-#ifdef _WIN32
-	for (int sig : {SIGSEGV, SIGFPE, SIGILL, SIGABRT})
-		signal(sig, crash_handler);
-#else
-	struct sigaction sa;
-	memset(&sa, 0, sizeof sa);
-	sa.sa_sigaction = crash_handler;
-	sa.sa_flags = SA_SIGINFO;
-	for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
-		sigaction(sig, &sa, nullptr);
-#endif
 	atexit(port_stub_report);
 	map_mem1();
 	if (sizeof(void*) == 4)

@@ -306,3 +306,20 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
   Retail capture/audio baselines explicitly use 30 fps; random choices can diverge at higher rates because random numbers are drawn per frame.
 - **Software GL.**
   The 32-bit Linux build without the GPU driver's `:i386` libraries renders with llvmpipe and cannot hold 30 fps in the plaza; the port logs a warning and the overlay says so.
+
+## Crash diagnostics
+
+The launcher captures stdout and stderr separately, keeps a full session log on disk, and reports a game's actual exit code or signal. Windows game executables run directly rather than through MSYS bash, which can translate native exception statuses to 127. Ordinary resource warnings and stage context are never used as a game crash explanation.
+
+The port installs crash reporting before boot and before switching onto its low stack. On Linux and macOS, fatal signals first write their name, number, signal code, fault address when applicable, and instruction address directly to stderr. Module base/offset, registers on Intel Mac, and the existing backtrace follow as best-effort diagnostics. Game threads get an alternate signal stack so stack exhaustion can still produce the first report. Linux retains signal termination; macOS keeps the existing `128 + signal` exit to avoid the Rosetta termination hang.
+
+Windows uses a vectored exception logger before stack unwinding. Its first-chance reports include the native exception code, address, thread, PC/SP/BP, module base/offset, and access target. It returns `EXCEPTION_CONTINUE_SEARCH` and does not turn hardware exceptions into CRT signals, preserving their exit statuses. A first-chance report can be followed by successful handling; it is not proof of a fatal crash. Fast-fail and some heap-corruption termination paths can bypass in-process handlers, so the direct process exit code and Windows Event Viewer remain useful. Fully exhausted custom Windows stacks may also prevent an in-process report.
+
+ROM-free Linux verification uses a configured game build's compilation settings and deliberate access violations, aborts, worker-thread faults and stack exhaustion:
+
+```sh
+python3 tools/test_crash_logging.py --build-directory build/linux-64 --arch 64
+python3 tools/test_crash_logging.py --build-directory build/linux-32 --arch 32
+```
+
+For native Windows verification, compile `platform/os/tests/crash_probe.cpp` with `platform/os/windows_crash.cpp`, the `src/` include directory, and (for 64-bit) `platform/os/windows_stack.cpp`. Then run `python tools/test_crash_logging.py PATH_TO_PROBE.exe --arch 64` or `--arch 32` from native Python. The 64-bit probe includes a fault on the custom low stack. The heap probe explicitly raises that status to test the logger; it does not guarantee the logger sees real heap corruption or fast-fail.

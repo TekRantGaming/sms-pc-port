@@ -10,6 +10,7 @@
 // locking relies on.
 #include "port_compat.h"
 #include "port_win64_stack.h"
+#include "crash.h"
 #include "port_os.h"
 #include "port_platform.h"
 #include <dolphin/os.h>
@@ -330,6 +331,7 @@ void deliver_irqs()
 
 void* host_entry(void* p)
 {
+	port_crash_thread_init();
 	OSThread* self = (OSThread*)p;
 	pthread_mutex_lock(&g_cpu);
 	Host* h = host_of(self);

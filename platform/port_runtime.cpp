@@ -25,6 +25,12 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+#include <pthread.h>
+#ifdef __linux__
+#include <link.h>
+#include <sys/syscall.h>
+#endif
 #ifndef __APPLE__
 #include <ucontext.h>
 #endif
@@ -124,58 +130,213 @@ extern "C" void port_stub_report(void)
 		port_log("[stub]   %-32s %lu\n", r->name, r->count);
 }
 
-// Symbolise the backtrace with addr2line so a crash report names functions
-// and source lines without the exact binary at hand (not async-signal-safe;
-// acceptable on the way down).
+// Symbolise the backtrace's frames in the executable (addr2line on Linux,
+// atos on macOS) so a crash report names functions and source lines without
+// the exact binary at hand. Not async-signal-safe: it runs last, after the
+// rest of the report is written.
 #ifndef _WIN32
 static void crash_symbolise(void** bt, int n)
 {
 	char exe[512];
-	if (!gcdisc_self_path(exe, sizeof exe))
+	if (!realpath(port_crash_executable(), exe))
 		return;
 	static char addrs[64][24];
-	char* argv[64 + 8];
+	char* argv[64 + 10];
 	int argc = 0;
+#ifdef __APPLE__
+	static char load[24];
+	argv[argc++] = (char*)"atos";
+	argv[argc++] = (char*)"-o";
+	argv[argc++] = exe;
+	argv[argc++] = (char*)"-l";
+	argv[argc++] = load;
+#else
 	argv[argc++] = (char*)"addr2line";
 	argv[argc++] = (char*)"-f";
 	argv[argc++] = (char*)"-C";
+	argv[argc++] = (char*)"-i"; // inlined calls as well
 	argv[argc++] = (char*)"-p";
 	argv[argc++] = (char*)"-e";
 	argv[argc++] = exe;
-	for (int i = 0; i < n && argc < 64 + 7; i++) {
+#endif
+	const int fixed = argc;
+	for (int i = 0; i < n && i < 64; i++) {
 		Dl_info info;
+#ifdef __linux__
+		struct link_map* map = nullptr;
+		if (!dladdr1(bt[i], &info, (void**)&map, RTLD_DL_LINKMAP) || !info.dli_fname || !map)
+			continue;
+#else
 		if (!dladdr(bt[i], &info) || !info.dli_fname || !info.dli_fbase)
 			continue;
+#endif
 		char self[512];
 		if (!realpath(info.dli_fname, self) || strcmp(self, exe) != 0)
 			continue;
-		// return addresses point after the call; step back into it
-		snprintf(addrs[i], sizeof addrs[i], "0x%lx",
-		         (unsigned long)((char*)bt[i] - (char*)info.dli_fbase - 1));
+		// Return addresses point after the call; step back into it.
+#ifdef __APPLE__
+		// atos takes run-time addresses and the load address (-l).
+		snprintf(load, sizeof load, "0x%lx", (unsigned long)(uintptr_t)info.dli_fbase);
+		uintptr_t address = (uintptr_t)bt[i] - 1;
+#else
+		// The address in the file: the load bias is 0 for a non-PIE executable.
+		uintptr_t address = (uintptr_t)bt[i] - (uintptr_t)map->l_addr - 1;
+#endif
+		snprintf(addrs[i], sizeof addrs[i], "0x%lx", (unsigned long)address);
 		argv[argc++] = addrs[i];
 	}
 	argv[argc] = nullptr;
-	if (argc == 6)
+	if (argc == fixed)
 		return;
-	port_log("[port] backtrace:\n");
+	port_log("[port] backtrace in %s, symbolised by %s:\n", exe, argv[0]);
 	pid_t pid = fork();
 	if (pid == 0) {
 		dup2(2, 1);
-		execvp("addr2line", argv);
+		execvp(argv[0], argv);
+		PortCrashLine line;
+		line.text("[port] "); line.text(argv[0]); line.text(" not found: frames left unsymbolised\n");
+		port_crash_emit(line);
 		_exit(127);
 	}
 	if (pid > 0)
 		waitpid(pid, nullptr, 0);
 }
+
+// Every general register, and what the hardware said about the fault.
+static void crash_registers(void* context, uintptr_t* pc, uintptr_t* sp)
+{
+	*pc = *sp = 0;
+	if (!context)
+		return;
+	PortCrashLine line;
+	const char* access = nullptr;
+#if defined(__linux__) && defined(__x86_64__)
+	const greg_t* r = ((ucontext_t*)context)->uc_mcontext.gregs;
+	*pc = r[REG_RIP], *sp = r[REG_RSP];
+	line.text("[port] registers:"); line.reg("rax", r[REG_RAX]); line.reg("rbx", r[REG_RBX]);
+	line.reg("rcx", r[REG_RCX]); line.reg("rdx", r[REG_RDX]); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("rsi", r[REG_RSI]); line.reg("rdi", r[REG_RDI]);
+	line.reg("rbp", r[REG_RBP]); line.reg("rsp", r[REG_RSP]); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("r8", r[REG_R8]); line.reg("r9", r[REG_R9]);
+	line.reg("r10", r[REG_R10]); line.reg("r11", r[REG_R11]); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("r12", r[REG_R12]); line.reg("r13", r[REG_R13]);
+	line.reg("r14", r[REG_R14]); line.reg("r15", r[REG_R15]); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("rip", r[REG_RIP]); line.reg("eflags", r[REG_EFL]);
+	line.reg("trapno", r[REG_TRAPNO]); line.reg("err", r[REG_ERR]); line.text("\n"); port_crash_emit(line);
+	// x86 page fault error code: bit 0 protection, 1 write, 4 instruction fetch.
+	if (r[REG_TRAPNO] == 14)
+		access = r[REG_ERR] & 16 ? "an instruction fetch" : r[REG_ERR] & 2 ? "a write" : "a read";
+#elif defined(__linux__) && defined(__i386__)
+	const greg_t* r = ((ucontext_t*)context)->uc_mcontext.gregs;
+	*pc = r[REG_EIP], *sp = r[REG_ESP];
+	line.text("[port] registers:"); line.reg("eax", r[REG_EAX]); line.reg("ebx", r[REG_EBX]);
+	line.reg("ecx", r[REG_ECX]); line.reg("edx", r[REG_EDX]); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("esi", r[REG_ESI]); line.reg("edi", r[REG_EDI]);
+	line.reg("ebp", r[REG_EBP]); line.reg("esp", r[REG_ESP]); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("eip", r[REG_EIP]); line.reg("eflags", r[REG_EFL]);
+	line.reg("trapno", r[REG_TRAPNO]); line.reg("err", r[REG_ERR]); line.text("\n"); port_crash_emit(line);
+	if (r[REG_TRAPNO] == 14)
+		access = r[REG_ERR] & 16 ? "an instruction fetch" : r[REG_ERR] & 2 ? "a write" : "a read";
+#elif defined(__linux__) && defined(__aarch64__)
+	const mcontext_t& m = ((ucontext_t*)context)->uc_mcontext;
+	*pc = m.pc, *sp = m.sp;
+	static const char* const names[31] = {"x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10",
+		"x11", "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25",
+		"x26", "x27", "x28", "fp", "lr"};
+	line.text("[port] registers:");
+	for (int i = 0; i < 31; i++) {
+		line.reg(names[i], m.regs[i]);
+		if (i % 4 == 3) { line.text("\n"); port_crash_emit(line); line.text("[port]  "); }
+	}
+	line.reg("sp", m.sp); line.reg("pc", m.pc); line.reg("pstate", m.pstate);
+	line.reg("fault_address", m.fault_address); line.text("\n"); port_crash_emit(line);
+#elif defined(__APPLE__) && defined(__x86_64__)
+	// No gdb on macOS and lldb needs developer-mode approval: the registers
+	// let a bad pointer be traced from the log.
+	const auto& r = ((ucontext_t*)context)->uc_mcontext->__ss;
+	const auto& e = ((ucontext_t*)context)->uc_mcontext->__es;
+	*pc = r.__rip, *sp = r.__rsp;
+	line.text("[port] registers:"); line.reg("rax", r.__rax); line.reg("rbx", r.__rbx);
+	line.reg("rcx", r.__rcx); line.reg("rdx", r.__rdx); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("rsi", r.__rsi); line.reg("rdi", r.__rdi);
+	line.reg("rbp", r.__rbp); line.reg("rsp", r.__rsp); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("r8", r.__r8); line.reg("r9", r.__r9);
+	line.reg("r10", r.__r10); line.reg("r11", r.__r11); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("r12", r.__r12); line.reg("r13", r.__r13);
+	line.reg("r14", r.__r14); line.reg("r15", r.__r15); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("rip", r.__rip); line.reg("rflags", r.__rflags);
+	line.reg("trapno", e.__trapno); line.reg("err", e.__err); line.reg("faultvaddr", e.__faultvaddr);
+	line.text("\n"); port_crash_emit(line);
+	if (e.__trapno == 14)
+		access = e.__err & 16 ? "an instruction fetch" : e.__err & 2 ? "a write" : "a read";
+#elif defined(__APPLE__) && defined(__aarch64__)
+	const auto& r = ((ucontext_t*)context)->uc_mcontext->__ss;
+	const auto& e = ((ucontext_t*)context)->uc_mcontext->__es;
+	*pc = r.__pc, *sp = r.__sp;
+	line.text("[port] registers:");
+	for (int i = 0; i < 29; i++) {
+		char name[4] = {'x', (char)(i < 10 ? '0' + i : '0' + i / 10), (char)(i < 10 ? 0 : '0' + i % 10), 0};
+		line.reg(name, r.__x[i]);
+		if (i % 4 == 3) { line.text("\n"); port_crash_emit(line); line.text("[port]  "); }
+	}
+	line.reg("fp", r.__fp); line.reg("lr", r.__lr); line.reg("sp", r.__sp); line.text("\n"); port_crash_emit(line);
+	line.text("[port]  "); line.reg("pc", r.__pc); line.reg("cpsr", r.__cpsr);
+	line.reg("far", e.__far); line.reg("esr", e.__esr); line.text("\n"); port_crash_emit(line);
+	// ESR exception class: 0x24/0x25 data abort (bit 6 set for a write),
+	// 0x20/0x21 instruction abort.
+	const unsigned ec = e.__esr >> 26;
+	if (ec == 0x24 || ec == 0x25)
+		access = (e.__esr >> 6) & 1 ? "a write" : "a read";
+	else if (ec == 0x20 || ec == 0x21)
+		access = "an instruction fetch";
+#endif
+	if (access) {
+		line.text("[port] the fault was "); line.text(access); line.text("\n");
+		port_crash_emit(line);
+	}
+}
+
+#ifdef __linux__
+// The lines of /proc/self/maps holding the fault address and pc: what the
+// memory is (file, heap, stack, guard page) and its permissions.
+static void crash_maps(uintptr_t fault, uintptr_t pc)
+{
+	int fd = open("/proc/self/maps", O_RDONLY);
+	if (fd < 0)
+		return;
+	char buffer[4096];
+	char text[512];
+	size_t length = 0;
+	ssize_t got;
+	while ((got = read(fd, buffer, sizeof buffer)) > 0) {
+		for (ssize_t i = 0; i < got; i++) {
+			if (buffer[i] != '\n') {
+				if (length + 1 < sizeof text) text[length++] = buffer[i];
+				continue;
+			}
+			text[length] = 0;
+			length = 0;
+			char* end;
+			uintptr_t from = strtoul(text, &end, 16);
+			uintptr_t to = *end == '-' ? strtoul(end + 1, nullptr, 16) : 0;
+			bool has_fault = fault >= from && fault < to, has_pc = pc >= from && pc < to;
+			if (!has_fault && !has_pc)
+				continue;
+			PortCrashLine line;
+			line.text("[port] map ("); line.text(has_fault && has_pc ? "fault, pc" : has_fault ? "fault" : "pc");
+			line.text("): "); line.text(text); line.text("\n");
+			port_crash_emit(line);
+		}
+	}
+	close(fd);
+}
+#endif
 #endif
 
 #ifdef _WIN32
 static void crash_handler(int sig)
 {
-	port_log("\n[port] fatal signal %d\n", sig);
-	void* bt[64];
-	int n = backtrace(bt, 64);
-	backtrace_symbols_fd(bt, n, 2);
+	port_windows_report_current("abort() (SIGABRT)");
 	port_stub_report();
 	signal(sig, SIG_DFL);
 	raise(sig);
@@ -183,6 +344,19 @@ static void crash_handler(int sig)
 #else
 static void crash_handler(int sig, siginfo_t* si, void* uc)
 {
+	// A fault while reporting ends the process with the original signal;
+	// another thread crashing meanwhile waits for this report to finish.
+	static pthread_t reporter;
+	static volatile sig_atomic_t reporting;
+	if (__sync_lock_test_and_set(&reporting, 1)) {
+		if (pthread_equal(reporter, pthread_self())) {
+			signal(sig, SIG_DFL);
+			raise(sig);
+		}
+		for (;;)
+			pause();
+	}
+	reporter = pthread_self();
 	// Write the actual signal, fault address and instruction address first,
 	// without stdio locks or allocation. Symbolisation below is best effort.
 	PortCrashLine line;
@@ -191,50 +365,63 @@ static void crash_handler(int sig, siginfo_t* si, void* uc)
 	                 : sig == SIGILL ? "SIGILL" : sig == SIGABRT ? "SIGABRT" : "unknown";
 	line.text(name); line.text(" ("); line.number(sig, 10); line.text(")");
 	// For user-raised signals si_addr aliases the sender's PID, not a fault.
-	if (si && si->si_code > 0 && sig != SIGABRT) {
+	const bool fault = si && si->si_code > 0 && sig != SIGABRT;
+	if (fault) {
 		line.text(" at address "); line.hex((uintptr_t)si->si_addr);
 	}
 	if (si) {
 		line.text(" si_code ");
 		if (si->si_code < 0) line.text("-");
 		line.number(si->si_code < 0 ? -(int64_t)si->si_code : si->si_code, 10);
+		if (sig == SIGSEGV && si->si_code == SEGV_MAPERR) line.text(" (address not mapped)");
+		if (sig == SIGSEGV && si->si_code == SEGV_ACCERR) line.text(" (no permission for the access)");
+		if (sig == SIGBUS && si->si_code == BUS_ADRALN) line.text(" (misaligned address)");
+		if (sig == SIGFPE && si->si_code == FPE_INTDIV) line.text(" (integer divide by zero)");
 	}
-	uintptr_t pc = 0;
-	if (uc) {
+	uintptr_t pc = 0, sp = 0;
 #if defined(__APPLE__) && defined(__x86_64__)
-		pc = ((ucontext_t*)uc)->uc_mcontext->__ss.__rip;
+	if (uc) pc = ((ucontext_t*)uc)->uc_mcontext->__ss.__rip;
 #elif defined(__APPLE__) && defined(__aarch64__)
-		pc = ((ucontext_t*)uc)->uc_mcontext->__ss.__pc;
+	if (uc) pc = ((ucontext_t*)uc)->uc_mcontext->__ss.__pc;
 #elif defined(__linux__) && defined(__x86_64__)
-		pc = ((ucontext_t*)uc)->uc_mcontext.gregs[REG_RIP];
+	if (uc) pc = ((ucontext_t*)uc)->uc_mcontext.gregs[REG_RIP];
 #elif defined(__linux__) && defined(__i386__)
-		pc = ((ucontext_t*)uc)->uc_mcontext.gregs[REG_EIP];
+	if (uc) pc = ((ucontext_t*)uc)->uc_mcontext.gregs[REG_EIP];
 #elif defined(__linux__) && defined(__aarch64__)
-		pc = ((ucontext_t*)uc)->uc_mcontext.pc;
+	if (uc) pc = ((ucontext_t*)uc)->uc_mcontext.pc;
 #endif
+	line.text(" pc "); line.hex(pc);
+	line.text(" thread ");
+#ifdef __linux__
+	line.number((uint64_t)syscall(SYS_gettid), 10);
+#else
+	uint64_t thread_id = 0;
+	pthread_threadid_np(nullptr, &thread_id);
+	line.number(thread_id, 10);
+#endif
+	line.text("\n");
+	port_crash_emit(line);
+	uintptr_t base;
+	const char* module;
+	if (pc && port_crash_module(pc, &base, &module)) {
+		line.text("[port] exception module "); line.text(module); line.text(" base "); line.hex(base);
+		line.text(" offset "); line.hex(pc - base); line.text("\n");
+		port_crash_emit(line);
 	}
-	line.text(" pc "); line.hex(pc); line.text("\n");
-	(void)write(STDERR_FILENO, line.bytes, line.length);
-	Dl_info fault_module;
-	if (pc && dladdr((void*)pc, &fault_module) && fault_module.dli_fbase)
-		port_log("[port] exception module %s base %p offset 0x%llx\n",
-		         fault_module.dli_fname ? fault_module.dli_fname : "<unknown>", fault_module.dli_fbase,
-		         (unsigned long long)(pc - (uintptr_t)fault_module.dli_fbase));
-#if defined(__APPLE__) && defined(__x86_64__)
-	if (uc) {
-		// No gdb on macOS and lldb needs developer-mode approval: print the
-		// faulting registers so a bad pointer can be traced from the log.
-		const auto& r = ((ucontext_t*)uc)->uc_mcontext->__ss;
-		port_log("[port] rip=%llx rsp=%llx rbp=%llx\n"
-		         "[port] rax=%llx rbx=%llx rcx=%llx rdx=%llx rsi=%llx rdi=%llx\n"
-		         "[port] r8=%llx r9=%llx r10=%llx r11=%llx r12=%llx r13=%llx r14=%llx r15=%llx\n",
-		         r.__rip, r.__rsp, r.__rbp, r.__rax, r.__rbx, r.__rcx, r.__rdx, r.__rsi, r.__rdi,
-		         r.__r8, r.__r9, r.__r10, r.__r11, r.__r12, r.__r13, r.__r14, r.__r15);
-	}
+	if (fault)
+		port_crash_describe_address("fault address", (uintptr_t)si->si_addr);
+	crash_registers(uc, &pc, &sp);
+#ifdef __linux__
+	crash_maps(fault ? (uintptr_t)si->si_addr : 0, pc);
 #endif
 	void* bt[64];
 	int n = backtrace(bt, 64);
+	line.text("[port] backtrace ("); line.number(n, 10); line.text(" frames, the signal handler first):\n");
+	port_crash_emit(line);
 	backtrace_symbols_fd(bt, n, 2);
+	if (pc)
+		port_crash_dump_memory(pc, sp);
+	port_crash_describe_context();
 	crash_symbolise(bt, n);
 	port_stub_report();
 #ifdef __APPLE__
@@ -264,12 +451,16 @@ void port_crash_thread_init()
 
 void port_install_crash_handlers()
 {
+	port_crash_prepare_info();
 #ifdef _WIN32
 	port_install_windows_exception_logger();
 	// Native hardware exceptions keep their Windows status. Translating them
 	// through a CRT signal handler would replace it with a generic abort code.
 	signal(SIGABRT, crash_handler);
 #else
+	// The first backtrace() loads the unwinder, which allocates: do it now.
+	void* warm[1];
+	backtrace(warm, 1);
 	struct sigaction sa = {};
 	sa.sa_sigaction = crash_handler;
 	sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
@@ -335,6 +526,7 @@ static void map_mem1()
 	}
 #endif
 	port_mem1_base = (u8*)p;
+	port_crash_set_mem1((uintptr_t)p, port_mem1_size);
 	port_log("[port] MEM1: %u MiB at %p\n", mb, p);
 }
 

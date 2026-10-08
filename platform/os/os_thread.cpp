@@ -11,6 +11,8 @@
 #include "port_compat.h"
 #include "port_win64_stack.h"
 #include "crash.h"
+#include "crash_line.h"
+#include "crash.h"
 #include "port_os.h"
 #include "port_platform.h"
 #include <dolphin/os.h>
@@ -394,8 +396,46 @@ extern "C" void port_irq_check(void)
 		preempt_check();
 }
 
+// For crash reports: every emulated thread, read without the CPU lock (the
+// crashed thread may hold it).
+static void describe_threads_for_crash()
+{
+	PortCrashLine line;
+	line.text("[port] emulated threads: "); line.number(g_threads.size(), 10);
+	line.text(", running OSThread "); line.hex((uintptr_t)g_cur);
+	line.text(g_in_irq ? ", in an interrupt" : ""); line.text("\n");
+	port_crash_emit(line);
+	for (size_t i = 0; i < g_threads.size() && i < 32; i++) {
+		OSThread* t = g_threads[i];
+		Host* h = host_of(t);
+		line.text("[port]   OSThread "); line.hex((uintptr_t)t);
+		line.text(" priority "); line.number(t->priority, 10);
+		const char* state = t->state == OS_THREAD_STATE_READY ? "ready" : t->state == OS_THREAD_STATE_RUNNING ? "running"
+		                  : t->state == OS_THREAD_STATE_WAITING ? "waiting" : t->state == OS_THREAD_STATE_MORIBUND ? "exited"
+		                  : "unused";
+		line.text(" "); line.text(state);
+		if (t->suspend > 0) { line.text(" suspended "); line.number(t->suspend, 10); }
+		if (h) {
+			uintptr_t entry = (uintptr_t)h->func, base;
+			const char* module;
+			if (entry) {
+				line.text(" entry "); line.hex(entry);
+				if (port_crash_module(entry, &base, &module)) {
+					line.text(" ("); line.text(module); line.text("+"); line.hex(entry - base); line.text(")");
+				}
+			}
+			if (!h->started) line.text(", not started");
+			if (h->cancelled) line.text(", cancelled");
+		}
+		if (t == g_cur) line.text(" <- owns the CPU");
+		line.text("\n");
+		port_crash_emit(line);
+	}
+}
+
 extern "C" void port_os_threads_init(void)
 {
+	port_crash_set_thread_describer(describe_threads_for_crash);
 	pthread_mutex_lock(&g_cpu); // the boot thread owns the CPU from here on
 	OSThread* t = &g_default_thread;
 	memset(t, 0, sizeof(*t));

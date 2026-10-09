@@ -8,13 +8,16 @@ Nothing in this folder is needed to play, and git ignores everything in it but t
 `tools/mods/get.py` downloads a mod from where its authors publish it and installs it here, removing that mod's previous install first:
 
 ```sh
-python3 tools/mods/get.py textures    # the UHD texture pack, into mods/textures/GMS
+python3 tools/mods/get.py textures    # the UHD texture pack, into mods/textures/GMS, and the extras
+python3 tools/mods/get.py extras      # only the extras, into mods/textures/sms-hd-texture-extras
 python3 tools/mods/get.py eclipse     # Super Mario Eclipse, patched from your disc, into mods/eclipse
 python3 tools/mods/get.py all
 ```
 
 It needs 7-Zip (`7z`, `7zz` or `7za`) to unpack the downloads, and checks each against the release it expects.
 The texture pack is about 1 GB to download and 3 GB installed.
+The extras are [HD textures the UHD pack lacks](https://github.com/chasem-dev/sms-hd-texture-extras), such as the boot logo, GAME OVER, the pause guide's pictures, HUD icons, Peach and some stage textures; they are about 65 MB, need no 7-Zip, and `get.py extras` adds or updates them without downloading the UHD pack again.
+Their release is pinned in `tools/mods/texture-extras.json` and the install records it in `mods/textures/sms-hd-texture-extras/.release`; `get.py extras --if-outdated` downloads only when the two differ, which is how SMS Launcher brings existing installs up to a new release.
 Eclipse is about 850 MB to download; it is an xdelta patch that turns your own North American ISO (found as `--iso PATH`, `SMS_DISC_IMAGE`, `disc_image` in `settings.txt`, or the image in `rom/`) into a Super Mario Eclipse ISO, which the installer checks against the expected result.
 `--keep-download` keeps the downloaded archives in `mods/.downloads/`.
 

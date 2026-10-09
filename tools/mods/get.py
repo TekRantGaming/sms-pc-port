@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Download and install optional mods, fresh each time.
 
-    python3 tools/mods/get.py textures    the Super Mario Sunshine UHD Texture Pack
+    python3 tools/mods/get.py textures    the Super Mario Sunshine UHD Texture Pack, and the extras
+    python3 tools/mods/get.py extras      only the extras: HD textures the UHD pack lacks
+                                          (--if-outdated: only if not the pinned release)
     python3 tools/mods/get.py eclipse     Super Mario Eclipse (patched from your disc)
-    python3 tools/mods/get.py all         both
+    python3 tools/mods/get.py all         textures and Eclipse
 
 Each mod's previous install is removed first, then its release is downloaded
 from where its authors publish it, checked against a known checksum, and
-installed under mods/. Nothing of either mod is part of this repository.
+installed under mods/. None of them is part of this repository.
 
 Options:
     --iso PATH        your Super Mario Sunshine image (North America, the
@@ -21,12 +23,14 @@ Needs Python 3 and 7-Zip (7z, 7zz or 7za on PATH).
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
 import time
 import urllib.request
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -48,6 +52,14 @@ TEXTURES = {
     "unpacked": 3218563135,
     "install": os.path.join(MODS, "textures", "GMS"),
 }
+# HD textures the UHD pack lacks (the boot logo, GAME OVER, the pause guide's
+# pictures, HUD icons, Peach, stage textures, ...), made for this port with the
+# scripts in that repository. The release is pinned in texture-extras.json,
+# which SMS Launcher also reads: it installs the extras again whenever the
+# release recorded in the install's .release file is not that one.
+with open(os.path.join(HERE, "texture-extras.json"), encoding="utf-8") as f:
+    EXTRAS = dict(json.load(f), install=os.path.join(MODS, "textures", "sms-hd-texture-extras"))
+EXTRAS_RECORD = ".release"
 ECLIPSE = {
     "name": "Super Mario Eclipse v1.1.0 (Eclipse Team)",
     "page": "https://gamebanana.com/mods/536309",
@@ -217,8 +229,57 @@ def get_textures(keep):
         if not keep:
             remove(archive)
     say("Installed %d textures in %s." % (count, os.path.relpath(mod["install"], ROOT)))
+    try:
+        get_extras(keep)
+    except Failure as e:
+        say("warning: the UHD pack is installed, but not the extras (%s);"
+            " python3 tools/mods/get.py extras tries again" % e)
     say("The port uses them on its next start; see mods/README.md for the memory budget"
         " and SMS_GX_SCALE for a higher internal resolution.")
+
+
+def extras_current():
+    """Whether the installed extras are the pinned release."""
+    try:
+        with open(os.path.join(EXTRAS["install"], EXTRAS_RECORD), encoding="utf-8") as f:
+            return json.load(f).get("md5") == EXTRAS["md5"]
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def get_extras(keep, if_outdated=False):
+    mod = EXTRAS
+    if if_outdated and extras_current():
+        say("The texture extras are up to date (%s)." % mod["name"])
+        return
+    say("== Texture extras: %s" % mod["name"])
+    if os.path.isdir(mod["install"]):
+        say("Removing the previous install, %s" % os.path.relpath(mod["install"], ROOT))
+        remove(mod["install"])
+    need_space(MODS, 2 * mod["size"] + (16 << 20))
+    archive = fetch(mod)
+    tmp = mod["install"] + ".part"
+    remove(tmp)
+    try:
+        # the zip holds GMS/<folders of tex1_* files>, as Dolphin's Load/Textures/ takes it
+        with zipfile.ZipFile(archive) as z:
+            names = [n for n in z.namelist() if not n.endswith("/")]
+            if not names or any(not n.startswith("GMS/") or ".." in n.split("/") for n in names):
+                raise Failure("the archive is not laid out as expected (GMS/...)")
+            z.extractall(tmp)
+        os.replace(os.path.join(tmp, "GMS"), mod["install"])
+        count = sum(1 for _, _, files in os.walk(mod["install"])
+                    for n in files if n.startswith("tex1_"))
+        with open(os.path.join(mod["install"], EXTRAS_RECORD), "w", encoding="utf-8") as f:
+            json.dump({"name": mod["name"], "file": mod["file"], "md5": mod["md5"]}, f, indent=2)
+    except (OSError, zipfile.BadZipFile) as e:
+        remove(mod["install"])
+        raise Failure("could not unpack %s: %s" % (os.path.basename(archive), e))
+    finally:
+        remove(tmp)
+        if not keep:
+            remove(archive)
+    say("Installed %d textures in %s." % (count, os.path.relpath(mod["install"], ROOT)))
 
 
 def get_eclipse(keep, iso_arg):
@@ -283,13 +344,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog="\n\n".join(__doc__.split("\n\n")[1:]))
-    ap.add_argument("what", choices=["textures", "eclipse", "all"])
+    ap.add_argument("what", choices=["textures", "extras", "eclipse", "all"])
     ap.add_argument("--iso")
     ap.add_argument("--keep-download", action="store_true")
+    ap.add_argument("--if-outdated", action="store_true")
     args = ap.parse_args()
     try:
         if args.what in ("textures", "all"):
             get_textures(args.keep_download)
+        if args.what == "extras":
+            get_extras(args.keep_download, args.if_outdated)
         if args.what in ("eclipse", "all"):
             get_eclipse(args.keep_download, args.iso)
     except Failure as e:

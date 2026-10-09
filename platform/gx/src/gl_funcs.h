@@ -24,6 +24,7 @@
     X(PFNGLBINDBUFFERBASEPROC, glBindBufferBase)                                    \
     X(PFNGLGENVERTEXARRAYSPROC, glGenVertexArrays)                                  \
     X(PFNGLBINDVERTEXARRAYPROC, glBindVertexArray)                                  \
+    X(PFNGLDELETEVERTEXARRAYSPROC, glDeleteVertexArrays)                            \
     X(PFNGLVERTEXATTRIBPOINTERPROC, glVertexAttribPointer)                          \
     X(PFNGLVERTEXATTRIBIPOINTERPROC, glVertexAttribIPointer)                        \
     X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray)                  \
@@ -68,6 +69,7 @@
     X(PFNGLSAMPLERPARAMETERFPROC, glSamplerParameterf)                              \
     X(PFNGLDELETESAMPLERSPROC, glDeleteSamplers)                                    \
     X(PFNGLDRAWELEMENTSBASEVERTEXPROC, glDrawElementsBaseVertex)                    \
+    X(PFNGLMULTIDRAWELEMENTSBASEVERTEXPROC, glMultiDrawElementsBaseVertex)          \
     X(PFNGLBINDBUFFERRANGEPROC, glBindBufferRange)                                  \
     X(PFNGLVERTEXATTRIB4FPROC, glVertexAttrib4f)                                    \
     X(PFNGLVERTEXATTRIBI4UIPROC, glVertexAttribI4ui)                                \
@@ -78,10 +80,17 @@
     X(PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC, glRenderbufferStorageMultisample)    \
     X(PFNGLUNIFORM1FPROC, glUniform1f) X(PFNGLUNIFORM2FPROC, glUniform2f)
 
+// Entry points newer than GL 3.3, loaded when the driver has them (null
+// otherwise; macOS stops at 4.1): check before calling.
+#define SMS_GX_GL_OPTIONAL_FUNCS(X) X(PFNGLBUFFERSTORAGEPROC, glBufferStorage)                \
+    X(PFNGLGETPROGRAMBINARYPROC, glGetProgramBinary) X(PFNGLPROGRAMBINARYPROC, glProgramBinary) \
+    X(PFNGLPROGRAMPARAMETERIPROC, glProgramParameteri)
+
 #define SMS_GX_DECLARE(type, name) extern type gx_##name;
 extern "C++" {
 namespace gx { namespace gl {
 SMS_GX_GL_FUNCS(SMS_GX_DECLARE)
+SMS_GX_GL_OPTIONAL_FUNCS(SMS_GX_DECLARE)
 bool load(void* (*getProc)(const char*));
 }}  // namespace gx::gl
 }
@@ -89,6 +98,7 @@ bool load(void* (*getProc)(const char*));
 
 #define SMS_GX_ALIAS(type, name) using gx::gl::gx_##name;
 SMS_GX_GL_FUNCS(SMS_GX_ALIAS)
+SMS_GX_GL_OPTIONAL_FUNCS(SMS_GX_ALIAS)
 #undef SMS_GX_ALIAS
 
 // call sites use the plain GL names
@@ -125,6 +135,7 @@ SMS_GX_GL_FUNCS(SMS_GX_ALIAS)
 #define glBindBufferBase gx_glBindBufferBase
 #define glGenVertexArrays gx_glGenVertexArrays
 #define glBindVertexArray gx_glBindVertexArray
+#define glDeleteVertexArrays gx_glDeleteVertexArrays
 #define glVertexAttribPointer gx_glVertexAttribPointer
 #define glVertexAttribIPointer gx_glVertexAttribIPointer
 #define glEnableVertexAttribArray gx_glEnableVertexAttribArray
@@ -192,6 +203,7 @@ SMS_GX_GL_FUNCS(SMS_GX_ALIAS)
 #define glSamplerParameterf gx_glSamplerParameterf
 #define glDeleteSamplers gx_glDeleteSamplers
 #define glDrawElementsBaseVertex gx_glDrawElementsBaseVertex
+#define glMultiDrawElementsBaseVertex gx_glMultiDrawElementsBaseVertex
 #define glBindBufferRange gx_glBindBufferRange
 #define glVertexAttrib4f gx_glVertexAttrib4f
 #define glVertexAttribI4ui gx_glVertexAttribI4ui
@@ -199,5 +211,9 @@ SMS_GX_GL_FUNCS(SMS_GX_ALIAS)
 #define glGenerateMipmap gx_glGenerateMipmap
 #define glCompressedTexImage2D gx_glCompressedTexImage2D
 #define glGetStringi gx_glGetStringi
+#define glBufferStorage gx_glBufferStorage
+#define glGetProgramBinary gx_glGetProgramBinary
+#define glProgramBinary gx_glProgramBinary
+#define glProgramParameteri gx_glProgramParameteri
 
 #endif

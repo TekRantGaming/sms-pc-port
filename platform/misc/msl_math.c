@@ -105,6 +105,46 @@ static inline float fnmsubs(float a, float c, float b)
 	return -r;
 }
 
+/* The hottest functions here (sinf, cosf, expf, powf; the game calls them
+ * thousands of times a frame) are built twice on x86, once more with the FMA
+ * instruction (whose single rounding is what port_fmas_soft computes), and
+ * each call takes that build where the CPU has the instruction:
+ * msl_math_hot.h includes msl_math_trig.inc and msl_math_pow.inc for it. */
+#if (defined(__x86_64__) || defined(__i386__)) && !defined(MSL_MATH_TEST_FMA) && defined(__GNUC__)
+#define MSL_FMA_DISPATCH 1
+#include <cpuid.h>
+#define MSL_FMA_TARGET __attribute__((target("fma")))
+static inline MSL_FMA_TARGET float hw_fmadds(float a, float c, float b) { return __builtin_fmaf(a, c, b); }
+static inline MSL_FMA_TARGET float hw_fnmadds(float a, float c, float b)
+{
+	float r = __builtin_fmaf(a, c, b);
+	PORT_OPAQUE(r);
+	return -r;
+}
+static inline MSL_FMA_TARGET float hw_fnmsubs(float a, float c, float b)
+{
+	float r = __builtin_fmaf(a, c, -b);
+	PORT_OPAQUE(r);
+	return -r;
+}
+/* FMA, and the OS saving the AVX registers it uses. */
+static int msl_have_fma(void)
+{
+	static int have = -1;
+	if (have < 0) {
+		unsigned a, b, c, d, lo, hi;
+		have = 0;
+		if (__get_cpuid(1, &a, &b, &c, &d) && (c & (1u << 12)) && (c & (1u << 27)) && (c & (1u << 28))) {
+			__asm__ __volatile__("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+			have = (lo & 6) == 6;
+		}
+	}
+	return have;
+}
+#else
+#define MSL_FMA_DISPATCH 0
+#endif
+
 #ifdef MSL_MATH_TEST_FRSQRTE
 double MSL_MATH_TEST_FRSQRTE(double);
 #define frsqrte MSL_MATH_TEST_FRSQRTE
@@ -142,67 +182,13 @@ static const fbits_t two_over_pi = { 0x3f22f983 }; /* @106 */
 static const fbits_t half        = { 0x3f000000 }; /* @107 */
 static const fbits_t sqrt_eps    = { 0x39b504f3 }; /* @108 */
 
-/* The argument reduction shared by sinf and cosf: x less the nearest multiple
- * of pi/2, in units of pi/4 (frac_part), and that multiple's quadrant. */
-static float trig_reduce(float x, int* quadrant)
-{
-	float z = two_over_pi.f * x;                                    /* fmuls */
-	int32_t n = (f2u(x) & 0x80000000) ? fctiwz(z - half.f) : fctiwz(half.f + z);
-	float n2  = (float)(int32_t)((uint32_t)n << 1); /* slwi, the 0x43300000 conversion, fsubs */
-	float f   = x - n2;                                             /* fsubs */
-	f         = fmadds(four_over_pi_m1[0].f, x, f);
-	f         = fmadds(four_over_pi_m1[1].f, x, f);
-	f         = fmadds(four_over_pi_m1[2].f, x, f);
-	f         = fmadds(four_over_pi_m1[3].f, x, f);
-	*quadrant = (int)(n & 3);
-	return f;
-}
-
-float sms_msl_cosf(float x)
-{
-	int n;
-	float f = trig_reduce(x, &n), xsq, t;
-	n <<= 1;
-	if (fabsf(f) < sqrt_eps.f)
-		return fnmsubs(f, Q(n), Q(n + 1));
-	xsq = f * f;
-	if (n & 2) {
-		t = fmadds(P(1), xsq, P(3));
-		t = fmadds(xsq, t, P(5));
-		t = fmadds(xsq, t, P(7));
-		t = fnmadds(xsq, t, P(9));
-		t = f * t;
-		return t * Q(n);
-	}
-	t = fmadds(P(0), xsq, P(2));
-	t = fmadds(xsq, t, P(4));
-	t = fmadds(xsq, t, P(6));
-	t = fmadds(xsq, t, P(8));
-	return t * Q(n + 1);
-}
-
-float sms_msl_sinf(float x)
-{
-	int n;
-	float f = trig_reduce(x, &n), xsq, t;
-	n <<= 1;
-	if (fabsf(f) < sqrt_eps.f)
-		return fmadds(P(9), f * Q(n + 1), Q(n));
-	xsq = f * f;
-	if (n & 2) {
-		t = fmadds(P(0), xsq, P(2));
-		t = fmadds(xsq, t, P(4));
-		t = fmadds(xsq, t, P(6));
-		t = fmadds(xsq, t, P(8));
-		return t * Q(n);
-	}
-	t = fmadds(P(1), xsq, P(3));
-	t = fmadds(xsq, t, P(5));
-	t = fmadds(xsq, t, P(7));
-	t = fmadds(xsq, t, P(9));
-	t = f * t;
-	return t * Q(n + 1);
-}
+#define MSL_HOT_PART "msl_math_trig.inc"
+#include "msl_math_hot.h"
+#undef MSL_HOT_PART
+#if MSL_FMA_DISPATCH
+float sms_msl_cosf(float x) { return msl_have_fma() ? sms_msl_cosf_hw(x) : sms_msl_cosf_soft(x); }
+float sms_msl_sinf(float x) { return msl_have_fma() ? sms_msl_sinf_hw(x) : sms_msl_sinf_soft(x); }
+#endif
 
 /* tanf calls cos(float), then sin(float), and divides. */
 float sms_msl_tanf(float x)
@@ -598,111 +584,13 @@ static const fbits_t expf_c1       = { 0x3f7e0000 }; /* @261, 1 - 1/128 */
 static const fbits_t expf_c2       = { 0x3c000001 }; /* @262, about 1/128 */
 static const fbits_t msl_nan       = { 0x7fffffff }; /* _nan */
 
-float sms_msl_expf(float x)
-{
-	int32_t n;
-	uint32_t index;
-	float pow2, f, p;
-	if (x > expf_max.f)
-		return float_huge.f;
-	if (x < expf_min.f)
-		return 0.0f;
-	n     = fctiwz(x); /* NaN gets here: fctiwz gives INT_MIN */
-	index = (uint32_t)n + 88;
-	pow2  = u2f((index + 39) << 23); /* 2^n */
-	f     = x - (float)n;
-	p     = fmadds(f, exp_to_x[7].f, exp_to_x[6].f);
-	p     = fmadds(f, p, exp_to_x[5].f);
-	p     = fmadds(f, p, exp_to_x[4].f);
-	p     = fmadds(f, p, exp_to_x[3].f);
-	p     = fmadds(f, p, exp_to_x[2].f);
-	p     = fmadds(f, p, exp_to_x[1].f);
-	p     = fmadds(f, p, exp_to_x[0].f);
-	p     = f * p;
-	p     = expf_c2.f + p;
-	p     = expf_c1.f + p;
-	p     = pow2 * p;
-	/* slwi by 2 wraps: a NaN's index 0x80000058 reads entry 88 */
-	return two_to_log2e_m1_tI[index & 0x3fffffff].f * p;
-}
-
-/* The inline __log2f, as powf expands it (x > 0). */
-static float msl_log2f(float x)
-{
-	const uint32_t b = f2u(x);
-	uint32_t index   = (b >> 16) & 0x7f;
-	const float e    = (float)((int32_t)(b >> 23) - 128);
-	if (b & 0xffff) {
-		uint32_t hi      = (b & 0x7f0000) | 0x3f800000;
-		const uint32_t lo = (b & 0x7fffff) | 0x3f800000;
-		float fr, fr2, p;
-		if (b & 0x8000) {
-			index++;
-			hi += 0x10000;
-		}
-		fr  = u2f(lo) - u2f(hi);
-		fr  = fr * one_over_F[index].f;
-		fr2 = fr * fr;
-		p   = fmadds(fr, log2_poly[1].f, log2_poly[0].f);
-		p   = fr2 * p;
-		p   = fmadds(log2e_m1[1].f, fr, p);
-		p   = fmadds(log2e_m1[0].f, fr, p);
-		p   = fr + p;
-		p   = log2_F[index].f + p;
-		return (log2_bias.f + e) + p;
-	}
-	return (log2_bias.f + e) + log2_F[index].f;
-}
-
-/* The inline __exp2f, as powf expands it. */
-static float msl_exp2f(float t)
-{
-	const int32_t n = fctiwz(t);
-	const float f   = t - (float)n;
-	float pow2, p;
-	if (n > 128)
-		return float_huge.f;
-	if (n < -127)
-		return 0.0f;
-	pow2 = u2f((uint32_t)(n + 127) << 23);
-	p    = fmadds(f, two_to_x[8].f, two_to_x[7].f);
-	p    = fmadds(f, p, two_to_x[6].f);
-	p    = fmadds(f, p, two_to_x[5].f);
-	p    = fmadds(f, p, two_to_x[4].f);
-	p    = fmadds(f, p, two_to_x[3].f);
-	p    = fmadds(f, p, two_to_x[2].f);
-	p    = fmadds(f, p, two_to_x[1].f);
-	p    = fmadds(f, p, two_to_x[0].f);
-	p    = f * p;
-	p    = exp2_c025.f + p;
-	p    = exp2_c075.f + p;
-	return pow2 * p;
-}
-
-float sms_msl_powf(float x, float y)
-{
-	uint32_t by;
-	if (x > 0.0f)
-		return msl_exp2f(y * msl_log2f(x));
-	if (x < 0.0f) {
-		const int32_t iy = fctiwz(y);
-		if (y - (float)iy != 0.0f) /* also NaN, inf and y >= 2^31 but for 2^31 */
-			return msl_nan.f;
-		if (iy % 2 != 0)
-			return -msl_exp2f(y * msl_log2f(-x));
-		return msl_exp2f(y * msl_log2f(-x));
-	}
-	if (x != x) /* x is +-0 or NaN from here */
-		return x;
-	by = f2u(y) & 0x7fffffff;
-	if (by == 0)
-		return 1.0f;
-	if (by >= 0x7f800000) /* NaN, inf */
-		return msl_nan.f;
-	if (y < 0.0f) /* x == -0.0f compares true for +0 too */
-		return x == -0.0f ? -float_huge.f : float_huge.f;
-	return 0.0f;
-}
+#define MSL_HOT_PART "msl_math_pow.inc"
+#include "msl_math_hot.h"
+#undef MSL_HOT_PART
+#if MSL_FMA_DISPATCH
+float sms_msl_expf(float x) { return msl_have_fma() ? sms_msl_expf_hw(x) : sms_msl_expf_soft(x); }
+float sms_msl_powf(float x, float y) { return msl_have_fma() ? sms_msl_powf_hw(x, y) : sms_msl_powf_soft(x, y); }
+#endif
 
 /* ---- MSL's inline std::fmodf (the weak 0x80109AFC in wireTrap.cpp) ----- */
 

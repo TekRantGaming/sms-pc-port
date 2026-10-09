@@ -196,6 +196,8 @@ struct TexEntry {
     GLuint tex = 0;
     uint64_t dataHash = 0, tlutHash = 0;
     uint32_t checkedGen = 0;
+    uint32_t checkedClock = 0, checkedFrame = 0;  // writeClock() and display frame of the last hash
+    bool hashAlways = false;  // its data once changed with no write reported: hashed on every check
     uint32_t bytes = 0;
     std::string hires;  // the texture pack's replacement for the current data, if any
     int prompt = -1;    // the button prompt glyph this picture shows (promptGlyph), or -1
@@ -322,75 +324,110 @@ uint32_t copyLayout(uint32_t f, bool z) {
     }
 }
 
-// Inverse of decodeTexture for the formats EFB copies produce: `rgba` is
-// w*h texels, top row first, in the form decodeTexture returns.
-uint32_t encodeTexture(const uint8_t* rgba, uint32_t fmt, uint32_t w, uint32_t h, uint8_t* dst) {
-    uint32_t tw = kTileW[fmt], th = kTileH[fmt];
-    if (!tw) return 0;
-    uint32_t cols = (w + tw - 1) / tw, rows = (h + th - 1) / th;
+// One tile: row r's texels start at rows[r] (RGBA bytes); texel i of the
+// tile is rows[i / tileW][i % tileW].
+template <int FMT> static inline void encodeTile(const uint8_t* const* rows, uint8_t* p) {
+    switch (FMT) {
+    case 0:  // I4
+        for (int r = 0; r < 8; r++)
+            for (int x = 0; x < 8; x += 2)
+                p[(r * 8 + x) >> 1] =
+                    uint8_t((rows[r][x * 4] * 15 + 127) / 255 << 4 | (rows[r][x * 4 + 4] * 15 + 127) / 255);
+        break;
+    case 1:  // I8
+        for (int r = 0; r < 4; r++)
+            for (int x = 0; x < 8; x++) p[r * 8 + x] = rows[r][x * 4];
+        break;
+    case 2:  // IA4
+        for (int r = 0; r < 4; r++)
+            for (int x = 0; x < 8; x++) {
+                const uint8_t* c = rows[r] + x * 4;
+                p[r * 8 + x] = uint8_t((c[3] * 15 + 127) / 255 << 4 | (c[0] * 15 + 127) / 255);
+            }
+        break;
+    case 3:  // IA8
+        for (int r = 0; r < 4; r++)
+            for (int x = 0; x < 4; x++) {
+                p[(r * 4 + x) * 2] = rows[r][x * 4 + 3];
+                p[(r * 4 + x) * 2 + 1] = rows[r][x * 4];
+            }
+        break;
+    case 4:  // RGB565
+        for (int r = 0; r < 4; r++)
+            for (int x = 0; x < 4; x++) {
+                const uint8_t* c = rows[r] + x * 4;
+                uint32_t v = uint32_t(c[0] >> 3) << 11 | uint32_t(c[1] >> 2) << 5 | uint32_t(c[2] >> 3);
+                p[(r * 4 + x) * 2] = uint8_t(v >> 8);
+                p[(r * 4 + x) * 2 + 1] = uint8_t(v);
+            }
+        break;
+    case 5:  // RGB5A3
+        for (int r = 0; r < 4; r++)
+            for (int x = 0; x < 4; x++) {
+                const uint8_t* c = rows[r] + x * 4;
+                uint32_t opaque = 0x8000u | uint32_t(c[0] >> 3) << 10 | uint32_t(c[1] >> 3) << 5 | uint32_t(c[2] >> 3);
+                uint32_t alpha = uint32_t(c[3] >> 5) << 12 | uint32_t(c[0] >> 4) << 8 | uint32_t(c[1] >> 4) << 4 |
+                                 uint32_t(c[2] >> 4);
+                uint32_t v = c[3] >= 0xE0 ? opaque : alpha;
+                p[(r * 4 + x) * 2] = uint8_t(v >> 8);
+                p[(r * 4 + x) * 2 + 1] = uint8_t(v);
+            }
+        break;
+    case 6:  // RGBA8: AR plane then GB plane
+        for (int r = 0; r < 4; r++)
+            for (int x = 0; x < 4; x++) {
+                const uint8_t* c = rows[r] + x * 4;
+                int i = r * 4 + x;
+                p[2 * i] = c[3];
+                p[2 * i + 1] = c[0];
+                p[32 + 2 * i] = c[1];
+                p[32 + 2 * i + 1] = c[2];
+            }
+        break;
+    }
+}
+
+// Tiles inside the image read its rows in place; edge tiles are gathered
+// into a buffer padded with zeros first.
+template <int FMT> static uint32_t encodeTiles(const uint8_t* rgba, uint32_t w, uint32_t h, uint8_t* dst) {
+    const uint32_t tw = kTileW[FMT], th = kTileH[FMT];
+    const uint32_t cols = (w + tw - 1) / tw, rows = (h + th - 1) / th;
+    uint8_t tile[64][4];
+    const uint8_t* rp[8];
     uint8_t* p = dst;
-    static const uint8_t kZero[4] = {0, 0, 0, 0};
     for (uint32_t ty = 0; ty < rows; ty++) {
         for (uint32_t tx = 0; tx < cols; tx++) {
-            auto at = [&](uint32_t i, uint32_t tileW) -> const uint8_t* {
-                uint32_t x = tx * tw + i % tileW, y = ty * th + i / tileW;
-                return (x < w && y < h) ? rgba + (size_t(y) * w + x) * 4 : kZero;
-            };
-            switch (fmt) {
-            case 0:  // I4
-                for (uint32_t i = 0; i < 64; i += 2)
-                    p[i >> 1] = uint8_t((at(i, 8)[0] * 15 + 127) / 255 << 4 | (at(i + 1, 8)[0] * 15 + 127) / 255);
-                break;
-            case 1:  // I8
-                for (uint32_t i = 0; i < 32; i++) p[i] = at(i, 8)[0];
-                break;
-            case 2:  // IA4
-                for (uint32_t i = 0; i < 32; i++) {
-                    const uint8_t* c = at(i, 8);
-                    p[i] = uint8_t((c[3] * 15 + 127) / 255 << 4 | (c[0] * 15 + 127) / 255);
+            const uint32_t x0 = tx * tw, n = std::min(tw, w - x0);
+            if (n == tw && (ty + 1) * th <= h) {
+                for (uint32_t r = 0; r < th; r++) rp[r] = rgba + (size_t(ty * th + r) * w + x0) * 4;
+            } else {
+                for (uint32_t r = 0; r < th; r++) {
+                    const uint32_t y = ty * th + r;
+                    if (y < h) memcpy(tile[r * tw], rgba + (size_t(y) * w + x0) * 4, n * 4);
+                    if (y >= h || n < tw) memset(tile[r * tw + (y < h ? n : 0)], 0, (y < h ? tw - n : tw) * 4);
+                    rp[r] = tile[r * tw];
                 }
-                break;
-            case 3:  // IA8
-                for (uint32_t i = 0; i < 16; i++) {
-                    const uint8_t* c = at(i, 4);
-                    p[2 * i] = c[3];
-                    p[2 * i + 1] = c[0];
-                }
-                break;
-            case 4:  // RGB565
-                for (uint32_t i = 0; i < 16; i++) {
-                    const uint8_t* c = at(i, 4);
-                    uint16_t v = uint16_t((c[0] >> 3) << 11 | (c[1] >> 2) << 5 | (c[2] >> 3));
-                    p[2 * i] = uint8_t(v >> 8);
-                    p[2 * i + 1] = uint8_t(v);
-                }
-                break;
-            case 5:  // RGB5A3
-                for (uint32_t i = 0; i < 16; i++) {
-                    const uint8_t* c = at(i, 4);
-                    uint16_t v;
-                    if (c[3] >= 0xE0)
-                        v = uint16_t(0x8000 | (c[0] >> 3) << 10 | (c[1] >> 3) << 5 | (c[2] >> 3));
-                    else
-                        v = uint16_t((c[3] >> 5) << 12 | (c[0] >> 4) << 8 | (c[1] >> 4) << 4 | (c[2] >> 4));
-                    p[2 * i] = uint8_t(v >> 8);
-                    p[2 * i + 1] = uint8_t(v);
-                }
-                break;
-            case 6:  // RGBA8: AR plane then GB plane
-                for (uint32_t i = 0; i < 16; i++) {
-                    const uint8_t* c = at(i, 4);
-                    p[2 * i] = c[3];
-                    p[2 * i + 1] = c[0];
-                    p[32 + 2 * i] = c[1];
-                    p[32 + 2 * i + 1] = c[2];
-                }
-                break;
             }
-            p += kTileBytes[fmt];
+            encodeTile<FMT>(rp, p);
+            p += kTileBytes[FMT];
         }
     }
     return uint32_t(p - dst);
+}
+
+// Inverse of decodeTexture for the formats EFB copies produce: `rgba` is
+// w*h texels, top row first, in the form decodeTexture returns.
+uint32_t encodeTexture(const uint8_t* rgba, uint32_t fmt, uint32_t w, uint32_t h, uint8_t* dst) {
+    switch (fmt) {
+    case 0: return encodeTiles<0>(rgba, w, h, dst);
+    case 1: return encodeTiles<1>(rgba, w, h, dst);
+    case 2: return encodeTiles<2>(rgba, w, h, dst);
+    case 3: return encodeTiles<3>(rgba, w, h, dst);
+    case 4: return encodeTiles<4>(rgba, w, h, dst);
+    case 5: return encodeTiles<5>(rgba, w, h, dst);
+    case 6: return encodeTiles<6>(rgba, w, h, dst);
+    default: return 0;
+    }
 }
 
 // GX sampler state (wrap, filters, LOD bias and clamp) as a GL sampler
@@ -559,10 +596,23 @@ unsigned bindTextureMap(int map, float* outW, float* outH) {
         s_rangesSorted = false;
         if (total > s_maxBytes) s_maxBytes = total;
     }
+    // After GXInvalidateTexAll (every frame) the data is hashed again, unless
+    // no write stamp touched it since the last hash (a range invalidation,
+    // checkedGen 0, always hashes; so does every kRecheckFrames-th frame).
+    bool unwritten = false;  // no write reported since the last hash
+    if (e.checkedGen != s_gen && e.checkedGen != 0 && !upload && trustWriteStamps() && !e.hashAlways &&
+        e.bytes == total && unwrittenSince(ptr, total, e.checkedClock)) {
+        unwritten = true;
+        if (g_displayFrames - e.checkedFrame < kRecheckFrames && (tlut ? hashBytes(tlut, tlutBytes) : 0) == e.tlutHash)
+            e.checkedGen = s_gen;
+    }
     if (e.checkedGen != s_gen || upload) {
         g_statTexHashBytes += total;
+        e.checkedClock = writeClock();
+        e.checkedFrame = g_displayFrames;
         uint64_t dh = hashBytes(ptr, total);
         uint64_t th = tlut ? hashBytes(tlut, tlutBytes) : 0;
+        if (unwritten && dh != e.dataHash) e.hashAlways = true;  // changed behind the write stamps' back
         if (upload || dh != e.dataHash || th != e.tlutHash) upload = true;
         e.dataHash = dh;
         e.tlutHash = th;

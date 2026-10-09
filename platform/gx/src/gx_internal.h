@@ -101,6 +101,17 @@ extern State g;
 void* physToPtr(uint32_t phys);
 uint32_t ptrToPhys(const void* p);
 bool isBigEndianData(const void* p);
+// Something wrote [p, p + n) of game memory (see the write stamps in gx_fifo.cpp).
+void memoryWritten(const void* p, size_t n);
+uint32_t writeClock();
+// True when no write stamp touched [p, p + n) after `since` (a writeClock()
+// value). Caches still compare by hash every kRecheckFrames frames, for
+// writes nothing reported, and always with trustWriteStamps() false.
+bool unwrittenSince(const void* p, size_t n, uint32_t since);
+bool trustWriteStamps();
+enum { kRecheckFrames = 8 };
+extern uint32_t g_displayFrames;  // display copies so far
+extern double g_presentWaited, g_presentDrain;  // gx_render.cpp, GXPC_GetTimes
 extern bool g_defaultArrayBE;
 extern bool g_gxStats;  // SMS_GX_STATS: per-part timers run
 extern uint32_t g_arrayGen;  // bumped by every write to g.arrayBase/Stride/BigEndian
@@ -115,6 +126,7 @@ void resetState();
 
 // Command-stream parsing.  Big-endian bytes.
 void runCommands(const uint8_t* data, uint32_t size);
+void callDisplayList(const uint8_t* data, uint32_t size);  // GXCallDisplayList: runCommands, cached
 void pipeWrite(const uint8_t* bytes, uint32_t n);
 bool pipeIdle();
 void setPipeRedirect(uint8_t* dest);
@@ -160,6 +172,31 @@ void unpackVertex(uint32_t fmt, const uint8_t* src, const uint8_t defMtx[9], Hos
 // the primitive's indices.
 uint8_t* primitiveBegin(uint8_t opcode, uint32_t count, uint32_t fmt, uint32_t stride);
 void primitiveEnd(uint8_t opcode, uint32_t count);
+PrimClass primClass(uint8_t opcode);
+// Writes the batch indices of a primitive of `count` vertices starting at
+// `base` (at most 3 per vertex); returns how many.
+uint32_t primitiveIndices(uint8_t opcode, uint32_t count, uint32_t base, uint32_t* out);
+// Adds vertices decoded earlier (display-list cache), with their indices
+// relative to the first one, as primitiveBegin/primitiveEnd would have.
+void appendDecoded(PrimClass cls, uint32_t fmt, uint32_t stride, const uint8_t* verts, uint32_t count,
+                   const uint32_t* idx, uint32_t nidx);
+bool rendererReady();
+void releaseGlThread();  // gx_platform.cpp, for GXPC_Shutdown
+// Display-list arena: a GL buffer holding the vertices and indices of cached
+// display-list runs, which batches then draw in place (no per-frame copy).
+struct ArenaRef {
+    uint32_t gen = 0;  // arenaGeneration() it was stored in (0: not stored)
+    int32_t baseVertex = 0;
+    size_t iOff = 0;   // byte offset of its indices
+};
+bool arenaEnabled();
+uint32_t arenaGeneration();
+bool arenaUpload(const uint8_t* verts, uint32_t count, uint32_t stride, const uint32_t* idx, uint32_t nidx, ArenaRef& out);
+// Like appendDecoded, drawing a run stored by arenaUpload; `verts` is its CPU
+// copy (read for widescreen placement), alive until the batch is flushed.
+void appendArena(PrimClass cls, uint32_t fmt, uint32_t stride, const ArenaRef& ref, uint32_t count, uint32_t nidx,
+                 const uint8_t* verts);
+bool batchUsesArena();
 void onStateChange();  // called before any register write that changes state
 void executeCopy(uint32_t execReg);
 void markXfMemDirty();

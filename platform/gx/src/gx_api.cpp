@@ -351,7 +351,7 @@ void GXCallDisplayList(void* list, u32 nbytes) {
         GXPC_Write32(uint32_t(nbytes));
         return;
     }
-    runCommands(static_cast<const uint8_t*>(list), uint32_t(nbytes));
+    callDisplayList(static_cast<const uint8_t*>(list), uint32_t(nbytes));
 }
 
 // ================================================================== GXGeometry / GXAttr

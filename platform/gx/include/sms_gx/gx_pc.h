@@ -104,6 +104,9 @@ void* GXPC_PhysToPtr(uint32_t phys);
  * textures the CPU rewrote are re-decoded.  GXInvalidateTexAll re-checks every
  * cached texture's contents as well. */
 void GXPC_InvalidateRange(const void* ptr, uint32_t size);
+/* Something other than the CPU wrote game memory (DVD and ARAM transfers,
+ * DCZeroRange): cached display-list decodes reading it are checked again. */
+void GXPC_MemoryWritten(const void* ptr, uint32_t size);
 
 /* Byte order of indexed vertex / matrix arrays (GXSetArray).  Display lists and
  * pipe data are always big-endian; arrays default to host order because most
@@ -124,6 +127,44 @@ void GXPC_Write8(uint8_t v);
 void GXPC_Write16(uint16_t v);
 void GXPC_Write32(uint32_t v);
 void GXPC_WriteF32(float v);
+
+/* The same, inline: while the bytes cannot complete a command
+ * (GXPC_PipeLen + n <= GXPC_PipeFast; 0 while the pipe is redirected) they
+ * are appended to the pipe's buffer directly, and the calls above take the
+ * rest. The game writes tens of thousands of these a frame. */
+extern uint8_t* GXPC_PipeBuf;
+extern uint32_t GXPC_PipeLen, GXPC_PipeFast;
+static inline void GXPC_Put8(uint8_t v) {
+    if (GXPC_PipeLen + 1 <= GXPC_PipeFast) GXPC_PipeBuf[GXPC_PipeLen++] = v;
+    else GXPC_Write8(v);
+}
+static inline void GXPC_Put16(uint16_t v) {
+    if (GXPC_PipeLen + 2 <= GXPC_PipeFast) {
+        uint8_t* p = GXPC_PipeBuf + GXPC_PipeLen;
+        p[0] = (uint8_t)(v >> 8);
+        p[1] = (uint8_t)v;
+        GXPC_PipeLen += 2;
+    } else {
+        GXPC_Write16(v);
+    }
+}
+static inline void GXPC_Put32(uint32_t v) {
+    if (GXPC_PipeLen + 4 <= GXPC_PipeFast) {
+        uint8_t* p = GXPC_PipeBuf + GXPC_PipeLen;
+        p[0] = (uint8_t)(v >> 24);
+        p[1] = (uint8_t)(v >> 16);
+        p[2] = (uint8_t)(v >> 8);
+        p[3] = (uint8_t)v;
+        GXPC_PipeLen += 4;
+    } else {
+        GXPC_Write32(v);
+    }
+}
+static inline void GXPC_PutF32(float v) {
+    union { float f; uint32_t u; } b;
+    b.f = v;
+    GXPC_Put32(b.u);
+}
 
 /* Presentation.  GXCopyDisp(dest, ...) records the EFB region as the XFB at
  * `dest`.  PresentXFB draws that XFB into the currently bound default
@@ -181,13 +222,13 @@ int GXPC_GetSpeed(void);
  *     #define GXWGFifo GXPC_WGPipe
  * instead of the 0xCC008000 cast. */
 struct GXPCWGPipe {
-    struct U8 { void operator=(uint8_t v) const { GXPC_Write8(v); } } u8;
-    struct S8 { void operator=(int8_t v) const { GXPC_Write8((uint8_t)v); } } s8;
-    struct U16 { void operator=(uint16_t v) const { GXPC_Write16(v); } } u16;
-    struct S16 { void operator=(int16_t v) const { GXPC_Write16((uint16_t)v); } } s16;
-    struct U32 { void operator=(uint32_t v) const { GXPC_Write32(v); } } u32;
-    struct S32 { void operator=(int32_t v) const { GXPC_Write32((uint32_t)v); } } s32;
-    struct F32 { void operator=(float v) const { GXPC_WriteF32(v); } } f32;
+    struct U8 { void operator=(uint8_t v) const { GXPC_Put8(v); } } u8;
+    struct S8 { void operator=(int8_t v) const { GXPC_Put8((uint8_t)v); } } s8;
+    struct U16 { void operator=(uint16_t v) const { GXPC_Put16(v); } } u16;
+    struct S16 { void operator=(int16_t v) const { GXPC_Put16((uint16_t)v); } } s16;
+    struct U32 { void operator=(uint32_t v) const { GXPC_Put32(v); } } u32;
+    struct S32 { void operator=(int32_t v) const { GXPC_Put32((uint32_t)v); } } s32;
+    struct F32 { void operator=(float v) const { GXPC_PutF32(v); } } f32;
 };
 extern const GXPCWGPipe GXPC_WGPipe;
 #endif

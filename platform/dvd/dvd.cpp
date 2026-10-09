@@ -222,7 +222,7 @@ int file_fd(u32 entry)
 	return e.fd;
 }
 
-s32 do_read(DVDFileInfo* fi, void* addr, s32 length, s32 offset)
+s32 do_read_raw(DVDFileInfo* fi, void* addr, s32 length, s32 offset)
 {
 	u32 entry = fi->startAddr;
 	if (entry >= g_fst.size() || g_fst[entry].dir)
@@ -251,6 +251,18 @@ s32 do_read(DVDFileInfo* fi, void* addr, s32 length, s32 offset)
 	}
 	fi->cb.transferredSize = done;
 	return done;
+}
+
+// The transfer wrote game memory behind the CPU's back, as DMA does: cached
+// GX decodes of it are checked again (weak: absent without platform/gx).
+extern "C" __attribute__((weak)) void GXPC_MemoryWritten(const void* p, u32 n);
+
+s32 do_read(DVDFileInfo* fi, void* addr, s32 length, s32 offset)
+{
+	s32 n = do_read_raw(fi, addr, length, offset);
+	if (n > 0 && GXPC_MemoryWritten)
+		GXPC_MemoryWritten(addr, (u32)n);
+	return n;
 }
 
 } // namespace

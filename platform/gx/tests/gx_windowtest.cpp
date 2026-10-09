@@ -61,7 +61,10 @@ int main(int argc, char** argv) {
         GXPC_SetHeadless(0);
         GXPC_SetWidescreen(4.0f / 3.0f);
         expect(GXPC_InitAuto(4) && !GXPC_IsHeadless(), "real game window opens");
-        SDL_Window* window = SDL_GL_GetCurrentWindow();
+        // the game's window (its GL context may be current on the GL thread)
+        SDL_Window* window = nullptr;
+        for (Uint32 id = 1; id < 64 && !window; id++) window = SDL_GetWindowFromID(id);
+        expect(window != nullptr, "the game window can be found");
         if (!window) return 1;
         SDL_PumpEvents();
         int w, h, x, y, minW, minH;

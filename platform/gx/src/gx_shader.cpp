@@ -3,6 +3,7 @@
 // cached by the bytes of the state that shapes the code; everything numeric
 // (matrices, colours, references) is a uniform.
 #include "gx_internal.h"
+#include "gx_glthread.h"
 #include "gl_funcs.h"
 #include "gx_glcache.h"
 
@@ -11,6 +12,12 @@
 #include <string.h>
 #include <string>
 #include <unordered_map>
+#include <vector>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 namespace gx {
 
@@ -556,52 +563,17 @@ static std::unordered_map<ProgramKey, ShaderProgram, ProgramKeyHash> s_programs;
 static ProgramKey s_lastKey;
 static const ShaderProgram* s_lastProgram = nullptr;
 
-const ShaderProgram* shaderForCurrentState(bool depthOnly) {
-    ProgramKey key;
-    ShaderKey& k = key.k;
-    buildKey(k);
-    k.depthOnly = depthOnly;
-    key.indScale[0] = k.numInd ? g.bp[BP_RAS1_SS0] : 0;
-    key.indScale[1] = k.numInd ? g.bp[BP_RAS1_SS0 + 1] : 0;
-    // consecutive batches mostly share a program
-    if (s_lastProgram && key == s_lastKey) return s_lastProgram;
-    auto it = s_programs.find(key);
-    if (it != s_programs.end()) {
-        s_lastKey = key;
-        return s_lastProgram = &it->second;
-    }
-
-    g_statShaderCompiles++;
-    std::string vs = genVS(k), fs = genFS(k);
-    GLuint v = compile(GL_VERTEX_SHADER, vs), f = compile(GL_FRAGMENT_SHADER, fs);
-    GLuint p = glCreateProgram();
-    glAttachShader(p, v);
-    glAttachShader(p, f);
+static void bindAttributes(GLuint p) {
     static const char* attrs[] = {"a_pos", "a_nrm", "a_bin", "a_tan", "a_clr0", "a_clr1", "a_tex0", "a_tex1", "a_tex2",
                                   "a_tex3", "a_tex4", "a_tex5", "a_tex6", "a_tex7", "a_mtx"};
     for (GLuint i = 0; i < 15; i++) glBindAttribLocation(p, i, attrs[i]);
     glBindFragDataLocation(p, 0, "o_color");
-    glLinkProgram(p);
-    GLint ok = 0;
-    glGetProgramiv(p, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[4096];
-        glGetProgramInfoLog(p, sizeof log, nullptr, log);
-        logmsg("program link failed: %s", log);
-    }
-    glDeleteShader(v);
-    glDeleteShader(f);
-    ShaderProgram sp;
+}
+
+// A linked program's fixed bindings and uniform locations (on the GL thread).
+static void setupProgram(GLuint p, ShaderProgram& sp) {
     sp.prog = p;
     sp.uc.init = false;
-    sp.id = int(g_statShaderCompiles);
-    if (const char* dir = getenv("SMS_GX_DUMP_SHADERS")) {
-        char path[1024];
-        snprintf(path, sizeof path, "%s/prog%d.vs", dir, sp.id);
-        if (FILE* f = fopen(path, "w")) { fputs(vs.c_str(), f); fclose(f); }
-        snprintf(path, sizeof path, "%s/prog%d.fs", dir, sp.id);
-        if (FILE* f = fopen(path, "w")) { fputs(fs.c_str(), f); fclose(f); }
-    }
     glUseProgram(p);
     g_glc.prog = p;
     GLuint blk = glGetUniformBlockIndex(p, "XFBlock");
@@ -622,11 +594,208 @@ const ShaderProgram* shaderForCurrentState(bool depthOnly) {
     sp.uViewport = glGetUniformLocation(p, "u_vp");
     sp.uAmbMat = glGetUniformLocation(p, "u_chan");
     sp.uDstAlpha = -1;
+}
+
+static uint64_t sourceHash(const std::string& vs, const std::string& fs) {
+    return hashBytes(vs.data(), vs.size(), 0x5348u) ^ hashBytes(fs.data(), fs.size(), 0x4653u) * 0x9E3779B97F4A7C15ull;
+}
+
+// ------------------------------------------------------------------ program cache
+// Linked programs are kept on disk (glGetProgramBinary) and loaded at the
+// first draw of the next session, so a material seen before costs no compile
+// (a compile is a hitch of a few to tens of milliseconds, and a stage's
+// arrival compiles dozens). The file is per word size, in
+// $XDG_CACHE_HOME/sms-port (~/.cache/sms-port; ~/Library/Caches/sms-port on
+// macOS; %LOCALAPPDATA%\sms-port on Windows); it starts over when the GL
+// driver's vendor, renderer or version changes, and an entry is used only
+// while its key still generates the same GLSL. SMS_GX_SHADER_CACHE=path puts
+// it elsewhere; =0 turns it off.
+static const char kCacheMagic[8] = {'S', 'M', 'S', 'G', 'X', 'P', 'B', '1'};
+static std::string s_cachePath;
+static FILE* s_cacheOut = nullptr;  // appended to as programs are made
+static int s_cacheState = -1;       // -1 not set up, 0 off, 1 on
+
+static void makeDirs(const std::string& path) {
+    for (size_t i = 1; i <= path.size(); i++)
+        if (i == path.size() || path[i] == '/') {
+            std::string d = path.substr(0, i);
+#ifdef _WIN32
+            _mkdir(d.c_str());
+#else
+            mkdir(d.c_str(), 0755);
+#endif
+        }
+}
+
+static uint64_t driverId() {
+    std::string id;
+    for (GLenum e : {GL_VENDOR, GL_RENDERER, GL_VERSION, GL_SHADING_LANGUAGE_VERSION}) {
+        const char* v = reinterpret_cast<const char*>(glGetString(e));
+        id += v ? v : "?";
+        id += '\n';
+    }
+    return hashBytes(id.data(), id.size(), sizeof(ProgramKey));
+}
+
+static bool programCacheOn() { return s_cacheState == 1; }
+
+// Loads the cached programs (on the GL thread, at the first draw).
+static void programCacheLoad() {
+    s_cacheState = 0;
+    if (!glGetProgramBinary || !glProgramBinary || !glProgramParameteri) return;
+    GLint formats = 0;
+    glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS, &formats);
+    if (formats <= 0) return;
+    const char* e = getenv("SMS_GX_SHADER_CACHE");
+    if (e && !strcmp(e, "0")) return;
+    if (e && *e) {
+        s_cachePath = e;
+    } else {
+        std::string base;
+#ifdef _WIN32
+        if (const char* x = getenv("LOCALAPPDATA")) base = std::string(x) + "/sms-port";
+#elif defined(__APPLE__)
+        if (const char* h = getenv("HOME")) base = std::string(h) + "/Library/Caches/sms-port";
+#else
+        if (const char* x = getenv("XDG_CACHE_HOME")) base = std::string(x) + "/sms-port";
+        else if (const char* h = getenv("HOME")) base = std::string(h) + "/.cache/sms-port";
+#endif
+        if (base.empty()) return;
+        makeDirs(base);
+        s_cachePath = base + (sizeof(void*) == 8 ? "/gx-programs-64.bin" : "/gx-programs-32.bin");
+    }
+    const uint64_t driver = driverId();
+    unsigned loaded = 0, stale = 0;
+    bool keep = false;  // the file is this driver's: append to it
+    if (FILE* in = fopen(s_cachePath.c_str(), "rb")) {
+        char magic[8];
+        uint64_t fileDriver = 0;
+        uint32_t keySize = 0;
+        if (fread(magic, 8, 1, in) == 1 && !memcmp(magic, kCacheMagic, 8) && fread(&fileDriver, 8, 1, in) == 1 &&
+            fread(&keySize, 4, 1, in) == 1 && fileDriver == driver && keySize == sizeof(ProgramKey)) {
+            keep = true;
+            std::vector<uint8_t> bin;
+            for (;;) {
+                uint64_t srcHash;
+                ProgramKey key;
+                uint32_t format, len;
+                if (fread(&srcHash, 8, 1, in) != 1 || fread(&key, sizeof key, 1, in) != 1 ||
+                    fread(&format, 4, 1, in) != 1 || fread(&len, 4, 1, in) != 1 || len > (64u << 20))
+                    break;
+                bin.resize(len);
+                if (len && fread(bin.data(), len, 1, in) != 1) break;
+                if (s_programs.count(key) || sourceHash(genVS(key.k), genFS(key.k)) != srcHash) {
+                    stale++;
+                    continue;
+                }
+                GLuint p = glCreateProgram();
+                bindAttributes(p);
+                glProgramBinary(p, GLenum(format), bin.data(), GLsizei(len));
+                GLint ok = 0;
+                glGetProgramiv(p, GL_LINK_STATUS, &ok);
+                if (!ok) {
+                    glDeleteProgram(p);
+                    stale++;
+                    continue;
+                }
+                ShaderProgram& sp = s_programs[key];
+                sp.id = 0;
+                setupProgram(p, sp);
+                loaded++;
+            }
+        }
+        fclose(in);
+    }
+    if (stale > 64 && stale > loaded) keep = false;  // mostly unusable (repeated or rejected): start over
+    s_cacheOut = fopen(s_cachePath.c_str(), keep ? "ab" : "wb");
+    if (!s_cacheOut) return;
+    if (!keep) {
+        const uint32_t keySize = sizeof(ProgramKey);
+        fwrite(kCacheMagic, 8, 1, s_cacheOut);
+        fwrite(&driver, 8, 1, s_cacheOut);
+        fwrite(&keySize, 4, 1, s_cacheOut);
+        fflush(s_cacheOut);
+    }
+    s_cacheState = 1;
+    if (keep) logmsg("shader cache: %u programs loaded, %u skipped (%s)", loaded, stale, s_cachePath.c_str());
+    else logmsg("shader cache: new (%s)", s_cachePath.c_str());
+}
+
+static void programCacheStore(const ProgramKey& key, uint64_t srcHash, GLuint p) {
+    if (!s_cacheOut) return;
+    GLint len = 0;
+    glGetProgramiv(p, GL_PROGRAM_BINARY_LENGTH, &len);
+    if (len <= 0) return;
+    std::vector<uint8_t> bin(static_cast<size_t>(len));
+    GLenum format = 0;
+    GLsizei got = 0;
+    glGetProgramBinary(p, len, &got, &format, bin.data());
+    if (got <= 0) return;
+    const uint32_t fmt = format, n = uint32_t(got);
+    fwrite(&srcHash, 8, 1, s_cacheOut);
+    fwrite(&key, sizeof key, 1, s_cacheOut);
+    fwrite(&fmt, 4, 1, s_cacheOut);
+    fwrite(&n, 4, 1, s_cacheOut);
+    fwrite(bin.data(), n, 1, s_cacheOut);
+    fflush(s_cacheOut);
+}
+
+const ShaderProgram* shaderForCurrentState(bool depthOnly) {
+    if (s_cacheState < 0) glt::sync([] { programCacheLoad(); });
+    ProgramKey key;
+    ShaderKey& k = key.k;
+    buildKey(k);
+    k.depthOnly = depthOnly;
+    key.indScale[0] = k.numInd ? g.bp[BP_RAS1_SS0] : 0;
+    key.indScale[1] = k.numInd ? g.bp[BP_RAS1_SS0 + 1] : 0;
+    // consecutive batches mostly share a program
+    if (s_lastProgram && key == s_lastKey) return s_lastProgram;
+    auto it = s_programs.find(key);
+    if (it != s_programs.end()) {
+        s_lastKey = key;
+        return s_lastProgram = &it->second;
+    }
+
+    g_statShaderCompiles++;
+    std::string vs = genVS(k), fs = genFS(k);
+    ShaderProgram sp;
+    // made on the GL thread in one go: each query below would otherwise
+    // wait for it on its own (gx_glthread.h)
+    glt::sync([&] {
+        GLuint v = compile(GL_VERTEX_SHADER, vs), f = compile(GL_FRAGMENT_SHADER, fs);
+        GLuint p = glCreateProgram();
+        glAttachShader(p, v);
+        glAttachShader(p, f);
+        bindAttributes(p);
+        glLinkProgram(p);
+        GLint ok = 0;
+        glGetProgramiv(p, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char log[4096];
+            glGetProgramInfoLog(p, sizeof log, nullptr, log);
+            logmsg("program link failed: %s", log);
+        }
+        glDeleteShader(v);
+        glDeleteShader(f);
+        sp.id = int(g_statShaderCompiles);
+        if (const char* dir = getenv("SMS_GX_DUMP_SHADERS")) {
+            char path[1024];
+            snprintf(path, sizeof path, "%s/prog%d.vs", dir, sp.id);
+            if (FILE* f = fopen(path, "w")) { fputs(vs.c_str(), f); fclose(f); }
+            snprintf(path, sizeof path, "%s/prog%d.fs", dir, sp.id);
+            if (FILE* f = fopen(path, "w")) { fputs(fs.c_str(), f); fclose(f); }
+        }
+        setupProgram(p, sp);
+        if (ok) programCacheStore(key, sourceHash(vs, fs), p);
+    });
     s_lastKey = key;
     return s_lastProgram = &(s_programs[key] = sp);
 }
 
 void shaderShutdown() {
+    if (s_cacheOut) fclose(s_cacheOut);
+    s_cacheOut = nullptr;
+    s_cacheState = -1;
     for (auto& kv : s_programs) glDeleteProgram(kv.second.prog);
     s_programs.clear();
     s_lastProgram = nullptr;

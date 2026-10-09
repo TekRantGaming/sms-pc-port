@@ -40,6 +40,8 @@ struct Host {
 	bool cancelled;
 	bool irq_enabled; // saved interrupt-enable state while switched out
 	u64 last_ran;
+	unsigned spin_misses; // switches in a row whose spin ran out before the turn came
+	unsigned spin_skips;  // switches that did not spin since the last that did
 };
 
 pthread_mutex_t g_cpu = PTHREAD_MUTEX_INITIALIZER;
@@ -220,18 +222,22 @@ static inline void cpu_relax()
 // (a message to a higher-priority thread that answers at once: the draw-sync
 // thread, several times a frame), and a host wake-up costs far more than that
 // (over 100 us under Rosetta). So the switched-out thread watches for its turn
-// for a while before it sleeps on its condition variable.
+// for a while before it sleeps on its condition variable. A thread whose
+// last two spins ran out (it waits for a message a frame away, not for an
+// answer) goes straight to sleep, trying a spin again every 16th switch:
+// spinning there only burns power, which a handheld's GPU shares.
 const u64 kSpinNs = 100000;
 
-void spin_for_turn(OSThread* self)
+// True if the turn came while spinning.
+bool spin_for_turn(OSThread* self)
 {
 	const u64 until = spin_clock_ns() + kSpinNs;
 	for (int i = 1;; i++) {
 		if (g_cur_spin.load(std::memory_order_acquire) == self)
-			return;
+			return true;
 		cpu_relax();
 		if ((i & 63) == 0 && spin_clock_ns() >= until)
-			return;
+			return false;
 	}
 }
 
@@ -291,7 +297,10 @@ void switch_to(OSThread* self, OSThread* next, bool exiting)
 	}
 	if (g_cur != self) {
 		pthread_mutex_unlock(&g_cpu);
-		spin_for_turn(self);
+		if (hs->spin_misses < 2 || (++hs->spin_skips & 15) == 0) {
+			hs->spin_skips = 0;
+			hs->spin_misses = spin_for_turn(self) ? 0 : hs->spin_misses + 1;
+		}
 		pthread_mutex_lock(&g_cpu);
 	}
 	while (g_cur != self) {

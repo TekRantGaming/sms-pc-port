@@ -106,6 +106,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `SMS_DISPLAY=n` | the monitor to open on (0 is the primary one; by default, the one under the mouse) |
 | `SMS_VSYNC=1` | wait for the display's refresh; `adaptive` shows a late frame at once instead of waiting a whole refresh |
 | `SMS_MSAA=n` | multisample anti-aliasing with 2, 4 or 8 samples (up to what the GPU supports) |
+| `SMS_GX_GL_THREAD=0` | keep OpenGL on the game's own thread instead of a thread of its own (for troubleshooting a graphics driver) |
 | `SMS_FXAA=1` | FXAA on the final picture, smoothing edges MSAA leaves (alpha-tested foliage, fences) |
 | `SMS_SHARPEN=n` | contrast-adaptive sharpening of the final picture, 0 to 100 |
 | `SMS_GAMMA=x` | brightness curve: 1.0 is unchanged, above 1 is brighter (0.3 to 3) |
@@ -133,7 +134,7 @@ The debug overlay (backtick) shows where each frame's time goes:
 
 - `game`: the game's own code (and the GX commands it writes).
 - `GX`: the renderer, split into `vertices` (loading GX vertices), `batches` (issuing draws), `textures`, `copies` (EFB copies) and `peeks`.
-  `waiting for the GPU` is the part of it spent blocked on the GPU.
+  `waiting for the GPU` is the part of it spent blocked on the GPU, or on the thread that hands the frame to the graphics driver.
 - `present` and `swap`: drawing the frame to the window and `SDL_GL_SwapWindow`.
 - `idle`: the game waiting for the next retrace, which is spare time.
 

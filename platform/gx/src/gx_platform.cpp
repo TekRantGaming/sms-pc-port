@@ -5,6 +5,7 @@
 // surface.  GXInit brings this up automatically if the host has not called
 // GXPC_Init itself, and every GXCopyDisp presents the XFB to the window.
 #include "gx_internal.h"
+#include "gx_glthread.h"
 #include "gx_window_layout.h"
 #include "sms_gx/gx_pc.h"
 
@@ -390,6 +391,10 @@ bool openWindow(float scale) {
         logmsg("mouse look on (F10 releases the mouse)");
         captureMouse((SDL_GetWindowFlags(s_window) & SDL_WINDOW_INPUT_FOCUS) != 0);
     }
+    // the context moves to the GL thread (gx_glthread.h)
+    SDL_GL_MakeCurrent(s_window, nullptr);
+    if (glt::start([](void*) { SDL_GL_MakeCurrent(s_window, s_glctx); }, nullptr)) glt::installProxies();
+    else SDL_GL_MakeCurrent(s_window, s_glctx);
     return true;
 }
 
@@ -493,7 +498,18 @@ bool openHeadless(float scale) {
         logmsg("headless: no EGL OpenGL 3.3 context (try LIBGL_ALWAYS_SOFTWARE=1)");
         return false;
     }
-    return GXPC_Init(eglGetProc, scale) != 0;
+    if (!GXPC_Init(eglGetProc, scale)) return false;
+    // the context moves to the GL thread (gx_glthread.h)
+    static EGLDisplay dpy;
+    static EGLSurface surf;
+    static EGLContext ctx;
+    dpy = eglGetCurrentDisplay();
+    surf = eglGetCurrentSurface(EGL_DRAW);
+    ctx = eglGetCurrentContext();
+    eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (glt::start([](void*) { eglMakeCurrent(dpy, surf, surf, ctx); }, nullptr)) glt::installProxies();
+    else eglMakeCurrent(dpy, surf, surf, ctx);
+    return true;
 }
 #endif
 
@@ -532,6 +548,37 @@ void onDisplayCopy(const void* xfb) {
     else GXPC_Present(xfb);
 }
 }  // namespace
+
+namespace gx {
+// GXPC_Shutdown: the GL thread ends and the context is current on the
+// calling thread again, so the caller may destroy it.
+void releaseGlThread() {
+    if (!glt::active()) return;
+#ifdef SMS_GX_HAVE_SDL2
+    if (s_mode == MODE_WINDOW && s_window) {
+        glt::sync([] { SDL_GL_MakeCurrent(s_window, nullptr); });
+        glt::stop();
+        SDL_GL_MakeCurrent(s_window, s_glctx);
+        return;
+    }
+#endif
+#ifdef SMS_GX_HAVE_EGL
+    EGLDisplay dpy = EGL_NO_DISPLAY;
+    EGLSurface surf = EGL_NO_SURFACE;
+    EGLContext ctx = EGL_NO_CONTEXT;
+    glt::sync([&] {
+        dpy = eglGetCurrentDisplay();
+        surf = eglGetCurrentSurface(EGL_DRAW);
+        ctx = eglGetCurrentContext();
+        if (dpy != EGL_NO_DISPLAY) eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    });
+    glt::stop();
+    if (dpy != EGL_NO_DISPLAY) eglMakeCurrent(dpy, surf, surf, ctx);
+#else
+    glt::stop();
+#endif
+}
+}  // namespace gx
 
 extern "C" {
 
@@ -632,19 +679,38 @@ void GXPC_Present(const void* xfb) {
     if (s_mode == MODE_WINDOW && s_window) {
         int w = 0, h = 0;
         SDL_GL_GetDrawableSize(s_window, &w, &h);
-        double t0 = nowSeconds();
+        double t0 = 0, t1 = 0, tSwapped = 0;
         const bool hdr = hdrActive();
-        if (hdr && !hdrFrameBegin(w, h)) return;  // minimised: nothing to show
-        GXPC_PresentXFB(xfb, w, h);
-        GXPC_OverlayDraw(w, h);
-        double t1 = nowSeconds();
-        if (hdr) hdrFramePresent(s_vsync != 0);
-        else SDL_GL_SwapWindow(s_window);
+        // on the GL thread, after what the frame queued before (the frame's
+        // own work, which is not timed as presenting); this thread waits for
+        // the swap, as it did when it made it
+        bool shown = true;
+        const double waited0 = glt::waitedSeconds();
+        glt::sync([&] {
+            t0 = nowSeconds();
+            if (hdr && !hdrFrameBegin(w, h)) {  // minimised: nothing to show
+                shown = false;
+                return;
+            }
+            GXPC_PresentXFB(xfb, w, h);
+            GXPC_OverlayDraw(w, h);
+            t1 = nowSeconds();
+            if (hdr) hdrFramePresent(s_vsync != 0);
+            else SDL_GL_SwapWindow(s_window);
+            tSwapped = nowSeconds();
+        });
+        {  // the wait for the frame's queued work counts as GX's, the rest is presenting
+            const double waited = glt::waitedSeconds() - waited0;
+            g_presentWaited += waited;
+            g_presentDrain += std::max(0.0, waited - (shown ? tSwapped - t0 : 0.0));
+        }
+        if (!shown) return;
+        const double tBack = nowSeconds();
         waitSimulatedRefresh();
         double t2 = nowSeconds();
         g_presentSeconds += t1 - t0;
-        g_swapSeconds += t2 - t1;
-        s_lastPresent = t2 - t0;
+        g_swapSeconds += (tSwapped - t1) + (t2 - tBack);
+        s_lastPresent = (tSwapped - t0) + (t2 - tBack);
         s_presentCost += (s_lastPresent - s_presentCost) * 0.1;
         GXPC_EndPresent();
         sms_gx_pump_events();

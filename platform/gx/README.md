@@ -34,11 +34,12 @@ The renderer reads its state only from that register file, so API calls, GD disp
 | File | Role |
 | --- | --- |
 | `src/gx_api.cpp` | GX API: register encoding, texture/TLUT/light objects, getters, FIFO objects, perf/verify stubs, helper shapes |
-| `src/gx_fifo.cpp` | Register file, the BP/CP/XF command parser, the vertex loader (direct, index8 and index16 attributes, every component type and fraction), the write-gather pipe, and the physical-address window |
+| `src/gx_fifo.cpp` | Register file, the BP/CP/XF command parser, the vertex loader (direct, index8 and index16 attributes, every component type and fraction), the display-list cache, the write-gather pipe, the memory write stamps, and the physical-address window |
 | `src/gx_shader.cpp` | Generates GLSL from the register state. The vertex shader covers position/normal matrices, the GX projection and viewport, texgen (regular, post-transform/dual-tex, colour, approximate emboss) and lighting (8 lights, diffuse/spot/specular attenuation). The fragment shader covers up to 16 TEV stages in integer math, swap tables, konst selection, compare modes, 4 indirect stages, alpha compare and fog. Programs are cached by the state bytes that shape the code. |
 | `src/gx_texture.cpp` | Decoders for I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8, CMPR, C4, C8 and C14X2 with IA8/RGB565/RGB5A3 TLUTs. The GL texture cache is keyed by address, format, size, mip levels and TLUT, and content hashes are re-checked after an invalidate. |
 | `src/gx_render.cpp` | EFB as an FBO (640×528 × scale). Batches primitives (quads, strips and fans become triangle lists). Maps blend, logic-op, depth, cull, scissor, colour/alpha-update and dst-alpha state. Handles EFB copies (display copies become XFB textures; texture copies go through a format-converting pass that includes intensity/YUV, R/G/B/A/RG/GB and Z formats), XFB presentation and EFB peeks. |
 | `src/gx_platform.cpp` | Creates the SDL2 window or headless EGL context, presents on `GXCopyDisp`, pumps events and handles the command-line and environment switches |
+| `src/gx_glthread.cpp` | The GL thread and its command queue; `src/gl_loader.cpp` turns the GL entry points into proxies that queue work for it |
 | `src/gx_vert.cpp` | `GXPosition3f32` and the other vertex writers as real functions |
 | `src/gl_loader.cpp` | Loads the GL 3.3 entry points through the host's get-proc function, so nothing links against libGL |
 | decomp `libs/dolphin/src/gd/*.c` | GD, compiled unchanged from the decompiled SDK with `src/gd_host_prefix.h` force-included |
@@ -88,7 +89,42 @@ The renderer reads its state only from that register file, so API calls, GD disp
    Events are also pumped after every present.
    Game controllers are opened as they are plugged in, and closing the window exits the process.
 8. **Threads.**
-   All GX calls must come from the thread that ran `GXInit`, which owns the GL context.
+   GX calls come from the game's threads, one at a time (as `platform/os` runs them).
+   OpenGL runs on a thread of its own once the window or headless context is ready (see Performance below); `SMS_GX_GL_THREAD=0` keeps it on the thread that ran `GXInit`.
+
+## Performance
+
+What a heavy frame (the scripted Delfino Plaza view, about 730 draws and 170,000 vertices) costs the game's thread, and what keeps it down:
+
+- **Display-list cache** (`callDisplayList`, `gx_fifo.cpp`).
+  Nearly all vertices come from display lists the game calls every frame (J3D shapes).
+  The first call of a list decodes it as usual and keeps the packed vertices and batch indices; later calls reuse them while everything the decode read is unchanged (vertex descriptor and formats, array bases, strides and byte order, default matrix indices, the list's bytes and the array elements it indexes).
+  The kept vertices and indices also go into a GPU buffer once (the *arena*, `gx_render.cpp`), so a batch draws them in place with one multi-draw instead of copying them each frame.
+  Lists that only set state (J3D materials, vertex formats) are kept decoded into register writes; lists that both set state and draw are parsed every time.
+  `SMS_GX_DL_CACHE=0` turns the cache off; `SMS_GX_DL_ARENA=0` copies the kept vertices into each batch instead.
+- **Write stamps.**
+  Every write the renderer is told about (`DCFlushRange`/`DCStoreRange`, DVD and ARAM transfers, `DCZeroRange`, copy write-backs) stamps the 4 KiB pages it covers.
+  The display-list cache and the texture cache compare their source bytes by hash only when a stamp touched them, and every 30 (lists) or 8 (textures) frames regardless, for writes nothing reported; a list caught changing without a stamp is compared on every call from then on.
+  `SMS_GX_HASH_ALWAYS=1` compares by hash on every use, as before the stamps.
+- **Stream buffer.**
+  Per-draw data (streamed vertices, indices, the XF block) goes into a 128 MiB ring that, with `ARB_buffer_storage` (GL 4.4; not macOS), stays mapped, so a batch costs no map and unmap. `SMS_GX_PERSISTENT_MAP=0` maps each batch's range instead.
+- **EFB copy write-backs are encoded on the GPU**: a pass writes the copy's GX tile layout (scaled to the texels the game sees) and only those bytes are read back. `SMS_GX_COPY_VERIFY=1` also encodes each write-back on the CPU and logs any difference.
+- **MSAA**: a copy or peek resolves only the region and buffers it reads, and nothing already resolved since the last draw.
+- **Shader programs are kept on disk** (`gx_shader.cpp`): each linked program's binary (`glGetProgramBinary`) goes to `gx-programs-<32|64>.bin` in `$XDG_CACHE_HOME/sms-port` (`~/.cache/sms-port`; `~/Library/Caches/sms-port` on macOS; `%LOCALAPPDATA%\sms-port` on Windows), and the next session loads them all at its first draw, so materials seen before cost no compile (a stage's arrival compiles dozens, a hitch of up to 100 ms). The file starts over when the GL driver changes, and an entry is used only while its key still generates the same GLSL. `SMS_GX_SHADER_CACHE=path` puts it elsewhere; `=0` turns it off.
+- **The GL thread** (`gx_glthread.cpp`).
+  Once the context is ready it moves to a thread of its own, and the GL entry points become proxies: calls without results are queued, calls that return something wait for the GL thread, and pointers are copied (or are offsets into bound buffers).
+  The driver's time for each draw and state change then leaves the game's thread.
+  The GL thread sleeps when it has nothing to do and is woken once a few dozen KiB of commands have collected or when the game needs an answer.
+  Presenting runs on it while the game's thread waits for the swap, as before, so frame pacing is unchanged.
+  The results the game reads a frame late (copy write-backs, peek snapshots, pixel-metric queries) are fetched by the GL thread as soon as their frame is shown.
+  `SMS_GX_GL_THREAD=0` keeps GL on the game's thread. 32-bit Windows always does (its GL entry points are `__stdcall`).
+
+| Heavy plaza view, 120 fps, i5-6600K + GTX 1060 (Linux, 64-bit) | before | after |
+| --- | --- | --- |
+| 4:3, 1x | 9.5 ms/frame | 3.6 ms/frame |
+| 16:9, 1x | 10.3 ms/frame | 3.9 ms/frame |
+| 16:9, 2x, 4x MSAA | 11.6 ms/frame | 4.0 ms/frame |
+| Eclipse, Fire Petey | 9.8 ms/frame | 3.7 ms/frame |
 
 ## Debugging aids
 
@@ -101,7 +137,8 @@ The renderer reads its state only from that register file, so API calls, GD disp
 - `SMS_GX_DUMP_SHADERS=dir` writes every generated program as `dir/prog<id>.vs/.fs`; traces name the program each draw used.
 - `SMS_GX_STATS=n` logs, every n display frames, draws/vertices per frame, shader compiles, texture uploads, the milliseconds per frame spent in sms_gx (split into textures, batches, EFB copies, peeks and GPU waits), how many reads per frame made the CPU wait for the GPU, GL calls per frame (in total and for the most-called entry points), batch flushes, texture bytes hashed, vertex-loader time and idle time.
   Without it (and with the overlay closed) only the overall sms_gx time is measured; the other timers read the clock per primitive and per texture bind.
-- `GXPC_GetTimes` gives the same breakdown as totals for the overlay; see `gx_pc.h`.
+- `GXPC_GetTimes` gives the same breakdown as totals for the overlay; see `gx_pc.h`. With the GL thread, the game's waits for it count as GPU waits.
+- `SMS_GX_COPY_VERIFY=1` checks every EFB copy write-back's GPU encoding against the CPU encoder (`encodeTexture`).
   On this machine the 32-bit build renders with Mesa llvmpipe (no 32-bit NVIDIA GL is installed), so GPU work shows up as CPU time at the first sync point, usually the EFB copy.
 
 ## Coverage against `api-surface.tsv`
@@ -173,7 +210,7 @@ Without them it still compiles, but only a host-supplied context (`GXPC_Init(get
   `GXSetZCompLoc(GX_TRUE)` on a depth-writing draw whose alpha test can reject uses `ARB_shader_image_load_store`'s early fragment tests so alpha-rejected pixels still write depth, as on GX. Contexts without the extension use ordered colour/depth passes per primitive for those draws. `SMS_GX_FORCE_EARLY_Z_FALLBACK=1` exercises that fallback. This keeps later shadow-volume masks behind foreground depth (issue #33).
   Other draws keep the late test even with early Z on: early fragment tests also count occlusion-query samples before the alpha test's `discard`, and the pollution counters draw with `ReInitializeGX`'s early Z, Z off and an alpha test (with every texel counted, Noki Bay's wall rocks never rose).
 - **EFB copies are also written back to RAM.**
-  Every texture copy is read back and stored in its GX tile layout (the GL copy stays as the sampling fast path), because the game reads some on the CPU: Delfino's goop map (`TPollutionLayer::isPolluted`) is updated only by EFB copies. A `DCFlushRange`/`DCStoreRange` over a copy drops the GL copy so RAM wins again. `SMS_GX_COPY_WRITEBACK=0` turns write-back off; `SMS_GX_COPY_LOG=n` logs the first n write-backs.
+  Every texture copy is encoded into its GX tile layout on the GPU, read back and stored (the GL copy stays as the sampling fast path), because the game reads some on the CPU: Delfino's goop map (`TPollutionLayer::isPolluted`) is updated only by EFB copies. A `DCFlushRange`/`DCStoreRange` over a copy drops the GL copy so RAM wins again. `SMS_GX_COPY_WRITEBACK=0` turns write-back off; `SMS_GX_COPY_LOG=n` logs the first n write-backs.
 - **Pixel metrics** (`GXClearPixMetric`/`GXReadPixMetric`) count samples that pass (a GL occlusion query) plus 4 per triangle, which the pollution counters subtract again; copy passes and the early-Z fallback's depth passes are not counted. A depth-writing, alpha-tested early-Z draw through the extension would count its alpha-rejected samples; the game reads metrics only around draws with Z off.
 - **GPU reads arrive one frame late.**
   A synchronous read makes the CPU wait until the GPU has drawn everything queued, so the two stop overlapping (the plaza made 30–85 such reads a frame).

@@ -308,6 +308,19 @@ Measured headless on the 32-bit Linux build (Mesa llvmpipe software GL), 2026-09
   The GL state is shadowed and only changes are sent, samplers and uniforms are cached, each batch's vertices, indices and XF block go into one streamed buffer through one map, and the loader keeps packed per-format vertices and per-VAT readers.
   What is left on the game thread is mostly the game itself, the vertex loader and the EFB-copy write-back (`encodeTexture`, `hashBytes`); on llvmpipe the rest is rasterisation.
   The overlay's frame breakdown (README, "Frame rate") shows the same split on any machine.
+- **Delfino Plaza, 2026-10-09** (the heavy scripted plaza view at 120 fps, headless, i5-6600K + GTX 1060, 64-bit; `platform/gx/README.md`, "Performance"):
+
+  | | before | after |
+  | --- | --- | --- |
+  | game thread, 4:3 1x | 9.5 ms/frame | 3.6 ms/frame |
+  | game thread, 16:9 2x with 4x MSAA | 11.6 ms/frame | 4.0 ms/frame |
+  | game thread, 32-bit build, 4:3 1x | 13.1 ms/frame | 5.1 ms/frame |
+  | vertex loading | 2.4 ms/frame | 0.07 ms/frame |
+  | texture data hashed | 1,290 KiB/frame | 200 KiB/frame |
+  | `glMapBufferRange` + `glUnmapBuffer` | ~1,470/frame | ~8/frame |
+
+  Display lists are decoded once and drawn from a GPU buffer, sources are re-hashed only after a reported write (or every few frames), copy write-backs are encoded on the GPU, and the GL driver's work runs on a thread of its own.
+  The deterministic title, plaza, gate and Eclipse captures are unchanged on NVIDIA and llvmpipe, in a window and headless.
 - **Widescreen** (`SMS_WIDESCREEN`): the game camera is widened by a port patch and sms_gx maps each draw into the wider EFB (`drawXMap` in `gx_render.cpp`).
   The HUD stays 4:3 in the middle by default.
   With `SMS_WIDESCREEN_HUD=edges` the gameplay HUD is anchored to the screen edges per piece, not per 2D batch (which pulls composite panes apart): `TGCConsole2::perform` marks its HUD drawing (`GXPC_SetHud`), and `J2DPane::draw` brackets each pane with its extent (`GXPC_HudPaneBegin`/`End`, patch `widescreen-03`).

@@ -168,6 +168,12 @@ static inline void gx_invalidate(void* p, u32 n)
 	if (GXPC_InvalidateRange)
 		GXPC_InvalidateRange(p, n);
 }
+extern "C" __attribute__((weak)) void GXPC_MemoryWritten(const void* p, u32 n);
+static inline void gx_written(void* p, u32 n)
+{
+	if (GXPC_MemoryWritten)
+		GXPC_MemoryWritten(p, n);
+}
 extern "C" void DCInvalidateRange(void*, u32) {}
 extern "C" void DCFlushRange(void* p, u32 n)
 {
@@ -177,7 +183,11 @@ extern "C" void DCFlushRange(void* p, u32 n)
 extern "C" void DCStoreRange(void* p, u32 n) { gx_invalidate(p, n); }
 extern "C" void DCFlushRangeNoSync(void* p, u32 n) { gx_invalidate(p, n); }
 extern "C" void DCStoreRangeNoSync(void* p, u32 n) { gx_invalidate(p, n); }
-extern "C" void DCZeroRange(void* addr, u32 n) { memset(addr, 0, n); }
+extern "C" void DCZeroRange(void* addr, u32 n)
+{
+	memset(addr, 0, n);
+	gx_written(addr, n);
+}
 extern "C" void DCTouchRange(void*, u32) {}
 extern "C" void ICInvalidateRange(void*, u32) {}
 extern "C" void LCEnable(void) {}

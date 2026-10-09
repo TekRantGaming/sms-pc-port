@@ -6,6 +6,10 @@
 #include <dolphin/ar.h>
 #include <dolphin/arq.h>
 
+// DMA into main memory: cached GX decodes of it are checked again (weak:
+// absent without platform/gx).
+extern "C" __attribute__((weak)) void GXPC_MemoryWritten(const void* p, u32 n);
+
 namespace {
 const u32 kAramSize = 16u << 20;
 const u32 kAramBase = 0x4000;
@@ -20,9 +24,11 @@ void copy(u32 type, u32 src, u32 dst, u32 len)
 		else
 			port_log("[ar] write out of range 0x%x+0x%x\n", dst, len);
 	} else {
-		if (src + len <= kAramSize)
+		if (src + len <= kAramSize) {
 			memcpy((void*)(uintptr_t)dst, g_aram + src, len);
-		else
+			if (GXPC_MemoryWritten)
+				GXPC_MemoryWritten((void*)(uintptr_t)dst, len);
+		} else
 			port_log("[ar] read out of range 0x%x+0x%x\n", src, len);
 	}
 }

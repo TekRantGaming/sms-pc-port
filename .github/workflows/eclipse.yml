@@ -93,9 +93,9 @@ jobs:
           else python3 tools/mods/tests/test_object_response.py; fi
       - name: Build Eclipse
         run: ./build.sh
-      - name: Check Mario flag masks
+      - name: Check SHI flag masks
         if: runner.os == 'Linux' && matrix.eclipse == '1'
-        run: python3 tools/mods/test_mario_flags.py build/linux-64-eclipse/eclipse-src/shi --compiler clang++ --arch 64
+        run: python3 tools/mods/test_shi_flags.py build/linux-64-eclipse/eclipse-src/shi --compiler clang++ --arch 64
       - name: Check whether the mods are linked in
         run: |
           if [[ "$RUNNER_OS" == Linux ]]; then os=linux; elif [[ "$RUNNER_OS" == macOS ]]; then os=macos; else os=windows; fi

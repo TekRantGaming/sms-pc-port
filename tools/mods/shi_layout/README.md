@@ -13,11 +13,11 @@ These tools do that, and produce `platform/mods/eclipse/shi-layout.patch`, which
   `vlate.py` finds these classes from the declarations (decomp and SHI) and `retail.py` moves their vtable pointers to rebuild the retail layout.
 - **8-byte members** on 32-bit hosts: i386 aligns them to 4; `src/port_include/dolphin/types.h` and `-malign-double` for the mods restore the GameCube's 8.
 - Counts SHI declares `size_t` (64-bit on LP64) where the game stores 32-bit words: `fixup_sources.py` retypes the ones in templates; `gen_layout.py` the ones in classes.
-- Mario's current and previous attribute flags are declared from bit 31 down to bit 0 for the GameCube.
-  Native compilers allocate bitfields in the opposite order, so `fixup_sources.py` reverses these declarations after applying the layout patch and gives every field the same `u32` storage type for Windows compatibility.
-  This preserves the game's numeric masks: in particular, enabling FLUDD must set `0x8000`, which the tutorial uses when entering its rocket and turbo sections.
+- Flag words SHI declares as bitfields (Mario's current and previous attribute flags, `TLiveActor`'s live flags, `TModelWaterManager`'s light flags and `TMarioGamePad`'s flags) are declared from the word's top bit down for the GameCube.
+  Native compilers allocate bitfields in the opposite order, so `fixup_sources.py` reverses these declarations after applying the layout patch and gives every field the game word's type (`u32` or `u16`) for Windows compatibility.
+  This preserves the game's numeric masks: enabling FLUDD must set `0x8000`, which the tutorial uses when entering its rocket and turbo sections, and the NPC carry tests must read `mCanBeTaken` as `LIVE_FLAG_UNK100000` (`0x100000`), which Shadow Mario sets on Peach before he takes her in Delfino Plaza.
 
-Check the fixed-up Mario flag declarations with `python3 tools/mods/test_mario_flags.py build-ecl/eclipse-src/shi --compiler clang++`.
+Check the fixed-up flag declarations with `python3 tools/mods/test_shi_flags.py build-ecl/eclipse-src/shi --compiler clang++`.
 The check covers both host widths and native and Microsoft bitfield allocation rules, including reading, setting, and clearing each known flag without changing neighbouring bits.
 
 ## How a class is re-laid out

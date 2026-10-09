@@ -502,24 +502,44 @@ SHI_FIXES = BOOL_RET_FIXES + SHI_WORD_FIXES + SHI_GAME_TYPES + [
 ]
 
 
-def native_mario_flags(match):
+def native_flags(storage):
     """Keep the game's numeric flag masks on little-endian native hosts."""
-    fields = match.group("fields").strip("\n").splitlines()
-    # SHI declares these from bit 31 down to bit 0 for the GameCube.
-    # Native compilers allocate from bit 0 up: keeping that order gives
-    # mHasFludd 0x10000 instead of the game's MARIO_FLAG_HAS_FLUDD (0x8000).
-    # Use one storage type too: MS bitfield layout separates bool and u32
-    # allocation units, whereas the game stores all flags in one u32.
-    fields = [re.sub(r"\bbool\b", "u32", field) for field in reversed(fields)]
-    return "struct {\n" + "\n".join(fields) + "\n    } " + match.group("name") + ";"
+    def fix(match):
+        fields = match.group("fields").strip("\n").splitlines()
+        # SHI declares these from the word's top bit down for the GameCube.
+        # Native compilers allocate from bit 0 up: keeping that order gives
+        # mHasFludd 0x10000 instead of the game's MARIO_FLAG_HAS_FLUDD (0x8000).
+        # Use the game word's type for every field too: MS bitfield layout
+        # separates bool, u8 and u32 allocation units, whereas the game stores
+        # all flags in one u32 or u16.
+        fields = [re.sub(r"\b(?:bool|u8|u16|u32)\b", storage, field) for field in reversed(fields)]
+        return "struct {\n" + "\n".join(fields) + "\n    } " + match.group("name") + ";"
+    return fix
 
 
-# Run after shi-layout.patch, which duplicates mAttributes for the two host
+# A run of bitfield declarations, as SHI writes them.
+FLAG_FIELDS = r"(?P<fields>(?:\s*(?:u8|u16|u32|bool) \w+\s*: \d+;\n)+)\s*"
+
+# Run after shi-layout.patch, which duplicates some of these for the two host
 # widths. Keeping this separate also preserves the fix when layouts regenerate.
 SHI_NATIVE_FLAG_FIXES = [
     ("include/SMS/Player/Mario.hxx",
      r"struct \{\n(?P<fields>\s*u32 _04\s*: 10;\n(?:\s*(?:u32|bool) \w+\s*: \d+;\n)+)\s*\} (?P<name>mAttributes|mPrevAttributes);",
-     native_mario_flags, "Mario's current and previous flags use the game's numeric masks"),
+     native_flags("u32"), "Mario's current and previous flags use the game's numeric masks"),
+    # TLiveActor::mLiveFlag: BetterSunshineEngine's and Eclipse's NPC carry
+    # tests read mCanBeTaken, the game's LIVE_FLAG_UNK100000 (0x100000), which
+    # Shadow Mario sets on Peach before he takes her; natively it was 0x800,
+    # so Peach refused him and he tried to take her forever.
+    ("include/SMS/Strategic/LiveActor.hxx", r"struct \{\n" + FLAG_FIELDS + r"\} (?P<name>asFlags);",
+     native_flags("u32"), "live actors' flags use the game's numeric masks"),
+    # TModelWaterManager's u16 at 0x5D60 (mShowShadow 0x100, as the game's
+    # unk5D60 &= ~0x100), which Eclipse's darkness sets.
+    ("include/SMS/Manager/ModelWaterManager.hxx", r"struct \{\n" + FLAG_FIELDS + r"\} (?P<name>LightType);",
+     native_flags("u16"), "the water manager's light flags use the game's numeric masks"),
+    # TMarioGamePad::mFlags (u16): mDisable 0x400, mReadInput 0x2, which
+    # BetterSunshineEngine sets around its warps and menus.
+    ("include/SMS/Player/MarioGamePad.hxx", r"struct \{\n" + FLAG_FIELDS + r"\} (?P<name>mState);",
+     native_flags("u16"), "the game pad's flags use the game's numeric masks"),
 ]
 
 

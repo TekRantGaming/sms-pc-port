@@ -28,6 +28,12 @@
 #define STB_IMAGE_STATIC
 #include "third_party/stb_image.h"
 
+// The GX images go in a GXTexObj, which holds 32-bit addresses on 64-bit hosts
+// (PTR32), so they need memory below 4 GiB: the port runtime's
+// port_low_alloc. The standalone GX tests link without the runtime, and their
+// GXTexObj holds whole pointers, so this weak one stands in there.
+extern "C" __attribute__((weak)) void* port_low_alloc(unsigned long size) { return malloc(size); }
+
 namespace {
 
 enum Style { S_GAMECUBE, S_XBOX, S_PLAYSTATION, S_STEAMDECK, S_KEYBOARD, S_COUNT };
@@ -36,7 +42,7 @@ const int kCell = 64, kGlyphs = 8;
 
 struct Atlas {
     bool tried = false, ok = false;
-    std::vector<uint8_t> tex[kGlyphs];   // GX RGBA8, 64x64 each
+    uint8_t* tex[kGlyphs] = {};          // GX RGBA8, 64x64 each, below 4 GiB
     std::vector<uint8_t> rgba[kGlyphs];  // the same, row-major RGBA
 };
 
@@ -67,8 +73,7 @@ void init() {
 
 // RGBA pixels (row-major) to the GX RGBA8 tiled layout: 4x4 blocks, each an
 // AR half (16 A,R pairs) then a GB half.
-void toGxRgba8(const uint8_t* rgba, int stride, std::vector<uint8_t>& out) {
-    out.assign(kCell * kCell * 4, 0);
+void toGxRgba8(const uint8_t* rgba, int stride, uint8_t* out) {
     size_t o = 0;
     for (int by = 0; by < kCell; by += 4)
         for (int bx = 0; bx < kCell; bx += 4) {
@@ -99,7 +104,15 @@ const Atlas* atlas(int style) {
         stbi_image_free(px);
         return nullptr;
     }
+    const size_t cellBytes = kCell * kCell * 4;
+    uint8_t* low = (uint8_t*)port_low_alloc(cellBytes * kGlyphs);
+    if (!low) {
+        gx::logmsg("button prompts: no memory below 4 GiB for %s", path.c_str());
+        stbi_image_free(px);
+        return nullptr;
+    }
     for (int i = 0; i < kGlyphs; i++) {
+        a.tex[i] = low + i * cellBytes;
         toGxRgba8(px + i * kCell * 4, w * 4, a.tex[i]);
         a.rgba[i].resize(kCell * kCell * 4);
         for (int y = 0; y < kCell; y++)
@@ -176,7 +189,7 @@ const void* port_button_glyph(int chr) {
     const int style = currentStyle();
     if (style == S_GAMECUBE) return nullptr;
     const Atlas* a = atlas(style);
-    return a ? a->tex[g].data() : nullptr;
+    return a ? a->tex[g] : nullptr;
 }
 
 }

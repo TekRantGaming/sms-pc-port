@@ -92,6 +92,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `SMS_HDR_PEAK=nits` | the brightest an HDR highlight reaches; `auto` (default) uses the display's peak as Windows reports it, which follows a Windows HDR Calibration profile |
 | `SMS_HDR_CONTRAST=n`, `SMS_HDR_SATURATION=n` | HDR contrast (50 to 150) and saturation (0 to 200), percent; 100 leaves them as they are |
 | `SMS_HDR_HIGHLIGHTS=n` | 0 to 100 (default 40): how far the brightest parts climb toward the peak, in stops; 0 keeps SDR white at the paper white, 100 puts it at the peak |
+| `SMS_HDR_COPY=1` | hand each frame to Direct3D through system memory instead of a texture shared with OpenGL (about 1.3 ms more per frame at 4K). The game does this by itself when the graphics driver will not share a texture; this forces it, for a driver that shares one but shows it wrong |
 | `SMS_AUDIO=0` | no sound |
 | `SMS_VOLUME=n` | master volume, 0 to 100 (default 100) |
 | `SMS_SAVE_DIR=dir` | memory card folder |

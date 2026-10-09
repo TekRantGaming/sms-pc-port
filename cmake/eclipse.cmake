@@ -25,7 +25,7 @@ set(SMS_ECLIPSE_SRC_DIR "${CMAKE_BINARY_DIR}/eclipse-src" CACHE PATH
 # name  url  revision
 set(_eclipse_repos
   "eclipse|https://github.com/JoshuaMKW/super-mario-eclipse|52749795113f415b97d02392c45385982daa70bb"
-  "bse|https://github.com/JoshuaMKW/BetterSunshineEngine|fd6273014545ac0174fa54fada02edd9212f63d8"
+  "bse|https://github.com/JoshuaMKW/BetterSunshineEngine|bc6840e373d59a2601e7b5f9011732390561f6dd"
   "moveset|https://github.com/JoshuaMKW/BetterSunshineMoveset|2eb6f136cce4c0c7816808ad9dc3d1d95ef52b83"
   "shi|https://github.com/JoshuaMKW/SunshineHeaderInterface|a0d858951e7fb22dce5304aa5c50287ecb0d6862")
 

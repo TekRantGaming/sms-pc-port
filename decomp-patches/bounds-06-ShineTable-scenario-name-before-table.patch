@@ -1,0 +1,21 @@
+Reason: Retail out-of-bounds access: TSelectMenu::initData's last SMS_getNormalStage gets shine id -1 for a stage past the ten of scShineConvTable (Super Mario Eclipse's own stages, such as Erto Rock, whose scenario name BetterSunshineEngine looks up itself) and reads the word before scScenarioNameTable, 0 on the console; a 64-bit host faults 16 GiB away. Index -1 gives retail's 0.
+--- a/include/GC2D/ShineTable.hpp
++++ b/include/GC2D/ShineTable.hpp
+@@ -123,6 +123,17 @@
+ // object is 280 bytes for 70 entries, i.e. u32.
+ static u32 SMS_getNormalStage(u32 param_1)
+ {
++#ifdef TARGET_PC
++	// TSelectMenu::initData passes the shine id of the selected scenario
++	// unchecked, -1 for a stage past the ten of scShineConvTable (Super Mario
++	// Eclipse's Erto Rock, whose own name BetterSunshineEngine looks up in
++	// place of SMSGetMessageData). Retail then reads the word before the
++	// table, the null last entry of the shine table before it in every
++	// object that calls this (SelectMenu.o, PauseMenu2.o, ConsoleStr.o); a
++	// 64-bit host would add 16 GiB.
++	if (param_1 == 0xFFFFFFFF)
++		return 0;
++#endif
+ 	return scScenarioNameTable[param_1];
+ }
+ 

@@ -58,7 +58,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  // rogue includes needed for matching sinit & bss
  #include <MSound/MSSetSound.hpp>
-@@ -296,6 +346,22 @@
+@@ -300,6 +350,22 @@
  	}
  
  	mMenuScreen      = new J2DSetScreen("scenario_select_1.blo", pArch);
@@ -81,7 +81,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  	mLetterBoxTop    = new TExPane(mMenuScreen, 'msk1');
  	mLetterBoxBottom = new TExPane(mMenuScreen, 'msk2');
  	mStageName       = (J2DTextBox*)mMenuScreen->search('map');
-@@ -393,7 +459,17 @@
+@@ -397,7 +463,17 @@
  		s32 digit2 = numCoins % 10;
  		coinDigits[2]->changeTexture(mCoinNumTex[digit2]->getTexInfo(), 0);
  
@@ -100,7 +100,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  			mMenuScreen->search('sc_s')->show();
  		}
  
-@@ -402,8 +478,21 @@
+@@ -406,8 +482,21 @@
  sharedShineSetup:
  	{
  		s8 count = 0;
@@ -123,7 +123,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  				count++;
  			}
  		}
-@@ -439,11 +528,49 @@
+@@ -443,11 +532,49 @@
  
  		mMenuScreen->search('bi_0')->hide();
  
@@ -173,7 +173,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		mStageBannerShadow
  		    = new TBoundPane(mMenuScreen, tags[mStage] * 0x100 + 'b');
  		mStageBannerShadow->getPane()->show();
-@@ -457,6 +584,18 @@
+@@ -461,6 +588,18 @@
  		// initData 91.5 -> 89.8).
  		mStageBmg = JKRGetResource("/common/2d/stagename.bmg");
  
@@ -192,7 +192,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		mShineUnlockStates[0] = 2;
  		mShineUnlockStates[1] = 2;
  		mShineUnlockStates[2] = 2;
-@@ -465,19 +604,44 @@
+@@ -469,19 +608,52 @@
  		mShineUnlockStates[5] = 2;
  		mShineUnlockStates[6] = 2;
  		mShineUnlockStates[7] = 2;
@@ -227,8 +227,16 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		}
  
 +#ifdef TARGET_PC
-+		// The clamp's `cmplwi` (0x80174E90) and `li` (0x80174E98) words.
-+		if (mNumUnlockedShines > (u16)SMS_MOD_WORD(0x80174E90, 0x28000008)) {
++		// BetterSunshineEngine (clampSelectScreenEpisodesVisible at retail
++		// 0x80174E8C, in place of the clamp's `lbz`; it reads r31 = this and
++		// clamps mNumUnlockedShines to the area's scenario count), with the
++		// words at 0x80174E90 to 0x80174E9C (nops) dropping this clamp. Later
++		// BetterSunshineEngines rewrite its `cmplwi` (0x80174E90) and `li`
++		// (0x80174E98) words instead.
++		if (void* sms_mod_t_ = SMS_MOD_SITE(0x80174E8C)) {
++			SMS_MOD_GPR(31, this);
++			((void (*)())sms_mod_t_)();
++		} else if (mNumUnlockedShines > (u16)SMS_MOD_WORD(0x80174E90, 0x28000008)) {
 +			mNumUnlockedShines = (s16)SMS_MOD_WORD(0x80174E98, 0x38000008);
 +		}
 +#else
@@ -239,7 +247,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  		if (mNumUnlockedShines == 0) {
  			mNumUnlockedShines = 1;
-@@ -489,9 +653,20 @@
+@@ -493,9 +665,20 @@
  		}
  		mSelectedShine = lastShineIdx;
  
@@ -260,7 +268,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  		// Show arrows if we have more than one shine unlocked.
  		if (mNumUnlockedShines > 1) {
-@@ -511,6 +686,10 @@
+@@ -515,6 +698,10 @@
  			}
  		}
  
@@ -271,7 +279,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		mShineMarks[0] = nullptr;
  		mShineMarks[1] = nullptr;
  		mShineMarks[2] = nullptr;
-@@ -523,6 +702,55 @@
+@@ -527,6 +714,55 @@
  		// This code displays the icons of the unlocked shines at the bottom of
  		// the screen. It handles even and odd numbers differently to centre
  		// them correctly.
@@ -327,7 +335,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		s32 i = 0;
  		if ((mNumUnlockedShines & 1) == 1) {
  			// Odd number of shines.
-@@ -563,6 +791,7 @@
+@@ -567,6 +803,7 @@
  				i++;
  			}
  		}
@@ -335,7 +343,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  		mSelectedMarkCol
  		    = ((J2DPicture*)mMenuScreen->search('i_o0'))->getWhite();
-@@ -573,11 +802,23 @@
+@@ -577,11 +814,23 @@
  		((J2DPicture*)mMenuScreen->search('i_o0'))->setWhite(mMarkCol);
  		((J2DPicture*)mMenuScreen->search('i_o0'))->setAlpha(mMarkAlpha);
  
@@ -359,7 +367,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		mScenarioShadow1->changeTexture(
  		    mScenarioTex[mSelectedShine]->getTexInfo(), 0);
  
-@@ -628,6 +869,11 @@
+@@ -632,6 +881,11 @@
  // (0x718 vs 0x7b0): retail has 8 more bytes of update() locals between each
  // pair of banner-case `bounds`, 0x10 more temporaries between the letterbox
  // TColors and the JUTPoints, and 0x70 more below draw's J2DOrthoGraph.
@@ -371,7 +379,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  inline void TSelectMenu::update()
  {
  	switch (mMenuState) {
-@@ -807,7 +1053,14 @@
+@@ -811,7 +1065,14 @@
  
  			JGeometry::TVec3<f32> emitterPos(300.0f, 244.0f, 0.0f);
  			JPAEmitterManager* emitter = mSelectDir->unk34;
@@ -387,7 +395,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  				emitter->createEmitter(emitterPos, 5, nullptr, nullptr);
  			} else {
  				emitter->createEmitter(emitterPos, 4, nullptr, nullptr);
-@@ -838,16 +1091,41 @@
+@@ -842,16 +1103,41 @@
  				mScenarioPane1->setPaneOffset(10, mScenarioPaneDist, 0, 0,
  				                              0);
  
@@ -429,7 +437,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  				        SMSGetMessageData(
  				            mScenarioBmg2,
  				            (u16)SMS_getNormalStage(SMS_getShineID(
-@@ -855,15 +1133,32 @@
+@@ -859,15 +1145,32 @@
  				                false))),
  				        127);
  
@@ -462,7 +470,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  				        SMSGetMessageData(
  				            mScenarioBmg2,
  				            (u16)SMS_getNormalStage(SMS_getShineID(
-@@ -871,11 +1166,21 @@
+@@ -875,11 +1178,21 @@
  				                false))),
  				        127);
  
@@ -484,7 +492,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  				if (mNumUnlockedShines > 1) {
  					if ((mSelectedShine != 0) && !mArrowL->isVisible()) {
-@@ -911,41 +1216,101 @@
+@@ -915,41 +1228,101 @@
  				mScenarioPane1->setPaneOffset(10, -mScenarioPaneDist, 0, 0,
  				                              0);
  
@@ -586,7 +594,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  				if (mNumUnlockedShines > 1) {
  					if ((mSelectedShine != (mNumUnlockedShines - 1))
-@@ -1036,7 +1401,13 @@
+@@ -1040,7 +1413,13 @@
  				mMenuState = MENU_INPUT_LOOP;
  			}
  		}
@@ -600,7 +608,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  		if (mMarkPulseDir) {
  			u8 alphaRef = mSelectedMarkAlpha;
  			alpha       = alpha + 6;
-@@ -1051,7 +1422,11 @@
+@@ -1055,7 +1434,11 @@
  				alpha         = 64;
  			}
  		}
@@ -612,7 +620,7 @@ Reason: port: code-mod hooks (sms_modhook.h): BSE per-area scenario counts in th
  
  	} break;
  	case DISAPPEAR_MENU: {
-@@ -1146,6 +1521,9 @@
+@@ -1150,6 +1533,9 @@
  		break;
  	}
  }

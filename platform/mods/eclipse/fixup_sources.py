@@ -31,9 +31,15 @@ RAWADDR_FIX = ("src/**/*.cpp", r"(\(\s*\([^;{}()]*\(\s*\*\s*\)\s*\([^;{}()]*\)\s
 
 # Game data by retail address, *(u32 **)0x8040E0BC: the port's object at that
 # address instead (platform/mods/eclipse/rawdata.cpp lists them).
-RAWDATA = "0x803ACA68|0x803ACAB0|0x803AFB48|0x803DFA00|0x8040DAB4|0x8040DABC|0x8040DFD4|0x8040DFE4|0x8040DFF4|0x8040E03C|0x8040E0BC|0x8040FA90"
+RAWDATA = "0x803ACA68|0x803ACAB0|0x803AFB48|0x803C0CC8|0x803C0CF0|0x803C0D18|0x803C0E30|0x803DF498|0x803DF4D8|0x803DFA00|0x8040DAB4|0x8040DABC|0x8040DFD4|0x8040DFE4|0x8040DFF4|0x8040E03C|0x8040E0BC|0x8040FA90"
 RAWDATA_FIX = ("src/**/*.cpp", r"(\(\s*(?:const\s+)?[A-Za-z_][\w:<> ]*?\s*\*+\s*\))\s*(?i:(" + RAWDATA + r"))\b",
                lambda m: "%ssms_mod_rawdata(%s)" % (m.group(1), m.group(2)), "retail data addresses go to the port's objects")
+# The same through SMS_PORT_REGION(ntscu, pal, ntscj, ntsck), as BSE's
+# initAreaInfo names the game's shine and stage tables (area.cpp): unrouted,
+# it read the game's heap where the tables are on the console, and every area
+# of the base game had no scenarios and no shine select panes.
+RAWDATA_REGION_FIX = ("src/**/*.cpp", r"SMS_PORT_REGION\(\s*(?i:(" + RAWDATA + r"))\s*,[^()]*\)",
+                      lambda m: "sms_mod_rawdata(%s)" % m.group(1), "retail data addresses go to the port's objects")
 
 # Textures built into the code as byte arrays are converted to host byte
 # order in place when the game first stores them (JUTTexture::storeTIMG), so
@@ -229,22 +235,8 @@ BSE_BE_FIXES = [
              r"in\.readData\(&(mBaseRotation\.[xyz]|mFrameRate|mSoundID|mSoundSpeed|mSoundStrength), 4\)",
              r"in.readDataBE(&\1, 4)"),
     be_reads("src/objects/sound.cpp", r"in\.readData\(&(mID|mVolume|mPitch|mSpawnRate), 4\)", r"in.readDataBE(&\1, 4)"),
-    # customScenes.bin (not on the Eclipse disc), read field by field.
-    be_reads("src/area.cpp", r"(#define READ_ATTR\(in, var\) \(\(in\)\.)readData(\(&\(var\), )",
-             r"\1readDataBE\2"),
     be_reads("include/BetterSMS/settings.hxx", r"in\.read\(&(x|f), 4\);", r"in.readBE(&\1, 4);"),
     be_reads("include/BetterSMS/settings.hxx", r"out\.write\(mValuePtr, 4\);", r"out.writeBE(mValuePtr, 4);"),
-    # The level select's arrow is a texture built into the code, which the
-    # game converts when it first stores it (modhook-14); its size is read
-    # before that, so convert it first, and in writable memory.
-    be_reads("src/level_select/level_select.cpp", r"static const u8 SMS_ALIGN\(32\) sTinyArrowResTIMG\[\]",
-             r"static u8 SMS_ALIGN(32) sTinyArrowResTIMG[]"),
-    be_reads("src/level_select/level_select.cpp",
-             r"static const ResTIMG \*GetArrowResTIMG\(\) \{ return GetResourceTextureHeader\(sTinyArrowResTIMG\); \}",
-             'extern "C" int port_endian_bti_embedded(void *);\n'
-             r"static const ResTIMG *GetArrowResTIMG() {\n"
-             r"    port_endian_bti_embedded(sTinyArrowResTIMG);\n"
-             r"    return GetResourceTextureHeader(sTinyArrowResTIMG);\n}"),
 ]
 
 # The frame rate is the port's (frame_rate setting), as for the plain game.
@@ -311,7 +303,14 @@ ECLIPSE_FIXES = optional(TEXTURE_FIXES) + CARD_IMAGE_FIXES + PARTICLE_FIXES + DE
     ("src/*/*.cpp", r"(obj_hit_info\s+\w+\s*=?\s*\{[^}]*?)\._08(\s*=)", r"\1.mVisualOfsY\2",
      "obj_hit_info._08 is mVisualOfsY"),
 ]
-BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX] + BSE_BE_FIXES + PATCH_TYPE_FIXES + [
+BSE_FIXES = TEXTURE_FIXES + CARD_IMAGE_FIXES + optional([RAWADDR_FIX]) + [RAWDATA_FIX, RAWDATA_REGION_FIX] + BSE_BE_FIXES + PATCH_TYPE_FIXES + [
+    # BSE's free-fly camera, in place of CPolarSubCamera::perform's test of
+    # TGraphics' first-tick flag (bit 0 of the u16 at 0, `lhz`), reads the
+    # word's low byte, the GameCube's second; natively that is the high byte,
+    # always 0, so the camera never kept its previous frame or reset its up
+    # vector after a cutscene (Delfino Plaza's opening ended rolled).
+    ("src/debug/freeflycam.cpp", r"return \(graphics->_00\[1\] & 1\);", r"return (*(u16 *)graphics->_00 & 1);",
+     "TGraphics' first-tick flag is the game's u16"),
     # The object table holds pointers, not words.
     ("src/object.cpp", r"sizeof\(u32\) \* ObjDataTableSize\);", r"sizeof(ObjData *) * ObjDataTableSize);",
      "the object table is copied a pointer per entry"),

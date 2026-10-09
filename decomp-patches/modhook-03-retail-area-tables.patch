@@ -1,0 +1,36 @@
+Reason: port: code mods (Super Mario Eclipse) read the shine tables of SelectMenu.o and the stage tables of StageUtil.o by their retail addresses (BetterSunshineEngine's initAreaInfo, platform/mods/eclipse/rawdata.cpp), so they are exported
+--- a/src/System/StageUtil.cpp
++++ b/src/System/StageUtil.cpp
+@@ -23,6 +23,14 @@
+ 
+ // clang-format on
+ 
++#ifdef TARGET_PC
++// Code mods read these by their retail addresses
++// (platform/mods/eclipse/rawdata.cpp).
++extern "C" const u8* const sms_port_shineStageTable = shineStageTable;
++extern "C" const u32 sms_port_shineStageTableSize = sizeof(shineStageTable);
++extern "C" const u8* const sms_port_exShineTable    = exShineTable;
++#endif
++
+ // UNUSED
+ bool SMS_isExMap(u8 stage) { return stage > 0x14 && stage < 0x35; }
+ 
+--- a/src/GC2D/SelectMenu.cpp
++++ b/src/GC2D/SelectMenu.cpp
+@@ -602,6 +602,15 @@
+ 	}
+ }
+ 
++#ifdef TARGET_PC
++// Code mods read this object's copies of the shine tables by their retail
++// addresses (platform/mods/eclipse/rawdata.cpp).
++extern "C" const u8* const* const sms_port_selectShineConvTable    = scShineConvTable;
++extern "C" const u8* const* const sms_port_selectEtcShineConvTable = scEtcShineConvTable;
++extern "C" const u32* const sms_port_selectScenarioNameTable       = scScenarioNameTable;
++extern "C" const u32* const sms_port_selectNormalStageTable        = scNormalStageTable;
++#endif
++
+ void TSelectMenu::startMove()
+ {
+ 	s32 padding[4];

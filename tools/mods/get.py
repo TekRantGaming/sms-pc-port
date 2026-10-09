@@ -63,7 +63,10 @@ EXTRAS_RECORD = ".release"
 ECLIPSE = {
     "name": "Super Mario Eclipse v1.1.0 (Eclipse Team)",
     "page": "https://gamebanana.com/mods/536309",
-    "url": "https://gamebanana.com/dl/1729332",
+    # The GameBanana release, mirrored for SMS Launcher; GameBanana itself is
+    # the fallback. Both must match md5.
+    "url": "https://sms-eclipse.tekrantgaming.com/files/super_mario_eclipse_v110.7z",
+    "fallback_urls": ["https://gamebanana.com/dl/1729332"],
     "file": "super_mario_eclipse_v110.7z",
     "md5": "37c1805ab88b2a3bb2a96bcdf6884433",
     "size": 892257115,
@@ -132,22 +135,35 @@ def download(url, dest):
     os.replace(part, dest)
 
 
+# Downloads mod["url"], or each of mod["fallback_urls"] in turn when one
+# fails or sends a file whose MD5 is not the release's.
 def fetch(mod):
     os.makedirs(DOWNLOADS, exist_ok=True)
     dest = os.path.join(DOWNLOADS, mod["file"])
-    remove(dest)
-    say("Downloading %s\n  from %s" % (mod["name"], mod["url"]))
-    try:
-        download(mod["url"], dest)
-    except OSError as e:
-        raise Failure("download failed: %s" % e)
-    got = md5_of(dest)
-    if mod["md5"] and got != mod["md5"]:
+    failed, mismatch = [], None
+    for url in [mod["url"]] + mod.get("fallback_urls", []):
         remove(dest)
-        raise Failure("the download does not match the expected release (MD5 %s, expected %s);"
-                      " see %s" % (got, mod["md5"], mod["page"]))
-    say("  %s, MD5 %s" % (mib(os.path.getsize(dest)), got))
-    return dest
+        say("Downloading %s\n  from %s" % (mod["name"], url))
+        try:
+            download(url, dest)
+        except OSError as e:
+            say("  failed: %s" % e)
+            failed.append("%s: %s" % (url, e))
+            continue
+        got = md5_of(dest)
+        if mod["md5"] and got != mod["md5"]:
+            remove(dest)
+            say("  MD5 %s, expected %s" % (got, mod["md5"]))
+            mismatch = "MD5 %s, expected %s" % (got, mod["md5"])
+            failed.append("%s: %s" % (url, mismatch))
+            continue
+        say("  %s, MD5 %s" % (mib(os.path.getsize(dest)), got))
+        return dest
+    if mismatch and len(failed) == 1:
+        raise Failure("the download does not match the expected release (%s); see %s" % (mismatch, mod["page"]))
+    if mismatch:
+        raise Failure("no download matched the expected release (%s); see %s" % ("; ".join(failed), mod["page"]))
+    raise Failure("download failed: %s" % "; ".join(failed))
 
 
 def seven_zip():

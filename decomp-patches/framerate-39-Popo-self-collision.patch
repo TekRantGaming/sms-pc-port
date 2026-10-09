@@ -1,0 +1,18 @@
+Reason: port: at high frame rates a Puffer's auxiliary hitbox follows its body closely enough to overlap it after launch; ignore that self-hit so shooting Puffers at Petey does not make them explode in flight
+--- a/src/Enemy/popo.cpp
++++ b/src/Enemy/popo.cpp
+@@ -867,6 +867,14 @@
+ 
+ bool TPopo::isCollidMove(THitActor* param_1)
+ {
++#ifdef TARGET_PC
++	// calcRootMatrix refreshes mCollision on every displayed frame. At
++	// high frame rates it can catch this Puffer's own body, which otherwise
++	// receives its own trample message and enters the explosion nerve.
++	if (param_1 == this)
++		return false;
++#endif
++
+ 	if (mSpine->getCurrentNerve() == &TNervePopoFly::theNerve()
+ 	    && param_1->receiveMessage(this, HIT_MESSAGE_TRAMPLE))
+ 		mSpine->pushNerve(&TNervePopoExplosion::theNerve());

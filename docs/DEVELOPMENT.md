@@ -54,6 +54,8 @@ How the port is put together and where changes go. To build and play, see the [R
 | `tools/bundle_disc.py` | packs the disc's files into `sms-standalone` (or `SMS.app`'s `disc.gcm`) |
 | `tools/make_mac_app.sh`, `tools/extract_icon.py` | assemble and sign `SMS.app`; the app / `.exe` icon from the disc's memory-card icon |
 | `tools/regress/regress.py [--record] CHECK...` | the regression checks (below): scripted headless runs hashed against `tools/regress/baseline.txt` and between the 32 and 64-bit builds |
+| `python3 tools/regress/popo.py --disc PATH` | Puffer launch, self-hit rejection and Petey impact at 30/60/120 fps in both word sizes; [fixture and findings](PUFFER-FRAMERATE.md) |
+| `python3 tools/regress/self_damage.py --disc PATH` | diagnostic stage samples that report self-directed damage and observed collision coverage; [scope and limitations](PUFFER-FRAMERATE.md#broader-self-collision-audit) |
 | `tools/run_capture.sh SECS FIELDS` | headless run + captures + retail comparison |
 | `tools/shots.py`, `tools/contact.py OUT.png FIELDS...` | convert captures to PNG in `build/shots/` and compare with retail; contact sheet of captures |
 | `tools/gdbrun.sh` | backtrace at the first fatal signal |

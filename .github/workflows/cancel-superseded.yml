@@ -1,0 +1,33 @@
+name: Cancel superseded runs
+# When a pull request is merged or closed, cancel its checks that are still
+# queued or running: macOS runners are few, and a merged pull request's runs
+# hold them while main's own runs wait. pull_request_target so that the token
+# can cancel runs of pull requests from forks too; nothing from the pull
+# request is checked out or run.
+on:
+  pull_request_target:
+    types: [closed]
+permissions:
+  actions: write
+jobs:
+  cancel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Cancel the pull request's unfinished runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          # Runs of this pull request: pull_request events from its head
+          # branch in its head repository (a fork's branch can share the name).
+          ids=$(gh api --paginate "repos/$REPO/actions/runs?event=pull_request&branch=$(jq -rn --arg b "$HEAD_REF" '$b|@uri')&per_page=100" \
+            --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$HEAD_REPO\") | .id")
+          for id in $ids; do
+            echo "Cancelling run $id"
+            gh api -X POST "repos/$REPO/actions/runs/$id/cancel" || echo "::warning::could not cancel run $id"
+          done
+          [[ -n "$ids" ]] || echo "No unfinished runs."

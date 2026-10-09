@@ -17,7 +17,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: launcher-build-${{ github.event.pull_request.number || github.sha }}
+  # One run per pull request, and one for main: a newer push (or a merge, which
+  # pushes to main) cancels the older run still in progress or queued. Manual
+  # runs get a group of their own. cancel-superseded.yml stops a pull
+  # request's runs once it is merged or closed.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
   cancel-in-progress: true
 env:
   LAUNCHER_REF: ${{ inputs.launcher-ref || 'main' }}

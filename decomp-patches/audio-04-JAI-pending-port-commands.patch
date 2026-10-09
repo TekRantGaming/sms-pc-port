@@ -1,0 +1,90 @@
+Reason: Audio: host scheduling can defer JAudio port commands across game frames. Clearing mHead before re-enqueueing a pending intrusive-list node inserts it twice and loses the following commands; keep queue membership until getPortCmd consumes it, merge pending parameter flags so tempo/pitch ramp endpoints survive deferred processing, preserve membership when reinitialising a queued track, and consume one-shot interrupts after delivery. Retail scheduling and code remain unchanged.
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIGFrameSequence.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIGFrameSequence.cpp
+@@ -604,8 +604,10 @@
+ 					    &unk0->mSeqTrackInfo[i], j, 1,
+ 					    unk0->mSeqTrackInfo[i].mTrackUpdate[j]);
+ 
++#ifndef TARGET_PC
+ 					unk0->mSeqTrackInfo[i].mPlayerParams[j].mCmd.mHead
+ 					    = nullptr;
++#endif
+ 					unk0->mSeqTrackInfo[i]
+ 					    .mPlayerParams[j]
+ 					    .mCmd.addPortCmdOnce();
+--- a/libs/JSystem/src/JAudio/JAInterface/JAIGFrameSe.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAIGFrameSe.cpp
+@@ -609,10 +609,12 @@
+ 		    &unk0->mSeqTrackInfo[mSeSequence->mTrack], sound->mTrack, 1,
+ 		    unk0->mSeqTrackInfo[mSeSequence->mTrack]
+ 		        .mTrackUpdate[sound->mTrack]);
++#ifndef TARGET_PC
+ 		unk0->mSeqTrackInfo[mSeSequence->mTrack]
+ 		    .mPlayerParams[sound->mTrack]
+ 		    .mCmd.mHead
+ 		    = nullptr;
++#endif
+ 		unk0->mSeqTrackInfo[mSeSequence->mTrack]
+ 		    .mPlayerParams[sound->mTrack]
+ 		    .mCmd.addPortCmdOnce();
+--- a/libs/JSystem/src/JAudio/JAInterface/JAISystemInterface.cpp
++++ b/libs/JSystem/src/JAudio/JAInterface/JAISystemInterface.cpp
+@@ -68,6 +68,14 @@
+ void JAISystemInterface::setSeqPortargsU32(JAISeqUpdateData* sud, u32 track_no,
+                                            u8 arg_no, u32 value)
+ {
++#ifdef TARGET_PC
++	// Host scheduling can leave a command pending across game frames.
++	// Keep every dirty parameter until the audio callback consumes it.
++	if (arg_no == 1) {
++		sud->mPlayerParams[track_no].mArgs.mFlags |= value;
++		return;
++	}
++#endif
+ 	sud->mPlayerParams[track_no].mArgsAsU32[arg_no] = value;
+ }
+ 
+@@ -180,6 +188,11 @@
+ 
+ 	if ((args->mFlags & 0x40) != 0 && args->unk20 != 0)
+ 		track->setInterrupt(5);
++#ifdef TARGET_PC
++	// Parameter flags are coalesced on the host, so consume this one-shot
++	// notification too; later pitch/volume updates must not replay it.
++	args->mFlags &= ~0x40;
++#endif
+ }
+ 
+ void* JAISystemInterface::JAIouterP(void*) { return nullptr; }
+--- a/libs/JSystem/src/JAudio/JASystem/JASCmdStack.cpp
++++ b/libs/JSystem/src/JAudio/JASystem/JASCmdStack.cpp
+@@ -27,9 +27,29 @@
+ 
+ 	BOOL TPortCmd::setPortCmd(PortCallback cb, TPortArgs* args)
+ 	{
++#ifdef TARGET_PC
++		// outerInit can rebind a track while its old command is pending.
++		// Find membership in the live lists: the first call also initialises
++		// commands allocated from raw heap storage, so mHead is not yet safe
++		// to read. Keep mNext intact and let addPortCmd reject a duplicate.
++		TPortHead* pendingHead = nullptr;
++		TPortHead* heads[] = { &cmd_once, &cmd_stay };
++		for (int i = 0; i < 2 && !pendingHead; ++i) {
++			for (TPortCmd* cmd = heads[i]->unk0; cmd; cmd = cmd->mNext) {
++				if (cmd == this) {
++					pendingHead = heads[i];
++					break;
++				}
++			}
++		}
++#endif
+ 		mFunc = cb;
+ 		mArgs = args;
++#ifdef TARGET_PC
++		mHead = pendingHead;
++#else
+ 		mHead = nullptr;
++#endif
+ 		return true;
+ 	}
+ 

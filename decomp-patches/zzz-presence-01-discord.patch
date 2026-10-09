@@ -1,0 +1,44 @@
+Reason: port: SMS_PRESENCE=1 prints what the player is doing (area, episode, Shines, pause) for the launcher's Discord Rich Presence; platform/presence does the printing
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -810,6 +810,30 @@
+ 	ApplicationCrTimeAry1(inst)[1].append(tick, param);
+ }
+ 
++#ifdef TARGET_PC
++#include "port_presence.h"
++
++// Port: what Discord shows (platform/presence), read once a frame. The flag
++// manager exists from the setup thread on; the director only in gameplay.
++static void ApplicationPresenceFrame(TApplication* app)
++{
++	PortPresence p;
++	TFlagManager* flags = TFlagManager::smInstance;
++	TMarDirector* dir
++	    = app->mAppState == TApplication::APP_STATE_GAMEPLAY ? gpMarDirector : nullptr;
++	p.state     = app->mAppState;
++	p.area      = app->mCurrArea.getStage();
++	p.episode   = flags ? flags->getFlag(0x40003) : 0;
++	p.shines    = flags ? flags->getFlag(0x40000) : 0;
++	p.blueCoins = flags ? flags->getFlag(0x40001) : 0;
++	p.lives     = flags ? flags->getFlag(0x20001) : 0;
++	p.saveFile  = app->mSaveFile;
++	p.paused    = dir && dir->mState == TMarDirector::STATE_PAUSE_MENU;
++	p.cutscene  = dir && dir->isDemoModeNow();
++	port_presence_frame(&p);
++}
++#endif
++
+ // TODO: frame 0x50 short (0x70 before the display's video was read through
+ // getVideo()): retail's low region runs to 0xac (the TRect temp) where ours
+ // ended at 0x38, i.e. inline temporaries from an expansion this body lacks;
+@@ -894,6 +918,9 @@
+ 				gpMSound->mainLoop();
+ 		}
+ 
++#ifdef TARGET_PC
++		ApplicationPresenceFrame(this);
++#endif
+ 		TTimeRec::endTimer();
+ 
+ 		({ typedef __typeof__(THPPlayerDrawDone()) sms_mod_r_; void* sms_mod_t_ = SMS_MOD_SITE(0x802A630C); if (sms_mod_t_) ((__typeof__(&THPPlayerDrawDone))sms_mod_t_)(); else THPPlayerDrawDone(); });

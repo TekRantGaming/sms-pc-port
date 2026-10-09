@@ -154,6 +154,7 @@ Each file in `decomp-patches/` starts with a `Reason:` line; they are applied in
 | 0021–0022 | Host integer types for clang (g++ `-fpermissive` only warns): `ARQCallback` takes `uintptr_t` like the callbacks passed to it (`JKRAramPiece::doneDMA`, JASystem's `aramDmaFinish`), and the four `fireStartDemoCamera` callbacks still spelled with `u32` take `uintptr_t` as `MarDirector.hpp` declares. |
 | `endian-01..16` | Loader-site byte-order fixes (JPA, J2D BLO, BMG, JUTColor, PRM, SPC, streams, DL vertex counts, sequences, card saves, THP headers, J3DSkinDeform/J3DCluster display lists, the plaza shine-shadow sphere, the HUD/map 2D archive swap); see `platform/endian/README.md`. |
 | `port-02` | `SMS_WARP` / `SMS_WARP_MOVIE`: debug warp or movie from a file-select load. |
+| `zzz-presence-01` | `SMS_PRESENCE`: `TApplication::gameLoop` hands the area, episode, Shine and blue coin counts, lives and pause state to `platform/presence` once a frame, for the launcher's Discord Rich Presence. |
 | `audio-01..02` | JAudio bitfield/byte-order fixes (`TChannel` mix config, BMS note-on flags); see `platform/audio/README.md`. |
 | `ret-02..03` | Explicit returns for the 34 functions that fall off the end of a non-void body and whose value nothing reads (undefined behaviour under g++, harmless under MWCC). |
 | `thp-01..02` | Host THP decoder (portable bit reader and IDCT, big-endian audio header); see `platform/thp/README.md`. |
@@ -255,6 +256,7 @@ The everyday options are in the [README](../README.md#options); this is the full
 | `SMS_DVD_BPS`, `SMS_DVD_SEEK_MS`, `SMS_DVD_LOG=1` | drive timing model (reads occupy the drive for bytes/rate + seek, counted in fields; off by default) and a per-read log |
 | `SMS_MOVIE`, `SMS_TRACE_OUT` | `.dtm` movie input and retail-format field traces (`platform/trace`) |
 | `SMS_MEM_MB`, `SMS_QUIET_STUBS=1` | emulated MEM1 size; silence first-call stub logs |
+| `SMS_PRESENCE=1` | print a `[presence] {...}` JSON line to stdout whenever the area, episode, Shine or blue coin count, lives, pause or demo state changes (`platform/presence`); SMS Launcher sets it and shows the line as Discord Rich Presence |
 | `SMS_OVERLAY=1` | open the debug overlay (frame rate and where the frame's time goes) at start |
 | `SMS_SETTINGS=file` | settings file to read instead of `settings.txt` (working directory, then `../../`); its names map to the variables in `kSettings` (`platform/port_runtime.cpp`), and any `SMS_*` name can be used as is |
 | `SMS_TEXTURE_PACKS`, `SMS_TEXTURE_PACK_MB`, `SMS_TEXTURE_PACK_LOG`, `SMS_TEXTURE_PACK_SYNC`, `SMS_TEXTURE_PACK_PRELOAD`, `SMS_TEXTURE_PACK_PENDING_MB` | texture packs (see [mods/README.md](../mods/README.md)); preloading prepares loaded level resources before gameplay, `_PENDING_MB` bounds decoded backlog, `_SYNC=1` restores first-use loading for repeatable captures |

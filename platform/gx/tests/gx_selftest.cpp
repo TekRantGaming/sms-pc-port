@@ -288,6 +288,25 @@ int main(int argc, char** argv) {
     GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_AND, GX_ALWAYS, 0);
     GXSetTevOp(GX_TEVSTAGE0, GX_PASSCLR);
 
+    // 6c. a quad exactly on the far plane is drawn (the episode select's
+    // gradient background: an ortho camera from -100 to 100, its quad at -100)
+    {
+        Mtx44 m;
+        memset(m, 0, sizeof(m));
+        float n = -100.0f, f = 100.0f, t = 1.0f / (f - n);  // as C_MTXOrtho
+        m[0][0] = 2.0f / 640;
+        m[0][3] = -1.0f;
+        m[1][1] = 2.0f / -480;
+        m[1][3] = 1.0f;
+        m[2][2] = -t;
+        m[2][3] = -f * t;
+        m[3][3] = 1.0f;
+        GXSetProjection(m, GX_ORTHOGRAPHIC);
+        colorQuad(130, 100, 180, 120, 0, 255, 255, 255, -100.0f);
+        expectPixel("quad on the far plane", 155, 110, 0, 255, 255);
+        setOrtho();
+    }
+
     // 7. display list built with GD: a TEV register write and a draw command
     {
         static u8 dl[512] __attribute__((aligned(32)));

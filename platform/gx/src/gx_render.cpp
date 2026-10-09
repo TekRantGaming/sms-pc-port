@@ -1283,9 +1283,14 @@ static void applyGlState() {
         glcCap(GL_BLEND, c.blend, false);
     }
 
+    // GX's near and far clipping is the two clip distances. GL's own depth
+    // clip repeats it, but rounding can put a vertex exactly on the far plane
+    // just past it (the episode select's background quad, clipped away whole),
+    // so it is off while they clip; draws with GX clipping off keep it.
     bool clipOn = g.xfReg[0x05] == 0;
     glcCap(GL_CLIP_DISTANCE0, c.clip0, clipOn);
     glcCap(GL_CLIP_DISTANCE0 + 1, c.clip1, clipOn);
+    glcCap(GL_DEPTH_CLAMP, c.depthClamp, clipOn);
     uint32_t lp = g.bp[BP_LPSIZE];
     float pt = float((lp >> 8) & 0xFF) / 6.0f * float(s_scale);
     if (pt < 1.0f) pt = 1.0f;

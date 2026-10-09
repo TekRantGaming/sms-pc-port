@@ -22,7 +22,7 @@ namespace gx {
 struct GlCache {
     GLuint fbo, prog;
     GLint vp[4], sc[4];
-    int scissor, cull, depth, blend, logic, clip0, clip1;
+    int scissor, cull, depth, blend, logic, clip0, clip1, depthClamp;
     GLenum frontFace, cullFace, depthFunc, logicOp;
     GLenum beq[2], bf[4];
     GLboolean depthMask, cmask[4];

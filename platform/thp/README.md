@@ -66,3 +66,24 @@ The audio is a real signal: RMS about 2100, 2 clipped samples out of 4.4 million
 `thp-04` sends oversized textures to `hd_movies.cpp`, which copies complete I8 tile rows into distinct regions of an aligned low-address pool and draws them through the original YUV renderer.
 `zz-hd-movies-01` preserves the original display footprint and subtitle placement.
 See [HD cutscenes](../../docs/HD-CUTSCENES.md) for conversion and playback.
+
+## Portal movies and skipping cutscenes
+
+`SMS_SKIP_MOVIES=1` skips the non-looping movies used by MovieDirector.
+The plaza's looping portal movie still decodes and plays, since its frames are in-world textures.
+`thp-06` keeps each portal's authored placeholder dimensions until a decoded frame is bound, then resizes all three Y/U/V planes together.
+This prevents the host texture decoder from reading movie-sized images out of a small placeholder, especially with HD replacements.
+
+`tools/regress/portal.py` checks skipped cutscenes, the authored placeholder, and three successive decoded frames' sizes and addresses under gdb:
+
+```sh
+SMS_SETTINGS=/dev/null SMS_TEXTURE_PACKS=0 SMS_SKIP_MOVIES=1 \
+SMS_HEADLESS=1 SMS_AUDIO=0 SMS_VI_DETERMINISTIC=1 SMS_WARP=1,5,0 \
+SMS_SAVE_DIR=build/portal-test-save \
+SMS_AUTOPRESS='START@1400,STICK_LEFT@2000,A@2400,STICK_LEFT@3100,A@3250,A@3450' \
+gdb -q -batch -nx -ex 'set confirm off' -ex 'handle SIG34 nostop noprint' \
+  -x tools/regress/portal.py -ex run -ex kill --args build/linux-64/sms /path/to/GMSE01.iso
+```
+
+Repeat with `build/linux-32/sms`, and add `SMS_MOD=hd-cutscenes` to exercise an installed HD movie pack.
+The check prints `portal: PASS` when the portal animates with cutscene skipping still enabled.

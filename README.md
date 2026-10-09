@@ -82,7 +82,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 
 | Option | Effect |
 | --- | --- |
-| `SMS_SKIP_MOVIES=1` | skip the intro and opening movies |
+| `SMS_SKIP_MOVIES=1` | skip cutscenes; keep portal animations playing |
 | `SMS_HEAT_HAZE=0` | turn off the heat-wave shimmer that distorts the picture in sunny areas |
 | `SMS_BUTTON_PROMPTS=style` | the buttons shown in the game's text and on the FLUDD gauge: `gamecube` (the game's own, the default), `xbox`, `playstation`, `steamdeck`, `keyboard`, or `auto` (keyboard and mouse or the controller in use) |
 | `SMS_BUTTON_PROMPT_PAD=style` | with `auto`, how every controller's prompts look: `xbox`, `playstation`, `steamdeck` or `gamecube` (default: match the controller) |

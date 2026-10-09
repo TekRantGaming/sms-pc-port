@@ -62,7 +62,7 @@ const char* port_disc_root =
 // Set when the command line or SMS_DISC_ROOT named the game source; otherwise
 // a disc image bundled into the executable wins over the default above.
 int port_disc_explicit = 0;
-// SMS_SKIP_MOVIES=1 reports every THP movie as finished at once (patch 0016).
+// SMS_SKIP_MOVIES=1 skips cutscenes; looping world textures still play (0016).
 extern "C" int port_skip_movies;
 int port_skip_movies = 0;
 // SMS_HEAT_HAZE=0 turns off the heat-wave shimmer (patch zzz-heat-haze-01).

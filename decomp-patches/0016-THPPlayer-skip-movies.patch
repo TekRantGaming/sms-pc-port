@@ -1,7 +1,7 @@
-Reason: port: SMS_SKIP_MOVIES=1 skips THP preparation and reports the movie as finished, without starting decoder threads for frames that will never be shown
+Reason: port: SMS_SKIP_MOVIES=1 skips cutscenes, while looping in-world movies (the plaza portals) still decode and play
 --- a/libs/THPPlayer/src/THPPlayer.c
 +++ b/libs/THPPlayer/src/THPPlayer.c
-@@ -348,12 +348,26 @@
+@@ -348,12 +348,28 @@
  	              OS_MESSAGE_BLOCK);
  }
  
@@ -16,7 +16,9 @@ Reason: port: SMS_SKIP_MOVIES=1 skips THP preparation and reports the movie as f
  
  	if (ActivePlayer.open && ActivePlayer.state == 0) {
 +#ifdef TARGET_PC
-+		if (port_skip_movies) {
++		// Looping movies are textures in the world, not cutscenes.
++		if (port_skip_movies && !(flag & 1)) {
++			ActivePlayer.playFlag = 0;
 +			ActivePlayer.internalState = 0;
 +			ActivePlayer.dispTextureSet = NULL;
 +			ActivePlayer.playAudioBuffer = NULL;
@@ -28,13 +30,14 @@ Reason: port: SMS_SKIP_MOVIES=1 skips THP preparation and reports the movie as f
  		if (frame > 0) {
  			offset = ActivePlayer.header.offsetDataOffsets;
  			if (offset == 0)
-@@ -439,6 +453,14 @@
+@@ -439,6 +455,15 @@
  
  BOOL THPPlayerPlay()
  {
 +#ifdef TARGET_PC
-+	// SMS_SKIP_MOVIES: report the movie as played to the end.
++	// SMS_SKIP_MOVIES: report only a non-looping cutscene as finished.
 +	if (port_skip_movies && ActivePlayer.open
++	    && !(ActivePlayer.playFlag & 1)
 +	    && (ActivePlayer.state == 1 || ActivePlayer.state == 4)) {
 +		ActivePlayer.state = 3;
 +		return TRUE;

@@ -1,0 +1,35 @@
+Reason: port: the host texture decoder must not read movie-sized planes from the portal model's small placeholder image before THP playback supplies a frame; retain the placeholder dimensions until binding valid decoded Y/U/V planes, including HD replacements
+--- a/src/MoveBG/ModelGate.cpp
++++ b/src/MoveBG/ModelGate.cpp
+@@ -80,7 +80,13 @@
+ 
+ 	// The gate's window shows the THP movie, so its three YUV planes have to
+ 	// be resized to whatever is playing.
++#ifdef TARGET_PC
++	// The model's placeholder planes are tiny. Keep their authored size
++	// until there is a decoded frame, particularly with an HD movie.
++	if (ActivePlayer.open && ActivePlayer.dispTextureSet) {
++#else
+ 	if (ActivePlayer.open) {
++#endif
+ 		THPVideoInfo videoInfo;
+ 		THPPlayerGetVideoInfo(&videoInfo);
+ 		u16 width       = videoInfo.xSize;
+@@ -354,6 +360,17 @@
+ 		if (ActivePlayer.open && ActivePlayer.dispTextureSet) {
+ 			THPTextureSet* set = ActivePlayer.dispTextureSet;
+ 			J3DTexture* tex    = unk78->getModel()->getModelData()->getTexture();
++#ifdef TARGET_PC
++			// Resize all three planes together when the first frame arrives.
++			if (tex->mResources[0].width != ActivePlayer.videoInfo.xSize
++			    || tex->mResources[0].height != ActivePlayer.videoInfo.ySize) {
++				u16 width = ActivePlayer.videoInfo.xSize;
++				u16 height = ActivePlayer.videoInfo.ySize;
++				setGateTexRes(&tex->mResources[0], width, height);
++				setGateTexRes(&tex->mResources[1], width >> 1, height >> 1);
++				setGateTexRes(&tex->mResources[2], width >> 1, height >> 1);
++			}
++#endif
+ 			tex->mResources[0].imageDataOffset
+ 			    = (u32)set->ytexture - (u32)&tex->mResources[0];
+ 			tex->mResources[1].imageDataOffset

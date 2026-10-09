@@ -34,6 +34,14 @@ static inline float port_frame_scale()
     return 30.0f / port_active_frame_rate;
 }
 
+// Custom rates authored as animation frames per native 30 Hz display frame.
+// Rates already based on SMSGetAnmFrameRate, or advanced on movement ticks,
+// must not pass through this conversion.
+static inline float port_native_animation_rate(float rate)
+{
+    return rate * port_frame_scale();
+}
+
 // Movement stays at 120 ticks/s. Keep the existing 60 fps phase, and step
 // integer frame counters on one of each four displayed frames at 120 fps.
 static inline bool port_native_frame_step(unsigned int ticks)

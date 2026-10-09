@@ -1,0 +1,111 @@
+Reason: port: custom per-display-frame animation rates bypass SMSGetAnmFrameRate and run twice or four times as fast at 60/120 fps; preserve their native 30 fps speed without scaling movement-tick controllers or already-scaled rates
+--- a/src/Enemy/bosspakkun.cpp
++++ b/src/Enemy/bosspakkun.cpp
+@@ -1,3 +1,4 @@
++#include "port_framerate.h"
+ #include <Enemy/BossPakkun.hpp>
+ #include <Camera/CameraShake.hpp>
+ #include <Enemy/AreaCylinder.hpp>
+@@ -1256,7 +1257,7 @@
+ 	if (index == BOSSPAKU_BCK_POLLUT_START)
+ 		getMActor()
+ 		    ->getFrameCtrl(ANM_TYPE_BCK)
+-		    ->setRate(getSaveParam2()->mSLVomitAnmRate.value);
++		    ->setRate(port_native_animation_rate(getSaveParam2()->mSLVomitAnmRate.value));
+ 
+ 	f32 blendFrames = -1.0f;
+ 	if (prev == BOSSPAKU_BCK_WAIT) {
+--- a/src/Enemy/limitkoopa.cpp
++++ b/src/Enemy/limitkoopa.cpp
+@@ -1,3 +1,4 @@
++#include "port_framerate.h"
+ #include <Enemy/LimitKoopaNerve.hpp>
+ #include <Enemy/Enemy.hpp>
+ #include <Enemy/KoopaJr.hpp>
+@@ -709,7 +710,7 @@
+ 	MActor* actor = mMActor;
+ 	if (!actor->checkCurBckFromIndex(index))
+ 		actor->setBckFromIndex(index);
+-	mMActor->getFrameCtrl(ANM_TYPE_BCK)->setRate(rate);
++	mMActor->getFrameCtrl(ANM_TYPE_BCK)->setRate(port_native_animation_rate(rate));
+ }
+ 
+ // UNUSED (0x28).
+--- a/src/Enemy/hinokuri2.cpp
++++ b/src/Enemy/hinokuri2.cpp
+@@ -1,3 +1,4 @@
++#include "port_framerate.h"
+ #include <Enemy/Hinokuri2.hpp>
+ #include <Enemy/Walker.hpp>
+ #include <Enemy/Graph.hpp>
+@@ -848,9 +849,10 @@
+ 	J3DFrameCtrl* pJVar7 = getMActor()->getFrameCtrl(ANM_TYPE_BCK);
+ 	if (pJVar7 != nullptr) {
+ 		if (mLevel == 0 && (param_1 - 23U <= 1 || param_1 - 26U <= 1))
+-			pJVar7->setRate(((THino2Params*)getSaveParam())->mSLWalkSpeedRateLv0.value);
++			pJVar7->setRate(port_native_animation_rate(
++			    ((THino2Params*)getSaveParam())->mSLWalkSpeedRateLv0.value));
+ 		else
+-			pJVar7->setRate(1.0f);
++			pJVar7->setRate(port_native_animation_rate(1.0f));
+ 	}
+ }
+ 
+--- a/src/Enemy/bossgesso.cpp
++++ b/src/Enemy/bossgesso.cpp
+@@ -1,3 +1,4 @@
++#include "port_framerate.h"
+ #include <Enemy/BossGesso.hpp>
+ #include <Enemy/BossGessoTentacle.hpp>
+ #include <Enemy/BossGessoPolDrop.hpp>
+@@ -1948,7 +1949,7 @@
+ 		self->changeAllTentacleState(8);
+ 
+ 		J3DFrameCtrl* ctrl4 = self->getMActor()->getFrameCtrl(ANM_TYPE_BTK);
+-		ctrl4->setRate(1.0f);
++		ctrl4->setRate(port_native_animation_rate(1.0f));
+ 		ctrl4->setFrame(0.0f);
+ 
+ 		self->getMActor()->setBtpFromIndex(1);
+--- a/src/Enemy/BossHanachanAnm.cpp
++++ b/src/Enemy/BossHanachanAnm.cpp
+@@ -1,3 +1,4 @@
++#include "port_framerate.h"
+ #include <Enemy/BossHanachan.hpp>
+ 
+ #include <Camera/cameralib.hpp>
+@@ -227,8 +228,12 @@
+ 			}
+ 			rate = mMarchSpeed * SMSGetAnmFrameRate()
+ 			       * getChangeParams()->mSLWalkBckRateMagnif.get();
+-			if (rate < getChangeParams()->mSLWalkBckRateMin.get())
+-				rate = getChangeParams()->mSLWalkBckRateMin.get();
++			{
++				f32 minimum = port_native_animation_rate(
++				    getChangeParams()->mSLWalkBckRateMin.get());
++				if (rate < minimum)
++					rate = minimum;
++			}
+ 			break;
+ 		default:
+ 			offHeadAndBodyNonstopMotionBlend_();
+--- a/src/Strategic/liveinterp.cpp
++++ b/src/Strategic/liveinterp.cpp
+@@ -1,3 +1,4 @@
++#include "port_framerate.h"
+ #include <Strategic/LiveActor.hpp>
+ #include <Strategic/spcinterp.hpp>
+ #include <Strategic/Spine.hpp>
+@@ -430,10 +431,10 @@
+ 
+ 	switch (arg2.getDataInt()) {
+ 	case 0:
+-		owner->getMActor()->setFrameRate(arg1.getDataFloat(), ANM_TYPE_BCK);
++		owner->getMActor()->setFrameRate(port_native_animation_rate(arg1.getDataFloat()), ANM_TYPE_BCK);
+ 		break;
+ 	case 1:
+-		owner->getMActor()->setFrameRate(arg1.getDataFloat(), ANM_TYPE_BTP);
++		owner->getMActor()->setFrameRate(port_native_animation_rate(arg1.getDataFloat()), ANM_TYPE_BTP);
+ 		break;
+ 	}
+ 

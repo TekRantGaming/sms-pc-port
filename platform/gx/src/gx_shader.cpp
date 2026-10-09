@@ -104,7 +104,6 @@ in uvec3 a_mtx;
 out vec4 v_c0; out vec4 v_c1;
 out vec3 v_tc0; out vec3 v_tc1; out vec3 v_tc2; out vec3 v_tc3;
 out vec3 v_tc4; out vec3 v_tc5; out vec3 v_tc6; out vec3 v_tc7;
-out float v_depth;
 float X(int i) { return uintBitsToFloat(xf[i >> 2][i & 3]); }
 vec4 R4(int w) { return vec4(X(w), X(w + 1), X(w + 2), X(w + 3)); }
 vec3 R3(int w) { return vec3(X(w), X(w + 1), X(w + 2)); }
@@ -174,8 +173,7 @@ static std::string genVS(const ShaderKey& k) {
          "  gl_Position.y = ((u_vp[1].y - 342.0) * clip.w + u_vp[0].y * clip.y) * (2.0 / u_efb.y) - clip.w;\n"
          "  float zw = u_vp[1].z * clip.w + u_vp[0].z * clip.z;\n"
          "  gl_Position.z = zw * (2.0 / 16777215.0) - clip.w;\n"
-         "  gl_Position.w = clip.w;\n"
-         "  v_depth = zw / (16777215.0 * clip.w);\n";
+         "  gl_Position.w = clip.w;\n";
     if (k.clip) s += "  gl_ClipDistance[0] = clip.z + clip.w;\n  gl_ClipDistance[1] = -clip.z;\n";
     else s += "  gl_ClipDistance[0] = 1.0;\n  gl_ClipDistance[1] = 1.0;\n";
 
@@ -272,7 +270,6 @@ static const char* kFsHeader = R"(#version 330 core
 in vec4 v_c0; in vec4 v_c1;
 in vec3 v_tc0; in vec3 v_tc1; in vec3 v_tc2; in vec3 v_tc3;
 in vec3 v_tc4; in vec3 v_tc5; in vec3 v_tc6; in vec3 v_tc7;
-in float v_depth;
 uniform sampler2D u_tex[8];
 uniform ivec4 u_tevreg[4];
 uniform ivec4 u_konst[4];
@@ -509,8 +506,12 @@ static std::string genFS(const ShaderKey& k) {
     }
     s += "  vec4 color = vec4(outc) / 255.0;\n";
     if (k.fogType) {
-        // u_fog: x = A, y = B, z = C, w = 1 for orthographic
-        s += "  float ze = u_fog.w != 0.0 ? u_fog.x * v_depth : u_fog.x / (u_fog.y - v_depth);\n"
+        // u_fog: x = A, y = B, z = C, w = 1 for orthographic. The depth is the
+        // pixel's own (zw / w, screen-linear, as GX's rasterizer gives fog): a
+        // per-vertex z / w interpolated perspective-correctly is wrong across
+        // a large polygon and wild where one runs behind the camera, which
+        // fogged bands along Noki Bay's undersea floors fully.
+        s += "  float ze = u_fog.w != 0.0 ? u_fog.x * gl_FragCoord.z : u_fog.x / (u_fog.y - gl_FragCoord.z);\n"
              "  float f = clamp(ze - u_fog.z, 0.0, 1.0);\n";
         switch (k.fogType) {
         case 4: s += "  f = 1.0 - exp2(-8.0 * f);\n"; break;

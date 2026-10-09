@@ -201,9 +201,15 @@ void hiresEndFrame();  // once per display copy
 void hiresPreload();   // drain resource requests on the GL thread before gameplay
 void hiresPrefetchResource(const void* data, uint32_t size, const char* name);
 uint32_t hiresUploadedCount();
-struct HiresStats { size_t residentBytes, decodedBytes, pendingCount; uint32_t uploaded; };
+// pendingCount: replacements still to read; completing: those whose missing
+// compressed levels are still being made.
+struct HiresStats { size_t residentBytes, decodedBytes, pendingCount; uint32_t uploaded; size_t completing; };
 HiresStats hiresStats();
 uint64_t xxh64(const void* data, size_t len, uint64_t seed);
+// Block compression (gx_bcenc.cpp) for the mip levels a texture pack leaves
+// out: one 4x4 block of RGBA pixels, row by row, into 8 bytes (BC1) or 16.
+enum { BLOCK_BC1 = 1, BLOCK_BC2, BLOCK_BC3, BLOCK_BC7 };
+void encodeBlock(int format, const uint8_t* rgba, uint8_t* out);
 // Button prompts (gx_prompts.cpp): the 64x64 RGBA image of button glyph
 // (0 A, 1 B, 2 X, 3 Y, 4 Z, 5 L, 6 R, 7 C-stick) in the style shown now, with
 // that style's id in *style; null to keep the game's own picture.

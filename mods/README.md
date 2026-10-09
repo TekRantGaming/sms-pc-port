@@ -23,7 +23,7 @@ Eclipse is about 850 MB to download; it is an xdelta patch that turns your own N
 Texture packs made for Dolphin's "Load Custom Textures" work unchanged.
 Unpack one into `mods/textures/` (or let `get.py textures` install the UHD pack), for example the [Super Mario Sunshine UHD Texture Pack](https://github.com/qashto/Super_Mario_Sunshine_UHD_Texture_Pack) (from its `GMS.7z` release, `GMS/Textures/GMS` goes to `mods/textures/GMS`).
 Every `tex1_*.png` and `tex1_*.dds` below `mods/textures/` is used, in any sub-folder; several packs can sit side by side.
-DDS files can hold BC1–BC3 or BC7 blocks or plain RGBA. Supported blocks stay compressed, including files with only one or a few mipmap levels; sampling clamps to the supplied levels. A GPU that cannot sample BC7 (macOS) gets them decoded instead.
+DDS files can hold BC1–BC3 or BC7 blocks or plain RGBA. Supported blocks stay compressed, including files with only one or a few mipmap levels: the missing levels are made from the last one in the background after the level loads and compressed in the same format, so far-away surfaces do not shimmer (until they arrive, about a second for an 8192×8192 image, sampling stops at the file's last level). A GPU that cannot sample BC7 (macOS) gets them decoded instead.
 
 A pack names each image after the texture it replaces (its size, format and a hash of its data), so it matches the game's own textures wherever they are loaded.
 Replacements in loaded BTI files, models and particle resources prepare in the background, including textures on offscreen objects. Before the first gameplay frame, the render thread finishes uploading the queued replacements. This adds some loading time and avoids doing those uploads when the camera first sees an object.

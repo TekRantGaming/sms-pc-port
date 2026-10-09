@@ -10,6 +10,7 @@ option(SMS_GX_BUILD_TESTS "Build the headless self-test" ON)
 set(SMS_GX_SOURCES
     src/gl_loader.cpp
     src/gx_api.cpp
+    src/gx_bcenc.cpp
     src/gx_fifo.cpp
     src/gx_hdr.cpp
     src/gx_hires.cpp

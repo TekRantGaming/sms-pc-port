@@ -11,6 +11,9 @@
 #include <fstream>
 #include <thread>
 #include <vector>
+#define BCDEC_STATIC
+#define BCDEC_IMPLEMENTATION
+#include "third_party/bcdec.h"
 
 void OSPanic(const char*, int, const char*, ...) { std::abort(); }
 void DCFlushRange(void* p, uint32_t n) { GXPC_InvalidateRange(p, n); }
@@ -87,10 +90,68 @@ static void APIENTRY noCompression(GLenum name, GLint* value) {
 }
 static void resetRecord() { compressedCalls = rgbaCalls = 0; uploadedBytes = 0; maxLevel = -1; }
 
+// Encodes a block for the levels a pack leaves out and decodes it with bcdec;
+// the largest difference of the checked channels (from `first`).
+static int roundTrip(int format, const uint8_t* rgba, int channels, int first = 0) {
+    uint8_t block[16], out[64];
+    gx::encodeBlock(format, rgba, block);
+    if (format == gx::BLOCK_BC1) bcdec_bc1(block, out, 16);
+    else if (format == gx::BLOCK_BC2) bcdec_bc2(block, out, 16);
+    else if (format == gx::BLOCK_BC3) bcdec_bc3(block, out, 16);
+    else bcdec_bc7(block, out, 16);
+    int worst = 0;
+    for (int i = 0; i < 64; i++)
+        if (i % 4 >= first && i % 4 < channels) worst = std::max(worst, std::abs(int(out[i]) - int(rgba[i])));
+    return worst;
+}
+
+static void checkEncoder() {
+    // ramp: 7 steps along the diagonal; steps: 4 steps a palette of 4 holds
+    // (opaque: the BC1 copy); two: two colours; cut: BC1's transparent pixels.
+    uint8_t ramp[64], steps[64], opaque[64], flat[64], two[64], cut[64];
+    for (int i = 0; i < 16; i++) {
+        int t = (i % 4) + (i / 4), u = i % 4;
+        uint8_t r[4] = {uint8_t(40 + 30 * t), uint8_t(200 - 25 * t), uint8_t(90 + 5 * t), uint8_t(255 - 40 * t)};
+        std::memcpy(ramp + 4 * i, r, 4);
+        uint8_t s[4] = {uint8_t(33 + 66 * u), uint8_t(231 - 66 * u), uint8_t(66 + 33 * u), uint8_t(255 - 66 * u)};
+        std::memcpy(steps + 4 * i, s, 4);
+        s[3] = 255;
+        std::memcpy(opaque + 4 * i, s, 4);
+        uint8_t f[4] = {201, 99, 47, 255};
+        std::memcpy(flat + 4 * i, f, 4);
+        uint8_t c[4] = {uint8_t(i & 1 ? 230 : 20), 120, uint8_t(i & 1 ? 20 : 230), uint8_t(i & 1 ? 40 : 250)};
+        std::memcpy(two + 4 * i, c, 4);
+        c[3] = uint8_t(i & 2 ? 255 : 0);
+        std::memcpy(cut + 4 * i, c, 4);
+    }
+    expect(roundTrip(gx::BLOCK_BC7, ramp, 4) <= 8, "BC7 encodes a colour and alpha ramp");
+    expect(roundTrip(gx::BLOCK_BC7, flat, 4) <= 1, "BC7 encodes a flat colour");
+    expect(roundTrip(gx::BLOCK_BC7, two, 4) <= 2, "BC7 encodes two colours");
+    // A glow's 8x8 level: white where it is clear, alpha peaking on a grey core.
+    static const uint8_t glow[64] = {
+        255, 255, 255, 1,  252, 252, 252, 1,  159, 159, 159, 1,  102, 102, 102, 13,
+        252, 252, 252, 1,  81,  81,  81,  11, 24,  24,  24,  38, 24,  24,  24,  62,
+        159, 159, 159, 1,  24,  24,  24,  38, 30,  30,  30,  80, 92,  92,  92,  126,
+        102, 102, 102, 13, 24,  24,  24,  62, 92,  92,  92,  126, 213, 213, 213, 214};
+    expect(roundTrip(gx::BLOCK_BC7, glow, 4, 3) <= 40, "BC7 keeps alpha that does not follow colour");
+    expect(roundTrip(gx::BLOCK_BC1, opaque, 3) <= 8, "BC1 encodes four steps of colour");
+    expect(roundTrip(gx::BLOCK_BC1, flat, 3) <= 4, "BC1 encodes a flat colour");
+    expect(roundTrip(gx::BLOCK_BC2, steps, 4) <= 9, "BC2 encodes four steps of colour and alpha");
+    expect(roundTrip(gx::BLOCK_BC3, steps, 4) <= 14, "BC3 encodes four steps of colour and alpha");
+    expect(roundTrip(gx::BLOCK_BC3, ramp, 4) <= 32, "BC3 encodes a colour and alpha ramp");
+    uint8_t block[8], out[64];
+    gx::encodeBlock(gx::BLOCK_BC1, cut, block);
+    bcdec_bc1(block, out, 16);
+    bool punch = true;
+    for (int i = 0; i < 16; i++) punch &= out[4 * i + 3] == (i & 2 ? 255 : 0);
+    expect(punch, "BC1 keeps transparent pixels transparent");
+}
+
 int main(int argc, char** argv) {
     const bool fallback = argc > 1 && std::strcmp(argv[1], "--fallback") == 0;
     const bool sync = argc > 1 && std::strcmp(argv[1], "--sync") == 0;
     const bool disabled = argc > 1 && std::strcmp(argv[1], "--no-preload") == 0;
+    checkEncoder();
     env("SMS_TEXTURE_PACK_SYNC", sync ? "1" : "0");
     env("SMS_TEXTURE_PACK_PRELOAD", disabled ? "0" : "1");
     auto dir = std::filesystem::temp_directory_path() /
@@ -129,13 +190,20 @@ int main(int argc, char** argv) {
         loader.join();
         GXPC_PreloadTextures();
     };
+    // The compressed levels a file leaves out are made after the load and
+    // uploaded with later work (here without a frame end's eviction).
+    auto complete = [&] {
+        for (int i = 0; i < 2000 && gx::hiresStats().completing; ++i) {
+            GXPC_PreloadTextures(); std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
     prepare(single, "single.bti");
     if (sync || disabled) {
         expect(uploadedBytes == 0 && gx::hiresStats().pendingCount == 0, "resource preload obeys sync/disabled setting");
         int scale = 0;
         auto tex = gx::hiresTexture(textureName(single), 0, 8, 4, &scale);
         if (sync) {
-            expect(tex != 0 && compressedCalls == 1, "sync setting prepares a replacement immediately on first use");
+            expect(tex != 0 && compressedCalls == 5, "sync setting prepares a replacement immediately on first use");
         } else {
             expect(tex == 0 && uploadedBytes == 0, "disabled preload keeps draw-time requests asynchronous");
             for (int i = 0; i < 500 && !tex; ++i) {
@@ -149,7 +217,10 @@ int main(int argc, char** argv) {
     }
     expect(fallback ? (rgbaCalls == 5 && uploadedBytes == 684) :
         (compressedCalls == 1 && rgbaCalls == 0 && uploadedBytes == 64), "single-level DDS retains blocks; unsupported GPU gets complete RGBA mips");
-    expect(maxLevel == (fallback ? 4 : 0), "single-level texture clamps to uploaded levels");
+    expect(maxLevel == (fallback ? 4 : 0), "single-level texture samples its own level until the rest are made");
+    complete();
+    expect(fallback ? rgbaCalls == 5 : (compressedCalls == 5 && uploadedBytes == 104 && maxLevel == 4),
+        "single-level DDS gains its other levels, encoded as blocks, after the load");
     int scale = 0;
     expect(gx::hiresTexture(textureName(single), 0, 8, 4, &scale) != 0 && scale == 1, "preloaded texture is ready on first use with correct LOD scale");
     // A J3D TEX1 table with a header at 0x20 and its relative image offset.
@@ -160,15 +231,24 @@ int main(int argc, char** argv) {
     std::copy(partial.begin(), partial.end(), model.begin()+0x40);
     prepare(model, "map.bmd");
     expect(fallback ? rgbaCalls == 6 : (compressedCalls == 3 && uploadedBytes == 336), "offscreen J3D textures preload all supplied DDS levels");
-    expect(maxLevel == (fallback ? 5 : 2), "partial DDS clamps to its actual last level");
+    expect(maxLevel == (fallback ? 5 : 2), "partial DDS samples its supplied levels until the rest are made");
+    complete();
+    expect(fallback ? rgbaCalls == 6 : (compressedCalls == 6 && uploadedBytes == 360 && maxLevel == 5),
+        "partial DDS is completed down to 1x1");
     std::vector<uint8_t> particle(0x80);
     std::memcpy(particle.data(), "JEFFjpa1", 8); be32(particle, 0x0C, 1);
     std::memcpy(particle.data()+0x20, "TEX1", 4); be32(particle, 0x24, 0x60);
     std::copy(bptc.begin(), bptc.end(), particle.begin()+0x40);
     prepare(particle, "effect.jpa");
     expect(fallback ? rgbaCalls == 5 : (compressedCalls == 1 && uploadedBytes == 128), "particle BC7 texture preloads without expanding on a supported GPU");
+    complete();
+    expect(fallback ? rgbaCalls == 5 : (compressedCalls == 5 && uploadedBytes == 208 && maxLevel == 4),
+        "BC7 texture gains its other levels as BC7");
     prepare(external, "external.bti");
     expect(fallback ? rgbaCalls == 5 : (compressedCalls == 2 && uploadedBytes == 80 && maxLevel == 1), "DDS external mip files are preserved with compatible dimensions and format");
+    complete();
+    expect(fallback ? rgbaCalls == 5 : (compressedCalls == 5 && uploadedBytes == 104 && maxLevel == 4),
+        "external mip files are completed after their last level");
     expect(glGetError() == GL_NO_ERROR, "compressed/partial/fallback uploads are accepted by GL");
     resetRecord();
     GXPC_PrefetchResource(model.data(), 0x2C, "truncated.bmd");
@@ -189,6 +269,7 @@ int main(int argc, char** argv) {
     expect(gx::hiresStats().decodedBytes <= (1u<<20) + (fallback ? 1398100 : 131072), "decoder backlog stays within budget plus one in-flight texture");
     GXPC_PreloadTextures();
     expect(gx::hiresStats().pendingCount == 0, "preload drains a backpressured worker without deadlocking");
+    complete();
     resetRecord();
     for (const auto& resource : many) GXPC_PrefetchResource(resource.data(), resource.size(), "again.bti");
     GXPC_PreloadTextures();

@@ -474,6 +474,12 @@ int main(int argc, char** argv) {
         u8 cmpr[32] = {0xFF, 0xFF, 0x00, 0x00, 0x1B, 0x1B, 0x1B, 0x1B};
         gx::decodeTexture(cmpr, GX_TF_CMPR, 8, 8, nullptr, 0, out);
         expect("CMPR decode", out[0] == 255 && out[4] == 0 && out[8] == 170 && out[12] == 85);
+        // CMPR 3-colour mode: c0 = black <= c1 = white, index 3 is transparent
+        // with the average colour (Super Mario Eclipse's talk cursor arrow)
+        u8 cmpr3[32] = {0x00, 0x00, 0xFF, 0xFF, 0x1B, 0x1B, 0x1B, 0x1B};
+        gx::decodeTexture(cmpr3, GX_TF_CMPR, 8, 8, nullptr, 0, out);
+        expect("CMPR 3-colour decode", out[0] == 0 && out[4] == 255 && out[8] == 127 && out[11] == 255 &&
+                                            out[12] == 127 && out[13] == 127 && out[15] == 0);
         // C8 with an RGB565 TLUT
         u8 c8[32] = {0, 1};
         u8 tlut[4] = {0xF8, 0x00, 0x07, 0xE0};

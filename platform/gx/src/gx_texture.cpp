@@ -158,9 +158,12 @@ void decodeTexture(const uint8_t* src, uint32_t fmt, uint32_t w, uint32_t h, con
                         }
                         pal[2][3] = pal[3][3] = 255;
                     } else {
+                        // Index 3 is transparent but keeps index 2's colour
+                        // (the hardware's, as Dolphin decodes it), not black:
+                        // a material that ignores texture alpha shows it.
                         for (int k = 0; k < 3; k++) {
                             pal[2][k] = uint8_t((pal[0][k] + pal[1][k]) / 2);
-                            pal[3][k] = 0;
+                            pal[3][k] = pal[2][k];
                         }
                         pal[2][3] = 255;
                         pal[3][3] = 0;

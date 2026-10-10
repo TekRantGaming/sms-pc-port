@@ -1,0 +1,38 @@
+Reason: port: the console spends a second or more loading the next stage from disc while the last stage's system sounds (a pipe's entry sound) play out; natively the next stage loads at once and cut them short, so the last stage's faded-out frame stays up, with the sound system running, until they end (at most two seconds)
+--- a/src/System/Application.cpp
++++ b/src/System/Application.cpp
+@@ -911,6 +911,34 @@
+ 	}
+ 
+ #ifdef TARGET_PC
++	// port: on the console the next stage takes a second or more to load
++	// from disc, while the stage's last system sounds play out: a pipe's
++	// MSD_SE_MA_INTO_DOKAN, which TMarDirector starts as it fades every
++	// other category out (fadeOutAllSound spares category 4). Natively the
++	// next stage loads at once and its sound set-up cut the pipe sound
++	// short. Keep presenting the faded-out frame, with the sound system
++	// running and nothing else, until category 4 is silent, for at most two
++	// seconds.
++	if (mAppState == APP_STATE_GAMEPLAY && nextState != APP_STATE_QUIT && gpMSound != nullptr) {
++		for (int frames = 2 * port_active_frame_rate; frames > 0; --frames) {
++			if (gpMSound->unk0->getLinkBuffer(4)->mUsedHead == nullptr)
++				break;
++			mDisplay->startRendering();
++			JDrama::TVideo* video = mDisplay->getVideo();
++			GXRenderModeObj& mode = video->mNextRenderMode;
++			GXSetViewport(0.0f, 0.0f, mode.fbWidth, mode.efbHeight, 0.0f, 1.0f);
++			GXSetScissor(0, 0, mode.fbWidth, mode.efbHeight);
++			Mtx44 ortho;
++			C_MTXOrtho(ortho, 0.0f, (f32)mode.efbHeight, 0.0f, (f32)mode.fbWidth, -1.0f, 1.0f);
++			GXSetProjection(ortho, GX_ORTHOGRAPHIC);
++			mFader->update();
++			mFader->draw(JDrama::TRect(0, 0, mode.fbWidth, mode.efbHeight));
++			gpMSound->mainLoop();
++			mDisplay->endRendering();
++		}
++	}
++#endif
++#ifdef TARGET_PC
+ 	// Eclipse (flagCharacterSelectMenu, retail 0x802A637C): the final blr
+ 	// becomes a tail branch to the mod's function, which gets the state
+ 	// being returned (r3) and returns the one the caller sees.

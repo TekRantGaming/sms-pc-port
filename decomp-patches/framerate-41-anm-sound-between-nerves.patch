@@ -1,0 +1,65 @@
+Reason: port: at 120 fps one movement tick runs per animation pass, so a nerve that ends with its looping animation has not handed over to the next nerve when the animation sound sees the animation wrap to frame 0; its frame 0 sound plays a second time (the gatekeeper's hit voice when its damage animation ends). At 60/120 fps hold the animation sound back while the spine is between nerves, as at 30 fps
+--- a/include/Strategic/Spine.hpp
++++ b/include/Strategic/Spine.hpp
+@@ -5,6 +5,10 @@
+ #include <dolphin/os.h>
+ #include <dolphin/types.h>
+ 
++#ifdef TARGET_PC
++#include "port_framerate.h"
++#endif
++
+ class TSpineEnemy;
+ template <class T> class TNerveBase;
+ 
+@@ -39,6 +43,21 @@
+ 		return mPrevious;
+ 	}
+ 
++#ifdef TARGET_PC
++	// Port: TMarDirector::direct runs four 120 Hz movement ticks per
++	// animation pass at 30 fps, two at 60 and one at 120. A nerve that ends
++	// when its animation does leaves mCurrent empty for one tick, and its
++	// successor changes the animation on the next. At 30 fps that happens
++	// before the animation pass; at 120 the pass sees the finished animation
++	// wrapped to frame 0 first, and the animation sound replays its frame 0
++	// entry (the gatekeeper's hit voice when its damage animation ends). Hold
++	// the animation sound back while the spine is between nerves.
++	bool portDefersAnmSound() const
++	{
++		return port_high_fps_active && mCurrent == nullptr;
++	}
++#endif
++
+ 	// matching
+ 	void pushNerve(Nerve nerve)
+ 	{
+--- a/src/Strategic/liveactor.cpp
++++ b/src/Strategic/liveactor.cpp
+@@ -557,6 +557,11 @@
+ 		return;
+ 	if (!mAnmSoundPath)
+ 		return;
++#ifdef TARGET_PC
++	// Port: see TSpineBase::portDefersAnmSound.
++	if (mSpine && mSpine->portDefersAnmSound())
++		return;
++#endif
+ 
+ 	J3DFrameCtrl* ctrl = mMActor->getFrameCtrl(ANM_TYPE_BCK);
+ 	mAnmSound->animeLoop(&mPosition, ctrl->getFrame(), ctrl->getRate(), 0, 4);
+--- a/src/Enemy/enemymanager.cpp
++++ b/src/Enemy/enemymanager.cpp
+@@ -206,6 +206,12 @@
+ 					    = unk40[i]
+ 					          .getMActor(enemy->getInstanceIndex())
+ 					          ->getFrameCtrl(ANM_TYPE_BCK);
++#ifdef TARGET_PC
++					// Port: see TSpineBase::portDefersAnmSound.
++					if (enemy->getSpine()
++					    && enemy->getSpine()->portDefersAnmSound())
++						break;
++#endif
+ 					if (enemy->mAnmSoundPath) {
+ 						J3DFrameCtrl* ctrl
+ 						    = unk40[i]

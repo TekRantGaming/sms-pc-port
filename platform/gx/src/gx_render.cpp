@@ -67,6 +67,7 @@ enum { EFB_W = 640, EFB_H = 528 };
 // so pieces that meet on the GameCube still meet.
 static float s_scale = 1;
 static int scaled(int v) { return int(lroundf(float(v) * s_scale)); }
+float efbScale() { return s_scale; }
 
 // Widescreen (GXPC_SetWidescreen): the EFB is s_efbW = 640 * s_wide wide
 // while the game keeps working in 640-wide coordinates, which each draw,

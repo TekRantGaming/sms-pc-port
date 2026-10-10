@@ -101,7 +101,7 @@ Options can be kept in [`settings.txt`](settings.txt) (`resolution = 2`, `textur
 | `--headless` (after the image) or `SMS_HEADLESS=1` | no window, for testing (Linux only) |
 | `SMS_OVERLAY=1` | open the debug overlay at start |
 | `SMS_GX_SCALE=n` | render at n times the GameCube's resolution |
-| `SMS_ANISO=n` | anisotropic filtering, 2 to 16 (up to what the GPU supports), for sharper textures at glancing angles |
+| `SMS_ANISO=n` | anisotropic filtering, 2 to 16 (up to what the GPU supports), for sharper textures at glancing angles; textures whose mipmap levels are an effect (such as the sea's sparkles) keep the GameCube's level of detail |
 | `SMS_FULLSCREEN=1` | borderless fullscreen at the desktop's resolution; `exclusive` switches the display to `SMS_FULLSCREEN_MODE=WxH@Hz` (else the desktop's mode; on a monitor with Windows HDR on it stays borderless, since a mode switch can leave HDR's colours wrong). F11 or Alt+Enter toggles fullscreen while playing |
 | `SMS_DISPLAY=n` | the monitor to open on (0 is the primary one; by default, the one under the mouse) |
 | `SMS_VSYNC=1` | wait for the display's refresh; `adaptive` shows a late frame at once instead of waiting a whole refresh |

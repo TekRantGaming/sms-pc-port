@@ -148,6 +148,7 @@ enum PrimClass { PRIM_TRIS, PRIM_LINES, PRIM_POINTS };
 
 // ---------------------------------------------------------------- renderer (gx_render.cpp)
 void rendererInit(float efbScale);
+float efbScale();  // the internal resolution over the GameCube's
 void flushBatch();
 // adds a primitive; vertices already decoded
 // Packed vertex formats: a vertex holds only the attributes its GX vertex

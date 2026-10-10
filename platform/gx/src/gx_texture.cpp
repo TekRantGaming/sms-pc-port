@@ -3,6 +3,7 @@
 #include "gl_funcs.h"
 #include "gx_glcache.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
@@ -204,6 +205,7 @@ struct TexEntry {
     uint32_t bytes = 0;
     std::string hires;  // the texture pack's replacement for the current data, if any
     int prompt = -1;    // the button prompt glyph this picture shows (promptGlyph), or -1
+    bool arbitraryMips = false;  // its mip levels are not reductions of level 0 (mipLevelDiff)
 };
 
 static std::unordered_map<TexKey, TexEntry, TexKeyHash> s_cache;
@@ -214,7 +216,35 @@ static std::vector<std::pair<uintptr_t, TexEntry*>> s_ranges;
 static bool s_rangesSorted = true;
 static uint32_t s_maxBytes = 0;
 static uint32_t s_gen = 1;
-static std::vector<uint8_t> s_decodeBuf;
+static std::vector<uint8_t> s_decodeBuf, s_prevLevelBuf;
+
+// How far a decoded mip level (w x h RGBA8) is from a 2x2 box reduction of
+// the level above it (pw x ph): the mean difference per channel, 0..255.
+// Some textures draw an effect into their smaller levels instead of a
+// reduction, such as the sea's sparkle map, whose level 0 is dark with sparse
+// sparkles and whose smaller levels are brighter pictures of their own. Like
+// Dolphin's arbitrary mipmap detection, a mean over all levels above
+// kArbitraryMipThreshold marks such a texture.
+static const float kArbitraryMipThreshold = 14.0f;
+static float mipLevelDiff(const uint8_t* prev, uint32_t pw, uint32_t ph, const uint8_t* cur, uint32_t w, uint32_t h) {
+    uint64_t sum = 0;
+    for (uint32_t y = 0; y < h; y++) {
+        const uint32_t y0 = std::min(2 * y, ph - 1), y1 = std::min(2 * y + 1, ph - 1);
+        for (uint32_t x = 0; x < w; x++) {
+            const uint32_t x0 = std::min(2 * x, pw - 1), x1 = std::min(2 * x + 1, pw - 1);
+            const uint8_t* a = prev + (size_t(y0) * pw + x0) * 4;
+            const uint8_t* b = prev + (size_t(y0) * pw + x1) * 4;
+            const uint8_t* c = prev + (size_t(y1) * pw + x0) * 4;
+            const uint8_t* d = prev + (size_t(y1) * pw + x1) * 4;
+            const uint8_t* o = cur + (size_t(y) * w + x) * 4;
+            for (int i = 0; i < 4; i++) {
+                const int diff = (a[i] + b[i] + c[i] + d[i] + 2) / 4 - int(o[i]);
+                sum += uint32_t(diff < 0 ? -diff : diff);
+            }
+        }
+    }
+    return float(double(sum) / (double(w) * h * 4));
+}
 
 struct CopyEntry {
     GLuint tex;
@@ -460,9 +490,14 @@ static float anisotropy() {
 // none). Its LOD range moves up by that much, so the same screen size samples
 // the same level of detail; a replacement of a texture without mipmaps gets
 // generated ones down to the original size, so it does not shimmer.
-static GLuint samplerFor(uint32_t mode0, uint32_t mode1, uint32_t levels, int hires = -1) {
+// arbitraryMips: the texture's levels are an effect, not reductions (see
+// mipLevelDiff), so the distance at which each level shows is part of the
+// picture. Such a texture samples the GameCube's level of detail: the LOD
+// bias makes up for the internal resolution, and no anisotropic filtering,
+// which would pick sharper levels (it turned the distant sea white).
+static GLuint samplerFor(uint32_t mode0, uint32_t mode1, uint32_t levels, int hires = -1, bool arbitraryMips = false) {
     uint64_t key = uint64_t(mode0 & 0x1FFFF) | uint64_t(mode1 & 0xFFFF) << 17 | uint64_t(levels > 1) << 33 |
-                   uint64_t(hires + 1) << 34;
+                   uint64_t(hires + 1) << 34 | uint64_t(arbitraryMips) << 40;
     GLuint& smp = s_samplers[key];
     if (smp) return smp;
     glGenSamplers(1, &smp);
@@ -489,11 +524,14 @@ static GLuint samplerFor(uint32_t mode0, uint32_t mode1, uint32_t levels, int hi
             maxLod += float(hires);
         }
     }
+    const bool effectMips = arbitraryMips && levels > 1 && mip != 0;
+    float bias = float(int8_t((mode0 >> 9) & 0xFF)) / 32.0f;
+    if (effectMips) bias += log2f(efbScale());
     glSamplerParameteri(smp, GL_TEXTURE_MIN_FILTER, minf);
-    glSamplerParameterf(smp, GL_TEXTURE_LOD_BIAS, float(int8_t((mode0 >> 9) & 0xFF)) / 32.0f);
+    glSamplerParameterf(smp, GL_TEXTURE_LOD_BIAS, bias);
     glSamplerParameterf(smp, GL_TEXTURE_MIN_LOD, minLod);
     glSamplerParameterf(smp, GL_TEXTURE_MAX_LOD, maxLod);
-    if (minf != GL_NEAREST && minf != GL_NEAREST_MIPMAP_NEAREST && anisotropy() > 1.0f)
+    if (minf != GL_NEAREST && minf != GL_NEAREST_MIPMAP_NEAREST && !effectMips && anisotropy() > 1.0f)
         glSamplerParameterf(smp, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */, anisotropy());
     return smp;
 }
@@ -645,15 +683,22 @@ unsigned bindTextureMap(int map, float* outW, float* outH) {
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         const uint8_t* src = ptr;
         uint32_t lw = w, lh = h;
+        uint32_t pw = w, ph = h;
+        float mipDiff = 0.0f;
         for (uint32_t l = 0; l < levels; l++) {
             s_decodeBuf.resize(size_t(lw) * lh * 4);
             decodeTexture(src, fmt, lw, lh, tlut, (tlutReg >> 10) & 3, s_decodeBuf.data());
             glTexImage2D(GL_TEXTURE_2D, GLint(l), GL_RGBA8, GLsizei(lw), GLsizei(lh), 0, GL_RGBA, GL_UNSIGNED_BYTE,
                          s_decodeBuf.data());
+            if (l > 0) mipDiff += mipLevelDiff(s_prevLevelBuf.data(), pw, ph, s_decodeBuf.data(), lw, lh);
+            s_prevLevelBuf.swap(s_decodeBuf);
+            pw = lw;
+            ph = lh;
             src += texLevelBytes(fmt, lw, lh);
             lw = lw > 1 ? lw / 2 : 1;
             lh = lh > 1 ? lh / 2 : 1;
         }
+        e.arbitraryMips = levels > 1 && mipDiff / float(levels - 1) > kArbitraryMipThreshold;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, GLint(levels - 1));
     }
@@ -669,11 +714,11 @@ unsigned bindTextureMap(int map, float* outW, float* outH) {
         int scale = 0;
         if (GLuint t = hiresTexture(e.hires, map, w, h, &scale)) {
             glcBindTexture(map, t);
-            glcBindSampler(map, samplerFor(mode0, mode1, levels, scale));
+            glcBindSampler(map, samplerFor(mode0, mode1, levels, scale, e.arbitraryMips));
             return t;
         }
     }
-    glcBindSampler(map, samplerFor(mode0, mode1, levels));
+    glcBindSampler(map, samplerFor(mode0, mode1, levels, -1, e.arbitraryMips));
     return e.tex;
 }
 
